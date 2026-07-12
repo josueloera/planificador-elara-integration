@@ -245,23 +245,23 @@ ipcMain.handle('app-focus', () => {
 });
 
 // -- CURRICULUM UNIVERSAL (SEP) --
-ipcMain.handle('get-campos-formativos', async () => new Promise(r => universalDb.all("SELECT * FROM campos_formativos", [], (e, rows) => r(rows || []))));
-ipcMain.handle('get-disciplinas', async () => new Promise(r => universalDb.all("SELECT * FROM disciplinas", [], (e, rows) => r(rows || []))));
+ipcMain.handle('get-campos-formativos', async () => new Promise(r => db.all("SELECT * FROM campos_formativos", [], (e, rows) => r(rows || []))));
+ipcMain.handle('get-disciplinas', async () => new Promise(r => db.all("SELECT id, nombre FROM campos_formativos ORDER BY nombre ASC", [], (e, rows) => r(rows || []))));
 ipcMain.handle('get-disciplinas-por-grado', async (e, grado) => {
     return new Promise(r => {
         const query = `
-            SELECT DISTINCT d.id, d.nombre 
-            FROM disciplinas d
-            JOIN contenidos c ON c.disciplina_id = d.id
+            SELECT DISTINCT cf.id, cf.nombre 
+            FROM campos_formativos cf
+            JOIN contenidos c ON c.campo_id = cf.id
             JOIN pdas p ON p.contenido_id = c.id
             WHERE p.grado = ?
-            ORDER BY d.nombre ASC
+            ORDER BY cf.nombre ASC
         `;
-        universalDb.all(query, [grado], (err, rows) => r(rows || []));
+        db.all(query, [grado], (err, rows) => r(rows || []));
     });
 });
-ipcMain.handle('get-contenidos-disciplina', async (e, d_id, f_id) => new Promise(r => universalDb.all("SELECT * FROM contenidos WHERE disciplina_id = ? AND fase_id = ?", [d_id, f_id], (e, rows) => r(rows || []))));
-ipcMain.handle('get-pdas-contenido', async (e, c_id, grado) => new Promise(r => universalDb.all("SELECT * FROM pdas WHERE contenido_id = ? AND grado = ?", [c_id, grado], (e, rows) => r(rows || []))));
+ipcMain.handle('get-contenidos-disciplina', async (e, d_id, f_id) => new Promise(r => db.all("SELECT * FROM contenidos WHERE campo_id = ? AND fase_id = ?", [d_id, f_id], (e, rows) => r(rows || []))));
+ipcMain.handle('get-pdas-contenido', async (e, c_id, grado) => new Promise(r => db.all("SELECT * FROM pdas WHERE contenido_id = ? AND grado = ?", [c_id, grado], (e, rows) => r(rows || []))));
 
 ipcMain.handle('get-pdas-disciplina', async (e, disciplina_id, grado) => {
     return new Promise(r => {
@@ -269,11 +269,10 @@ ipcMain.handle('get-pdas-disciplina', async (e, disciplina_id, grado) => {
             SELECT p.id, p.grado, p.descripcion as pda, c.descripcion as contenido, cf.nombre as campo 
             FROM pdas p 
             JOIN contenidos c ON p.contenido_id = c.id 
-            JOIN disciplinas d ON c.disciplina_id = d.id
-            JOIN campos_formativos cf ON d.campo_id = cf.id
-            WHERE c.disciplina_id = ? AND p.grado = ?
+            JOIN campos_formativos cf ON c.campo_id = cf.id
+            WHERE c.campo_id = ? AND p.grado = ?
         `;
-        universalDb.all(query, [disciplina_id, grado], (err, rows) => r(rows || []));
+        db.all(query, [disciplina_id, grado], (err, rows) => r(rows || []));
     });
 });
 
@@ -435,7 +434,7 @@ ipcMain.handle('elara-speak', async (e, text) => {
     }
     const outputPath = path.join(outputDir, 'elara_voice.mp3');
     
-    const edgeTtsPath = `C:\\Users\\USER\\Desktop\\ELARA\\Backend\\venv\\Scripts\\edge-tts.exe`;
+    const edgeTtsPath = `C:\\Users\\USER\\.gemini\\antigravity\\scratch\\elara\\Backend\\.venv\\Scripts\\edge-tts.exe`;
     const command = `"${edgeTtsPath}" --voice es-MX-DaliaNeural --rate "+5%" --text "${cleanText}" --write-media "${outputPath}"`;
     
     exec(command, { timeout: 10000 }, (error, stdout, stderr) => {

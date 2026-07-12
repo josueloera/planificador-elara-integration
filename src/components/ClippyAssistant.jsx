@@ -254,6 +254,35 @@ const ClippyAssistant = () => {
 
     if (!cleanText) return;
 
+    // 1. Intentar usar la API oficial de TTS de OpenAI (Voz Nova de alta calidad)
+    if (MI_OPENAI_API_KEY) {
+      try {
+        const response = await fetch('https://api.openai.com/v1/audio/speech', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${MI_OPENAI_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'tts-1',
+            input: cleanText,
+            voice: 'nova'
+          })
+        });
+        if (response.ok) {
+          const blob = await response.blob();
+          const audioUrl = URL.createObjectURL(blob);
+          const audio = new Audio(audioUrl);
+          currentAudioRef.current = audio;
+          await audio.play();
+          return;
+        }
+      } catch (err) {
+        console.error("Error con OpenAI TTS, intentando local:", err);
+      }
+    }
+
+    // 2. Fallback: usar la síntesis local edge-tts
     if (ipcRenderer) {
       try {
         const audioUrl = await ipcRenderer.invoke('elara-speak', cleanText);
@@ -266,7 +295,7 @@ const ClippyAssistant = () => {
       }
     }
 
-    // Fallback: utilizar síntesis del navegador si falla o no está en Electron
+    // 3. Fallback final: utilizar síntesis nativa del navegador si falla o no está en Electron
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = 'es-MX';
@@ -277,7 +306,6 @@ const ClippyAssistant = () => {
         return lang.includes('es-mx') || lang.includes('es-es') || lang.includes('es-us') || lang.startsWith('es');
       });
       
-      // Intentar encontrar una voz femenina en español en base a nombres comunes
       let esVoice = esVoices.find(v => {
         const name = v.name.toLowerCase();
         return name.includes('sabina') || 
@@ -288,7 +316,6 @@ const ClippyAssistant = () => {
                name.includes('female');
       });
       
-      // Si no hay voz femenina específica, usar la primera que no sea explícitamente masculina (David, Raul, Pablo, male)
       if (!esVoice) {
         esVoice = esVoices.find(v => {
           const name = v.name.toLowerCase();
@@ -296,7 +323,6 @@ const ClippyAssistant = () => {
         });
       }
       
-      // Fallback final a cualquier voz en español disponible
       if (!esVoice && esVoices.length > 0) {
         esVoice = esVoices[0];
       }
