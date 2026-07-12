@@ -1,0 +1,33 @@
+/* RESETEO TOTAL DE LA PANTALLA */
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  
+  /* Esquema de colores base */
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* IMPORTANTE: ESTO QUITA LOS MÁRGENES BLANCOS */
+body {
+  margin: 0;
+  padding: 0;
+  min-width: 100vw;
+  min-height: 100vh;
+  overflow-x: hidden; /* Evita scroll horizontal innecesario */
+}
+
+/* IMPORTANTE: ESTO HACE QUE LA APP OCUPE TODO EL ANCHO */
+#root {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: left; /* Quitamos el centrado forzado */
+}

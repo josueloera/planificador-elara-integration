@@ -1,0 +1,11 @@
+name: Test Runner
+on: [push]
+jobs:
+  test-mac:
+    runs-on: macos-latest
+    steps:
+      - run: echo "Mac is working"
+  test-win:
+    runs-on: windows-latest
+    steps:
+      - run: echo "Windows is working"
