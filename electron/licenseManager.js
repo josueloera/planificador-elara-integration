@@ -29,6 +29,11 @@ function generateInstallationCode() {
 }
 
 function verifyLicenseKey(installationCode, providedKey) {
+    const cleanKey = providedKey.trim().toUpperCase();
+    if (cleanKey.length < 19) return false;
+    
+    const licensePart = cleanKey.substring(0, 19); // XXXX-XXXX-XXXX-XXXX
+    
     // A valid key is an HMAC of the installation code
     const expectedHash = crypto.createHmac('sha256', SECRET_KEY)
                                .update(installationCode)
@@ -38,11 +43,26 @@ function verifyLicenseKey(installationCode, providedKey) {
                                
     const formattedExpectedKey = `${expectedHash.substring(0,4)}-${expectedHash.substring(4,8)}-${expectedHash.substring(8,12)}-${expectedHash.substring(12,16)}`;
     
-    return providedKey.trim().toUpperCase() === formattedExpectedKey;
+    return licensePart === formattedExpectedKey;
 }
 
 function getLicenseDataPath() {
     return path.join(app.getPath('userData'), LICENSE_FILE);
+}
+
+function deobfuscateKey(obfuscatedHex) {
+    try {
+        const key = SECRET_KEY;
+        let result = '';
+        for (let i = 0; i < obfuscatedHex.length; i += 2) {
+            const hexChar = obfuscatedHex.substring(i, i + 2);
+            const charCode = parseInt(hexChar, 16) ^ key.charCodeAt((i / 2) % key.length);
+            result += String.fromCharCode(charCode);
+        }
+        return result;
+    } catch(e) {
+        return '';
+    }
 }
 
 function getLicenseStatus() {
@@ -53,7 +73,8 @@ function getLicenseStatus() {
         isActivated: false,
         isTrialValid: false,
         trialDaysRemaining: 0,
-        installationCode: instCode
+        installationCode: instCode,
+        openaiApiKey: ''
     };
 
     if (fs.existsSync(dataPath)) {
@@ -63,6 +84,14 @@ function getLicenseStatus() {
             // 1. Check full activation
             if (data.licenseKey && verifyLicenseKey(instCode, data.licenseKey)) {
                 status.isActivated = true;
+                
+                // Extraer y desofuscar la API Key si está presente
+                const cleanKey = data.licenseKey.trim().toUpperCase();
+                if (cleanKey.length > 19) {
+                    const obfuscatedHex = cleanKey.substring(20); // saltar el guión
+                    status.openaiApiKey = deobfuscateKey(obfuscatedHex);
+                }
+                
                 return status;
             }
             

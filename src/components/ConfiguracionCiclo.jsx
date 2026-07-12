@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
 
 // Reusing the API key from ClippyAssistant for Vision capabilities
-const MI_OPENAI_API_KEY = "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";
+const MI_OPENAI_API_KEY = window.openaiApiKey || "";
 
 const ConfiguracionCiclo = ({ onVolver, currentConfig, defaultConfig }) => {
     const [config, setConfig] = useState(currentConfig || defaultConfig);

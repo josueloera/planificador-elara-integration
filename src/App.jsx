@@ -217,12 +217,13 @@ function App() {
     if (ipcRenderer) {
       ipcRenderer.invoke('get-license-status').then(res => {
         setLicenciaInfo(res);
+        window.openaiApiKey = res.openaiApiKey || '';
         setCargandoLicencia(false);
       });
       ipcRenderer.invoke('get-config').then(cfg => {
         if (cfg.fechaInicioStr || cfg.periodos) {
             setConfigCiclo({
-                fechaInicioStr: cfg.fechaInicioStr || '2025-08-25',
+                fechaInicioStr: cfg.fechaInicioStr || '2026-08-31',
                 periodos: cfg.periodos ? JSON.parse(cfg.periodos) : DEFAULT_PERIODOS
             });
         }
@@ -826,13 +827,16 @@ function App() {
           });
       }} 
       currentConfig={configCiclo} 
-      defaultConfig={{fechaInicioStr: '2025-08-25', periodos: DEFAULT_PERIODOS}} />;
+      defaultConfig={{fechaInicioStr: '2026-08-31', periodos: DEFAULT_PERIODOS}} />;
     }
 
     if (vista === 'LICENCIA') {
       return <Licencia 
           onActivated={() => {
-              ipcRenderer.invoke('get-license-status').then(res => setLicenciaInfo(res));
+              ipcRenderer.invoke('get-license-status').then(res => {
+                  setLicenciaInfo(res);
+                  window.openaiApiKey = res.openaiApiKey || '';
+              });
               setVista('MENU');
               showToast("✅ ¡Licencia activada con éxito!");
           }} 
@@ -1148,7 +1152,10 @@ function App() {
 
   if (licenciaInfo && !licenciaInfo.isActivated && !licenciaInfo.isTrialValid) {
     return <Licencia onActivated={() => {
-      ipcRenderer.invoke('get-license-status').then(res => setLicenciaInfo(res));
+      ipcRenderer.invoke('get-license-status').then(res => {
+        setLicenciaInfo(res);
+        window.openaiApiKey = res.openaiApiKey || '';
+      });
     }} />;
   }
 
