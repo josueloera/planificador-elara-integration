@@ -9,6 +9,9 @@
     <script type="module" crossorigin src="./assets/index-CtNT75OI.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-BzEFju5c.css">
   
+    
+
+  
     <script>
       try {
         const { ipcRenderer } = require('electron');
@@ -20,6 +23,88 @@
         }).catch(err => console.error("Error loading license:", err));
       } catch (e) {
         console.error("Not in Electron environment:", e);
+      }
+
+      let currentAudio = null;
+      window.speakElaraText = function(text) {
+        // Detener cualquier audio previo
+        if (currentAudio) {
+          currentAudio.pause();
+          currentAudio = null;
+        }
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+
+        // Limpiar texto de caracteres especiales para lectura fluida
+        const cleanText = text.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/g, "")
+                              .replace(/\[.*?\]/g, "")
+                              .replace(/[#*`_~➤]/g, "")
+                              .trim();
+
+        if (!cleanText) return;
+
+        // 1. Intentar usar la API oficial de TTS de OpenAI (si tenemos la API Key del usuario)
+        if (window.openaiApiKey) {
+          fetch('https://api.openai.com/v1/audio/speech', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${window.openaiApiKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'tts-1',
+              input: cleanText,
+              voice: 'nova'
+            })
+          }).then(res => {
+            if (res.ok) return res.blob();
+            throw new Error("OpenAI TTS failed");
+          }).then(blob => {
+            const audioUrl = URL.createObjectURL(blob);
+            currentAudio = new Audio(audioUrl);
+            currentAudio.play();
+          }).catch(err => {
+            console.error("Error con OpenAI TTS, intentando local:", err);
+            speakLocal(cleanText);
+          });
+        } else {
+          speakLocal(cleanText);
+        }
+      };
+
+      function speakLocal(cleanText) {
+        try {
+          const { ipcRenderer } = require('electron');
+          ipcRenderer.invoke('elara-speak', cleanText).then(audioUrl => {
+            currentAudio = new Audio(audioUrl);
+            currentAudio.play();
+          }).catch(err => {
+            console.error("Error al reproducir local (edge-tts):", err);
+            speakBrowserFallback(cleanText);
+          });
+        } catch (e) {
+          speakBrowserFallback(cleanText);
+        }
+      }
+
+      function speakBrowserFallback(cleanText) {
+        if ('speechSynthesis' in window) {
+          const utterance = new SpeechSynthesisUtterance(cleanText);
+          utterance.lang = 'es-MX';
+          const voices = window.speechSynthesis.getVoices();
+          const esVoices = voices.filter(v => {
+            const lang = v.lang.toLowerCase();
+            return lang.includes('es-mx') || lang.includes('es-es') || lang.includes('es-us') || lang.startsWith('es');
+          });
+          let esVoice = esVoices.find(v => {
+            const name = v.name.toLowerCase();
+            return name.includes('sabina') || name.includes('helena') || name.includes('dalia') || name.includes('maria') || name.includes('google') || name.includes('female');
+          });
+          if (!esVoice && esVoices.length > 0) esVoice = esVoices[0];
+          if (esVoice) utterance.voice = esVoice;
+          window.speechSynthesis.speak(utterance);
+        }
       }
     </script>
 
