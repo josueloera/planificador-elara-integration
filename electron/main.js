@@ -3,6 +3,13 @@ const path = require('path');
 const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 
+// --- LOGGING TO FILE SYSTEM ---
+const logPath = path.join(app.getPath('userData'), 'app_debug.log');
+try { fs.writeFileSync(logPath, '--- App Start ---\n'); } catch(e) {}
+ipcMain.on('log-to-file', (event, message) => {
+  try { fs.appendFileSync(logPath, message + '\n'); } catch(e) {}
+});
+
 // --- 1. GESTIÓN DE LA BASE DE DATOS ---
 let dbPath;
 const dbName = 'nem_primaria.db'; 
@@ -154,7 +161,23 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  // Si la licencia guardada es una licencia vieja de 4 bloques (sin API key de OpenAI), la eliminamos
+  // para forzar al usuario a reactivar la app usando su nueva clave con la API Key integrada.
+  const dataPath = path.join(app.getPath('userData'), 'license.json');
+  if (fs.existsSync(dataPath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+      if (data.licenseKey && data.licenseKey.split('-').length <= 4) {
+        console.log("⚠️ Detectada licencia antigua sin API Key. Reseteando licencia para forzar reactivación...");
+        fs.unlinkSync(dataPath);
+      }
+    } catch (e) {
+      console.error("Error al verificar licencia antigua:", e);
+    }
+  }
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -171,6 +194,52 @@ ipcMain.handle('get-license-status', () => {
 
 ipcMain.handle('activate-license', (event, key) => {
   return licenseManager.activateLicense(key);
+});
+
+ipcMain.handle('open-base64-image', async (event, dataUrl) => {
+  try {
+    const base64Data = dataUrl.split(';base64,').pop();
+    const tempDir = app.getPath('temp');
+    const filePath = path.join(tempDir, `elara_image_${Date.now()}.png`);
+    fs.writeFileSync(filePath, base64Data, { encoding: 'base64' });
+    const { shell } = require('electron');
+    await shell.openPath(filePath);
+    return { success: true };
+  } catch (e) {
+    console.error("Error opening base64 image:", e);
+    return { success: false };
+  }
+});
+
+ipcMain.handle('deactivate-license-api', async () => {
+  const dataPath = path.join(app.getPath('userData'), 'license.json');
+  if (fs.existsSync(dataPath)) {
+    try { fs.unlinkSync(dataPath); } catch(e) {}
+  }
+  return true;
+});
+
+ipcMain.handle('open-license-file-dialog', async () => {
+  const { dialog } = require('electron');
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [
+      { name: 'Archivos de Licencia', extensions: ['txt', 'json'] }
+    ]
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+  const filePath = result.filePaths[0];
+  const content = fs.readFileSync(filePath, 'utf8').trim();
+  let licenseKey = content;
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed.licenseKey) {
+      licenseKey = parsed.licenseKey;
+    }
+  } catch (e) {}
+  return { licenseKey: licenseKey.trim() };
 });
 
 ipcMain.handle('start-trial', () => {
@@ -330,26 +399,38 @@ ipcMain.handle('get-config', async () => new Promise(r => db.all("SELECT * FROM 
 ipcMain.handle('save-config', async (e, llave, valor) => new Promise(r => db.run("INSERT OR REPLACE INTO configuracion (llave, valor) VALUES (?, ?)", [llave, valor], () => r(true))));
 ipcMain.handle('elara-speak', async (e, text) => {
   return new Promise((resolve, reject) => {
-    const { exec } = require('child_process');
-    const cleanText = text.replace(/"/g, '\\"')
+    const { execFile } = require('child_process');
+    const cleanText = text.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/g, "")
+                          .replace(/\[.*?\]/g, "")
+                          .replace(/[#*`_~➤]/g, "")
                           .replace(/\n/g, ' ')
                           .trim();
                            
-    const outputDir = path.join(__dirname, '..', 'public');
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
+    const outputPath = path.join(app.getPath('temp'), 'elara_voice.mp3');
+    if (fs.existsSync(outputPath)) {
+      try { fs.unlinkSync(outputPath); } catch(err) {}
     }
-    const outputPath = path.join(outputDir, 'elara_voice.mp3');
     
     const edgeTtsPath = `C:\\Users\\USER\\.gemini\\antigravity\\scratch\\elara\\Backend\\.venv\\Scripts\\edge-tts.exe`;
-    const command = `"${edgeTtsPath}" --voice es-MX-DaliaNeural --rate "+5%" --text "${cleanText}" --write-media "${outputPath}"`;
     
-    exec(command, { timeout: 10000 }, (error, stdout, stderr) => {
+    execFile(edgeTtsPath, [
+      '--voice', 'es-MX-DaliaNeural',
+      '--rate', '+5%',
+      '--text', cleanText,
+      '--write-media', outputPath
+    ], (error, stdout, stderr) => {
       if (error) {
-        console.error("Error al generar audio de ELARA:", error);
+        console.error("Error al generar audio de ELARA:", error, stderr);
         reject(error);
       } else {
-        resolve('/elara_voice.mp3?t=' + Date.now());
+        try {
+          const audioData = fs.readFileSync(outputPath);
+          const dataUri = 'data:audio/mp3;base64,' + audioData.toString('base64');
+          resolve(dataUri);
+        } catch (readError) {
+          console.error("Error al leer el archivo de audio generado:", readError);
+          reject(readError);
+        }
       }
     });
   });
