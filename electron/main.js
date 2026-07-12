@@ -47,7 +47,40 @@ if (app.isPackaged) {
 }
 
 console.log(`\n📂 BASE DE DATOS DE INTEGRACION ELARA: ${dbPath}`);
-const db = new sqlite3.Database(dbPath);
+let db = new sqlite3.Database(dbPath);
+
+// Detectar y corregir si la base de datos activa es la de Secundaria (por ejemplo, si tiene la tabla 'disciplinas')
+db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='disciplinas'", [], (err, row) => {
+  if (row) {
+    console.log("⚠️ Base de datos de Secundaria detectada en el planificador de Primaria. Reemplazando con la versión limpia...");
+    db.close(() => {
+      try {
+        if (fs.existsSync(dbPath)) {
+          fs.unlinkSync(dbPath);
+        }
+        // Volver a copiar la base de datos limpia de Primaria
+        if (app.isPackaged) {
+          const rutaResources = path.join(process.resourcesPath, oldDbName);
+          if (fs.existsSync(rutaResources)) {
+            fs.copyFileSync(rutaResources, dbPath);
+          }
+        } else {
+          const rutaOldRaiz = path.join(__dirname, '..', oldDbName);
+          const rutaOldMismoDir = path.join(__dirname, oldDbName);
+          if (fs.existsSync(rutaOldRaiz)) {
+            fs.copyFileSync(rutaOldRaiz, dbPath);
+          } else if (fs.existsSync(rutaOldMismoDir)) {
+            fs.copyFileSync(rutaOldMismoDir, dbPath);
+          }
+        }
+        console.log("✅ Base de datos reemplazada con éxito.");
+        db = new sqlite3.Database(dbPath);
+      } catch (e) {
+        console.error("Error al reemplazar la base de datos:", e);
+      }
+    });
+  }
+});
 
 // --- 1.B GESTIÓN DE LA BASE DE DATOS UNIVERSAL (SEP) ---
 let universalDbPath;
