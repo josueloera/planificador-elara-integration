@@ -2,12 +2,13 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
+const { seedSepCalendar2026_2027 } = require('./sepCalendar2026');
 
 // --- 1. GESTIÓN DE LA BASE DE DATOS ---
 let dbPath;
 const dbName = 'nem_primaria.db'; 
 
-if (true) {
+if (app.isPackaged) {
   // Producción: la DB está en extraResources
   const rutaResources = path.join(process.resourcesPath, dbName);
   const rutaUserData = path.join(app.getPath('userData'), dbName);
@@ -55,11 +56,25 @@ db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS vistos (tipo TEXT, item_id TEXT, PRIMARY KEY(tipo, item_id))`);
 });
 
+// Seed fuera del serialize para no bloquear el inicio
+seedSepCalendar2026_2027(db);
+
 function createWindow() {
+  // process.execPath = ruta al .exe → su carpeta tiene la carpeta resources/
+  const appDir = require('path').dirname(process.execPath);
+  const iconCandidates = [
+    path.join(appDir, 'resources', 'elara-icon.ico'),
+    path.join(process.resourcesPath, 'elara-icon.ico'),
+    path.join(__dirname, '..', 'dist', 'elara-icon.ico')
+  ];
+  const iconPath = iconCandidates.find(p => { try { return fs.existsSync(p); } catch(e) { return false; } });
+  console.log('[Icon] Path:', iconPath || 'no encontrado');
+
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
     title: "Planificador Docente",
+    icon: iconPath,
     show: false,
     backgroundColor: '#ffffff',
     webPreferences: {
@@ -70,7 +85,7 @@ function createWindow() {
     }
   });
 
-  if (true) {
+  if (app.isPackaged) {
     win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   } else {
     win.loadURL('http://localhost:5173');
@@ -98,6 +113,10 @@ ipcMain.handle('get-license-status', () => {
   return licenseManager.getLicenseStatus();
 });
 
+ipcMain.handle('get-license-proof', () => {
+  return licenseManager.getLicenseProof();
+});
+
 ipcMain.handle('activate-license', (event, key) => {
   return licenseManager.activateLicense(key);
 });
@@ -108,11 +127,10 @@ ipcMain.handle('start-trial', () => {
 
 // --- TRUCO MAESTRO: FORZAR FOCO AUNQUE SE PIERDA ---
 ipcMain.handle('app-focus', () => {
-    // Intenta obtener la ventana enfocada, si no hay (que es el problema), agarra la primera
     const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
     if (win) {
-        win.show(); // Asegura que esté visible
-        win.focus(); // Fuerza el foco del sistema
+        win.show();
+        win.focus();
     }
     return true;
 });
