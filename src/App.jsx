@@ -588,7 +588,18 @@ function App() {
   const savePerfil = (e) => { e.preventDefault(); const d = new FormData(e.target); const obj = Object.fromEntries(d.entries()); obj.alumno_id = alumnoBitacora.id; ipcRenderer.invoke('save-perfil', obj).then(() => showToast("✅ Ficha guardada")); };
   const saveInc = () => { const d={...formInc, alumno_id:alumnoBitacora.id, fecha:fechaInc}; ipcRenderer.invoke('save-incidencia', d).then(()=>{ ipcRenderer.invoke('get-incidencias', alumnoBitacora.id).then(setIncidencias); setFormInc({situacion:'', involucrados:'', medidas:''}); showToast("✅ Reporte guardado"); }); };
   const toggleEventoCalendario = (f) => { if (!modoConfigCalendario) { setFechaEval(f); setVista('EVAL'); cargarEval(); return; } const e = eventosSEP[f]; let n = herramientaSeleccionada; if (e === herramientaSeleccionada) n = 'BORRAR'; if(ipcRenderer) ipcRenderer.invoke('save-evento-oficial', f, n).then(() => { const c = {...eventosSEP}; if(n === 'BORRAR') delete c[f]; else c[f] = n; setEventosSEP(c); }); };
-  const renderCal = () => { const dias=new Date(anioCal, mesCal, 0).getDate(), ini=new Date(anioCal, mesCal-1, 1).getDay(); const arr=[]; for(let i=0;i<ini;i++) arr.push(<div key={`v${i}`} className="dia-vacio"></div>); for(let d=1;d<=dias;d++){ const f=`${anioCal}-${String(mesCal).padStart(2,'0')}-${String(d).padStart(2,'0')}`, te=eventosSEP[f]; let st={}; if(te && TIPOS_EVENTO[te]){st={background:TIPOS_EVENTO[te].color,color:TIPOS_EVENTO[te].texto||'black',border:'1px solid #ccc'};} arr.push(<div key={d} className="dia-calendario" style={st} onClick={()=>toggleEventoCalendario(f)}><span className="numero-dia">{d}</span>{te && <span style={{display:'block', fontSize:'0.8rem'}}>{TIPOS_EVENTO[te].label}</span>}</div>); } return arr; };
+  const renderCal = () => {
+    const dias=new Date(anioCal, mesCal, 0).getDate(), ini=new Date(anioCal, mesCal-1, 1).getDay();
+    const arr=[];
+    for(let i=0;i<ini;i++) arr.push(<div key={`v${i}`} className="dia-vacio"></div>);
+    for(let d=1;d<=dias;d++){
+      const f=`${anioCal}-${String(mesCal).padStart(2,'0')}-${String(d).padStart(2,'0')}`, te=eventosSEP[f];
+      let st={};
+      if(te && TIPOS_EVENTO[te]){st={background:TIPOS_EVENTO[te].color,color:TIPOS_EVENTO[te].texto||'black',border:'1px solid #ccc'};}
+      arr.push(<div key={d} className="dia-calendario" style={st} onClick={()=>toggleEventoCalendario(f)}><span className="numero-dia">{d}</span>{te && TIPOS_EVENTO[te] && <span style={{display:'block', fontSize:'0.8rem'}}>{TIPOS_EVENTO[te].label}</span>}</div>);
+    }
+    return arr;
+  };
 
   const calcularPromedioDiario = (alumnoId) => {
       let sumaTotal = 0; let tieneNotas = false;
@@ -1126,9 +1137,9 @@ function App() {
         <div className="pantalla-dosificador">
           <div className="header-dosificador">
             <div>
-              <button onClick={()=>setMesCal(mesCal-1)}>◀</button> 
+              <button onClick={()=>mesCal===1?(setMesCal(12),setAnioCal(anioCal-1)):setMesCal(mesCal-1)}>◀</button> 
               <h2 style={{color:'black'}}>{NOMBRES_MESES[mesCal]} {anioCal}</h2> 
-              <button onClick={()=>setMesCal(mesCal+1)}>▶</button>
+              <button onClick={()=>mesCal===12?(setMesCal(1),setAnioCal(anioCal+1)):setMesCal(mesCal+1)}>▶</button>
             </div>
             <div>
               <button onClick={()=>setModoConfigCalendario(!modoConfigCalendario)} style={{background: modoConfigCalendario ? '#e67e22' : '#3498db', color: 'white', marginRight:10, padding: '10px'}}>{modoConfigCalendario ? '✅ Terminar' : '⚙️ Configurar SEP'}</button>

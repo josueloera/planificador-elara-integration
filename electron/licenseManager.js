@@ -29,39 +29,50 @@ function generateInstallationCode() {
 }
 
 function verifyLicenseKey(installationCode, providedKey) {
-    const cleanKey = providedKey.trim().toUpperCase();
-    if (cleanKey.length < 19) return false;
+    if (!providedKey) return false;
     
-    const licensePart = cleanKey.substring(0, 19); // XXXX-XXXX-XXXX-XXXX
+    // Normalize the provided key (remove hyphens, spaces, etc.)
+    const cleanProvided = providedKey.replace(/[^A-Z0-9]/gi, '').toUpperCase();
     
-    // A valid key is an HMAC of the installation code
-    const expectedHash = crypto.createHmac('sha256', SECRET_KEY)
-                               .update(installationCode)
-                               .digest('hex')
-                               .substring(0, 16)
-                               .toUpperCase();
-                               
-    const formattedExpectedKey = `${expectedHash.substring(0,4)}-${expectedHash.substring(4,8)}-${expectedHash.substring(8,12)}-${expectedHash.substring(12,16)}`;
+    // 1. Match against standard installation code (with hyphen, e.g., "276D5-941E6")
+    const hashWithHyphen = crypto.createHmac('sha256', SECRET_KEY)
+                                 .update(installationCode)
+                                 .digest('hex')
+                                 .substring(0, 16)
+                                 .toUpperCase();
+    if (cleanProvided.startsWith(hashWithHyphen)) {
+        return true;
+    }
     
-    return licensePart === formattedExpectedKey;
+    // 2. Fallback: match against normalized installation code (without hyphen, e.g., "276D5941E6")
+    // in case the key generator was used with a stripped code
+    const cleanInstCode = installationCode.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    const hashWithoutHyphen = crypto.createHmac('sha256', SECRET_KEY)
+                                    .update(cleanInstCode)
+                                    .digest('hex')
+                                    .substring(0, 16)
+                                    .toUpperCase();
+    if (cleanProvided.startsWith(hashWithoutHyphen)) {
+        return true;
+    }
+    
+    return false;
 }
 
 function getLicenseDataPath() {
     return path.join(app.getPath('userData'), LICENSE_FILE);
 }
 
-function deobfuscateKey(obfuscatedHex) {
+function readLicenseData() {
+    const dataPath = getLicenseDataPath();
+    if (!fs.existsSync(dataPath)) {
+        return {};
+    }
     try {
-        const key = SECRET_KEY;
-        let result = '';
-        for (let i = 0; i < obfuscatedHex.length; i += 2) {
-            const hexChar = obfuscatedHex.substring(i, i + 2);
-            const charCode = parseInt(hexChar, 16) ^ key.charCodeAt((i / 2) % key.length);
-            result += String.fromCharCode(charCode);
-        }
-        return result;
-    } catch(e) {
-        return '';
+        return JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    } catch (e) {
+        console.error("Error reading license file", e);
+        return {};
     }
 }
 
@@ -73,8 +84,7 @@ function getLicenseStatus() {
         isActivated: false,
         isTrialValid: false,
         trialDaysRemaining: 0,
-        installationCode: instCode,
-        openaiApiKey: ''
+        installationCode: instCode
     };
 
     if (fs.existsSync(dataPath)) {
@@ -84,14 +94,6 @@ function getLicenseStatus() {
             // 1. Check full activation
             if (data.licenseKey && verifyLicenseKey(instCode, data.licenseKey)) {
                 status.isActivated = true;
-                
-                // Extraer y desofuscar la API Key si está presente
-                const cleanKey = data.licenseKey.trim().toUpperCase();
-                if (cleanKey.length > 19) {
-                    const obfuscatedHex = cleanKey.substring(20); // saltar el guión
-                    status.openaiApiKey = deobfuscateKey(obfuscatedHex);
-                }
-                
                 return status;
             }
             
@@ -114,6 +116,15 @@ function getLicenseStatus() {
     }
     
     return status;
+}
+
+function getLicenseProof() {
+    const status = getLicenseStatus();
+    const data = readLicenseData();
+    return {
+        ...status,
+        licenseKey: data.licenseKey ? String(data.licenseKey).trim().toUpperCase() : null
+    };
 }
 
 function activateLicense(key) {
@@ -148,6 +159,7 @@ function startTrial() {
 
 module.exports = {
     getLicenseStatus,
+    getLicenseProof,
     activateLicense,
     startTrial
 };

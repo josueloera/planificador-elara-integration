@@ -52,7 +52,7 @@ export default function DashboardGrupos({ onSelectGrupo }) {
   const handleCrearGrupo = async (e) => {
     e.preventDefault();
     if (!nuevoGrupo.disciplina_id) {
-      alert("Debes seleccionar un campo formativo");
+      alert("Debes seleccionar una asignatura");
       return;
     }
     if (ipcRenderer) {
@@ -74,11 +74,13 @@ export default function DashboardGrupos({ onSelectGrupo }) {
   };
 
   const materias = grupos.filter(g => g.tipo === 'Materia Regular');
+  const asesorados = grupos.filter(g => g.tipo === 'Grupo Asesorado');
+  const talleres = grupos.filter(g => g.tipo === 'Taller');
 
   const renderCard = (grupo) => {
-    const campoFormativo = allDisciplinas.find(d => d.id === parseInt(grupo.disciplina_id))?.nombre || 'General';
+    const disciplina = allDisciplinas.find(d => d.id === parseInt(grupo.disciplina_id))?.nombre || 'Desconocida';
     return (
-      <div key={grupo.id} className="grupo-card" onClick={() => onSelectGrupo({...grupo, nombre_disciplina: campoFormativo})} style={{position: 'relative'}}>
+      <div key={grupo.id} className="grupo-card" onClick={() => onSelectGrupo({...grupo, nombre_disciplina: disciplina})} style={{position: 'relative'}}>
         <button 
           onClick={(e) => handleEliminarGrupo(e, grupo.id)} 
           title="Eliminar Grupo" 
@@ -87,8 +89,8 @@ export default function DashboardGrupos({ onSelectGrupo }) {
           ✕
         </button>
         <div className="grupo-grado">{grupo.grado}º {grupo.seccion}</div>
-        <div className="grupo-disciplina">{campoFormativo}</div>
-        <div className="grupo-tipo">Primaria</div>
+        <div className="grupo-disciplina">{disciplina}</div>
+        <div className="grupo-tipo">{grupo.tipo}</div>
       </div>
     );
   };
@@ -96,7 +98,7 @@ export default function DashboardGrupos({ onSelectGrupo }) {
   return (
     <div className="dashboard-grupos-container">
       <header className="dashboard-header">
-        <h1>Mi Organización Escolar - Primaria</h1>
+        <h1>Mi Organización Escolar</h1>
         <button className="btn-crear-grupo" onClick={() => setMostrarModal(true)}>
           + Crear Nuevo Grupo
         </button>
@@ -104,10 +106,26 @@ export default function DashboardGrupos({ onSelectGrupo }) {
 
       <main className="dashboard-main">
         <section className="grupo-seccion">
-          <h2>📚 Mis Grupos y Campos Formativos</h2>
-          {materias.length === 0 && <p className="empty-msg">No has agregado ningún grupo de primaria.</p>}
+          <h2>📚 Mis Materias</h2>
+          {materias.length === 0 && <p className="empty-msg">No has agregado ninguna materia regular.</p>}
           <div className="grupo-grid">
             {materias.map(renderCard)}
+          </div>
+        </section>
+
+        <section className="grupo-seccion">
+          <h2>🤝 Mi Grupo Asesorado (Tutoría)</h2>
+          {asesorados.length === 0 && <p className="empty-msg">No tienes un grupo de tutoría asignado.</p>}
+          <div className="grupo-grid">
+            {asesorados.map(renderCard)}
+          </div>
+        </section>
+
+        <section className="grupo-seccion">
+          <h2>🛠️ Mis Talleres / Clubes</h2>
+          {talleres.length === 0 && <p className="empty-msg">No impartes ningún taller o club.</p>}
+          <div className="grupo-grid">
+            {talleres.map(renderCard)}
           </div>
         </section>
       </main>
@@ -117,16 +135,22 @@ export default function DashboardGrupos({ onSelectGrupo }) {
           <div className="modal-content">
             <h3>Crear Nuevo Grupo</h3>
             <form onSubmit={handleCrearGrupo}>
+              <div className="form-group">
+                <label>Tipo de Grupo:</label>
+                <select value={nuevoGrupo.tipo} onChange={(e) => setNuevoGrupo({...nuevoGrupo, tipo: e.target.value})}>
+                  <option value="Materia Regular">Materia Regular</option>
+                  <option value="Grupo Asesorado">Grupo Asesorado (Tutoría)</option>
+                  <option value="Taller">Taller / Club</option>
+                </select>
+              </div>
+
               <div className="form-row">
                 <div className="form-group">
                   <label>Grado:</label>
                   <select value={nuevoGrupo.grado} onChange={(e) => setNuevoGrupo({...nuevoGrupo, grado: parseInt(e.target.value)})}>
-                    <option value={1}>1º Primaria</option>
-                    <option value={2}>2º Primaria</option>
-                    <option value={3}>3º Primaria</option>
-                    <option value={4}>4º Primaria</option>
-                    <option value={5}>5º Primaria</option>
-                    <option value={6}>6º Primaria</option>
+                    <option value={1}>1º Secundaria</option>
+                    <option value={2}>2º Secundaria</option>
+                    <option value={3}>3º Secundaria</option>
                   </select>
                 </div>
                 <div className="form-group">
@@ -136,9 +160,9 @@ export default function DashboardGrupos({ onSelectGrupo }) {
               </div>
 
               <div className="form-group">
-                <label>Campo Formativo:</label>
+                <label>Asignatura:</label>
                 <select value={nuevoGrupo.disciplina_id} onChange={(e) => setNuevoGrupo({...nuevoGrupo, disciplina_id: e.target.value})} required>
-                  <option value="">-- Selecciona un campo formativo --</option>
+                  <option value="">-- Selecciona una disciplina --</option>
                   {disciplinas.map(d => (
                     <option key={d.id} value={d.id}>{d.nombre}</option>
                   ))}
@@ -146,7 +170,7 @@ export default function DashboardGrupos({ onSelectGrupo }) {
               </div>
 
               <div className="modal-actions">
-                <button type="button" className="btn-cancel" onClick={() => setMostrarModal(true && setMostrarModal(false))}>Cancelar</button>
+                <button type="button" className="btn-cancel" onClick={() => setMostrarModal(false)}>Cancelar</button>
                 <button type="submit" className="btn-save">Guardar Grupo</button>
               </div>
             </form>

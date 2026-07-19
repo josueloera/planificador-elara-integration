@@ -1,0 +1,1 @@
+const sqlite3 = require('sqlite3'); const db = new sqlite3.Database('C:/Users/USER/AppData/Roaming/planificador-elara-integration-userdata/nem_universal.db'); db.all('SELECT * FROM disciplinas', (err, rows) => { console.log(rows); });

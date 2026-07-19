@@ -1,0 +1,22 @@
+{
+  "electronVersion": "31.2.1",
+  "appId": "com.josueloera.planificadordocente",
+  "productName": "Planificador Docente",
+  "directories": {
+    "output": "D:\\App - Planificador Docente\\1. Primaria\\Instaladores"
+  },
+  "files": [
+    "dist/**/*",
+    "electron/**/*",
+    "node_modules/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": "nsis"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true
+  }
+}

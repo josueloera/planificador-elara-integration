@@ -3,18 +3,11 @@ const path = require('path');
 const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 
-// --- LOGGING TO FILE SYSTEM ---
-const logPath = path.join(app.getPath('userData'), 'app_debug.log');
-try { fs.writeFileSync(logPath, '--- App Start ---\n'); } catch(e) {}
-ipcMain.on('log-to-file', (event, message) => {
-  try { fs.appendFileSync(logPath, message + '\n'); } catch(e) {}
-});
-
 // --- 1. GESTIÓN DE LA BASE DE DATOS ---
 let dbPath;
 const dbName = 'nem_primaria.db'; 
 
-if (app.isPackaged) {
+if (true) {
   // Producción: la DB está en extraResources
   const rutaResources = path.join(process.resourcesPath, dbName);
   const rutaUserData = path.join(app.getPath('userData'), dbName);
@@ -33,42 +26,7 @@ if (app.isPackaged) {
 }
 
 console.log(`\n📂 BASE DE DATOS ACTIVA: ${dbPath}\n`);
-
-// Reabrir db como let para permitir el reemplazo dinámico en caliente si se detecta Secundaria
-let db = new sqlite3.Database(dbPath);
-
-db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='disciplinas'", [], (err, row) => {
-  if (row) {
-    console.log("⚠️ Base de datos de Secundaria detectada en el planificador de Primaria. Reemplazando con la versión limpia...");
-    db.close(() => {
-      try {
-        if (fs.existsSync(dbPath)) {
-          fs.unlinkSync(dbPath);
-        }
-        // Volver a copiar
-        if (app.isPackaged) {
-          const rutaResources = path.join(process.resourcesPath, dbName);
-          if (fs.existsSync(rutaResources)) {
-            fs.copyFileSync(rutaResources, dbPath);
-          }
-        } else {
-          const rutaRaiz = path.join(__dirname, '..', dbName);
-          const rutaMismoDir = path.join(__dirname, dbName);
-          if (fs.existsSync(rutaRaiz)) {
-            fs.copyFileSync(rutaRaiz, dbPath);
-          } else if (fs.existsSync(rutaMismoDir)) {
-            fs.copyFileSync(rutaMismoDir, dbPath);
-          }
-        }
-        console.log("✅ Base de datos reemplazada con éxito.");
-        db = new sqlite3.Database(dbPath);
-      } catch (e) {
-        console.error("Error al reemplazar la base de datos:", e);
-      }
-    });
-  }
-});
-
+const db = new sqlite3.Database(dbPath);
 
 // --- 2. CREACIÓN DE TABLAS ---
 db.serialize(() => {
@@ -95,42 +53,6 @@ db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS eventos_oficiales (fecha TEXT PRIMARY KEY, tipo TEXT)`);
   db.run(`CREATE TABLE IF NOT EXISTS configuracion (llave TEXT PRIMARY KEY, valor TEXT)`);
   db.run(`CREATE TABLE IF NOT EXISTS vistos (tipo TEXT, item_id TEXT, PRIMARY KEY(tipo, item_id))`);
-
-  // Seeding para el nuevo ciclo escolar 2026-2027
-  db.get("SELECT valor FROM configuracion WHERE llave = 'fechaInicioStr'", (err, row) => {
-    if (!row || row.valor.startsWith('2025')) {
-      const defaultPeriodosStr = JSON.stringify({
-        1: { nombre: '1º Trimestre', inicio: '2026-08-31', fin: '2026-11-27' },
-        2: { nombre: '2º Trimestre', inicio: '2026-11-30', fin: '2027-03-19' },
-        3: { nombre: '3º Trimestre', inicio: '2027-03-20', fin: '2027-07-21' }
-      });
-      db.run("INSERT OR REPLACE INTO configuracion (llave, valor) VALUES ('fechaInicioStr', '2026-08-31')");
-      db.run("INSERT OR REPLACE INTO configuracion (llave, valor) VALUES ('periodos', ?)", [defaultPeriodosStr]);
-
-      // Sembrar eventos oficiales del ciclo 2026-2027
-      const defaultEventos = {
-        // CTE (Consejo Técnico Escolar)
-        "2026-08-24": "CTE", "2026-08-25": "CTE", "2026-08-26": "CTE", "2026-08-27": "CTE", "2026-08-28": "CTE",
-        "2026-09-25": "CTE", "2026-10-30": "CTE", "2026-11-27": "CTE", "2027-01-29": "CTE", "2027-02-26": "CTE",
-        "2027-04-30": "CTE", "2027-05-28": "CTE", "2027-06-25": "CTE",
-        // Suspensiones (Feriados)
-        "2026-09-16": "SUSPENSION", "2026-11-02": "SUSPENSION", "2026-11-16": "SUSPENSION", "2027-01-01": "SUSPENSION",
-        "2027-02-01": "SUSPENSION", "2027-03-15": "SUSPENSION", "2027-05-05": "SUSPENSION", "2027-05-15": "SUSPENSION",
-        // Vacaciones (Periodos Vacacionales)
-        "2026-12-21": "VACACIONES", "2026-12-22": "VACACIONES", "2026-12-23": "VACACIONES", "2026-12-24": "VACACIONES", "2026-12-25": "VACACIONES",
-        "2026-12-28": "VACACIONES", "2026-12-29": "VACACIONES", "2026-12-30": "VACACIONES", "2026-12-31": "VACACIONES",
-        "2027-01-04": "VACACIONES", "2027-01-05": "VACACIONES", "2027-01-06": "VACACIONES", "2027-01-07": "VACACIONES", "2027-01-08": "VACACIONES",
-        "2027-03-22": "VACACIONES", "2027-03-23": "VACACIONES", "2027-03-24": "VACACIONES", "2027-03-25": "VACACIONES", "2027-03-26": "VACACIONES",
-        "2027-03-29": "VACACIONES", "2027-03-30": "VACACIONES", "2027-03-31": "VACACIONES", "2027-04-01": "VACACIONES", "2027-04-02": "VACACIONES"
-      };
-
-      const stmt = db.prepare("INSERT OR REPLACE INTO eventos_oficiales (fecha, tipo) VALUES (?, ?)");
-      for (const [fecha, tipo] of Object.entries(defaultEventos)) {
-        stmt.run(fecha, tipo);
-      }
-      stmt.finalize();
-    }
-  });
 });
 
 function createWindow() {
@@ -148,7 +70,7 @@ function createWindow() {
     }
   });
 
-  if (app.isPackaged) {
+  if (true) {
     win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   } else {
     win.loadURL('http://localhost:5173');
@@ -161,23 +83,7 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
-  // Si la licencia guardada es una licencia vieja de 4 bloques (sin API key de OpenAI), la eliminamos
-  // para forzar al usuario a reactivar la app usando su nueva clave con la API Key integrada.
-  const dataPath = path.join(app.getPath('userData'), 'license.json');
-  if (fs.existsSync(dataPath)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-      if (data.licenseKey && data.licenseKey.split('-').length <= 4) {
-        console.log("⚠️ Detectada licencia antigua sin API Key. Reseteando licencia para forzar reactivación...");
-        fs.unlinkSync(dataPath);
-      }
-    } catch (e) {
-      console.error("Error al verificar licencia antigua:", e);
-    }
-  }
-  createWindow();
-});
+app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -194,52 +100,6 @@ ipcMain.handle('get-license-status', () => {
 
 ipcMain.handle('activate-license', (event, key) => {
   return licenseManager.activateLicense(key);
-});
-
-ipcMain.handle('open-base64-image', async (event, dataUrl) => {
-  try {
-    const base64Data = dataUrl.split(';base64,').pop();
-    const tempDir = app.getPath('temp');
-    const filePath = path.join(tempDir, `elara_image_${Date.now()}.png`);
-    fs.writeFileSync(filePath, base64Data, { encoding: 'base64' });
-    const { shell } = require('electron');
-    await shell.openPath(filePath);
-    return { success: true };
-  } catch (e) {
-    console.error("Error opening base64 image:", e);
-    return { success: false };
-  }
-});
-
-ipcMain.handle('deactivate-license-api', async () => {
-  const dataPath = path.join(app.getPath('userData'), 'license.json');
-  if (fs.existsSync(dataPath)) {
-    try { fs.unlinkSync(dataPath); } catch(e) {}
-  }
-  return true;
-});
-
-ipcMain.handle('open-license-file-dialog', async () => {
-  const { dialog } = require('electron');
-  const result = await dialog.showOpenDialog({
-    properties: ['openFile'],
-    filters: [
-      { name: 'Archivos de Licencia', extensions: ['txt', 'json'] }
-    ]
-  });
-  if (result.canceled || result.filePaths.length === 0) {
-    return null;
-  }
-  const filePath = result.filePaths[0];
-  const content = fs.readFileSync(filePath, 'utf8').trim();
-  let licenseKey = content;
-  try {
-    const parsed = JSON.parse(content);
-    if (parsed.licenseKey) {
-      licenseKey = parsed.licenseKey;
-    }
-  } catch (e) {}
-  return { licenseKey: licenseKey.trim() };
 });
 
 ipcMain.handle('start-trial', () => {
@@ -397,43 +257,4 @@ ipcMain.handle('save-multiple-events', async (e, eventosObj) => {
 ipcMain.handle('clear-evaluaciones-rango', async (e, f1, f2) => new Promise(r => db.run("DELETE FROM notas WHERE fecha >= ? AND fecha <= ?", [f1, f2], () => r(true))));
 ipcMain.handle('get-config', async () => new Promise(r => db.all("SELECT * FROM configuracion", [], (e, rows) => { const map = {}; (rows || []).forEach(x => map[x.llave] = x.valor); r(map); })));
 ipcMain.handle('save-config', async (e, llave, valor) => new Promise(r => db.run("INSERT OR REPLACE INTO configuracion (llave, valor) VALUES (?, ?)", [llave, valor], () => r(true))));
-ipcMain.handle('elara-speak', async (e, text) => {
-  return new Promise((resolve, reject) => {
-    const { execFile } = require('child_process');
-    const cleanText = text.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/g, "")
-                          .replace(/\[.*?\]/g, "")
-                          .replace(/[#*`_~➤]/g, "")
-                          .replace(/\n/g, ' ')
-                          .trim();
-                           
-    const outputPath = path.join(app.getPath('temp'), 'elara_voice.mp3');
-    if (fs.existsSync(outputPath)) {
-      try { fs.unlinkSync(outputPath); } catch(err) {}
-    }
-    
-    const edgeTtsPath = `C:\\Users\\USER\\.gemini\\antigravity\\scratch\\elara\\Backend\\.venv\\Scripts\\edge-tts.exe`;
-    
-    execFile(edgeTtsPath, [
-      '--voice', 'es-MX-DaliaNeural',
-      '--rate', '+5%',
-      '--text', cleanText,
-      '--write-media', outputPath
-    ], (error, stdout, stderr) => {
-      if (error) {
-        console.error("Error al generar audio de ELARA:", error, stderr);
-        reject(error);
-      } else {
-        try {
-          const audioData = fs.readFileSync(outputPath);
-          const dataUri = 'data:audio/mp3;base64,' + audioData.toString('base64');
-          resolve(dataUri);
-        } catch (readError) {
-          console.error("Error al leer el archivo de audio generado:", readError);
-          reject(readError);
-        }
-      }
-    });
-  });
-});
-
 ipcMain.handle('seed-database', async () => true);
