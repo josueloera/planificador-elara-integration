@@ -32,7 +32,10 @@ const ConfiguracionCiclo = ({ onVolver, currentConfig, defaultConfig }) => {
         try {
             await ipcRenderer.invoke('save-config', 'fechaInicioStr', config.fechaInicioStr);
             await ipcRenderer.invoke('save-config', 'periodos', JSON.stringify(config.periodos));
-            alert('Configuración guardada correctamente.');
+            await ipcRenderer.invoke('save-config', 'nombreDocente', config.nombreDocente || '');
+            await ipcRenderer.invoke('save-config', 'nombreEscuela', config.nombreEscuela || '');
+            await ipcRenderer.invoke('save-config', 'cct', config.cct || '');
+            alert('Configuración e Identidad Docente guardadas correctamente.');
         } catch (error) {
             console.error(error);
             alert('Error al guardar la configuración.');
@@ -167,7 +170,40 @@ Instrucciones:
                     </h3>
                     
                     <div style={{ marginBottom: '20px' }}>
-                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#34495e' }}>Fecha de Inicio de Clases</label>
+                        <div style={{ marginBottom: '15px' }}>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', color: '#34495e' }}>👤 Nombre del Docente</label>
+                        <input 
+                            type="text" 
+                            value={config.nombreDocente || ''} 
+                            onChange={(e) => handleChangeFecha('nombreDocente', e.target.value)}
+                            placeholder="Ej: Prof. Roberto Martínez"
+                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #bdc3c7' }}
+                        />
+                    </div>
+
+                    <div style={{ marginBottom: '15px' }}>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', color: '#34495e' }}>🏫 Nombre de la Escuela</label>
+                        <input 
+                            type="text" 
+                            value={config.nombreEscuela || ''} 
+                            onChange={(e) => handleChangeFecha('nombreEscuela', e.target.value)}
+                            placeholder="Ej: Escuela Primaria Benito Juárez"
+                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #bdc3c7' }}
+                        />
+                    </div>
+
+                    <div style={{ marginBottom: '20px' }}>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', color: '#34495e' }}>📜 Clave de Centro de Trabajo (CCT)</label>
+                        <input 
+                            type="text" 
+                            value={config.cct || ''} 
+                            onChange={(e) => handleChangeFecha('cct', e.target.value)}
+                            placeholder="Ej: 15EPR0123X"
+                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #bdc3c7' }}
+                        />
+                    </div>
+
+                    <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#34495e' }}>Fecha de Inicio de Clases</label>
                         <input 
                             type="date" 
                             value={config.fechaInicioStr} 

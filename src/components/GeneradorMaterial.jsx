@@ -1,3 +1,102 @@
+
+// Generador local de respaldo para la Nueva Escuela Mexicana (NEM) cuando no hay API Key o falla la red
+function generarMaterialLocal(tipoMaterial, tema, grado, cantidadReactivos) {
+  const palabrasTema = tema
+    .toUpperCase()
+    .replace(/[^A-ZÁÉÍÓÚÑ\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 3);
+
+  if (tipoMaterial === 'EXAMEN_OPCION_MULTIPLE' || tipoMaterial === 'EXAMEN_TRIMESTRAL') {
+    const reactivos = [];
+    for (let i = 1; i <= (cantidadReactivos || 5); i++) {
+      reactivos.push({
+        pregunta: `${i}. Con relación al tema "${tema}", ¿cuál de las siguientes acciones refleja una solución colaborativa adecuada en la comunidad escolar?`,
+        icono_fontawesome: "",
+        opciones: [
+          `A) Dialogar y proponer proyectos grupales que beneficien al entorno escolar.`,
+          `B) Realizar las actividades de forma aislada sin considerar las necesidades del aula.`,
+          `C) Memorizar los conceptos sin aplicarlos en situaciones de la vida cotidiana.`
+        ],
+        respuesta_correcta: 0
+      });
+    }
+    return {
+      titulo: `${tipoMaterial === 'EXAMEN_TRIMESTRAL' ? 'Examen Trimestral NEM' : 'Evaluación Formativa'} (${grado || 3}º Primaria): ${tema}`,
+      preguntas: reactivos
+    };
+  }
+
+  if (tipoMaterial === 'PREGUNTAS_ABIERTAS') {
+    const preguntas = [];
+    for (let i = 1; i <= (cantidadReactivos || 5); i++) {
+      preguntas.push({
+        pregunta: `${i}. Analiza y describe cómo se aplica "${tema}" en tu vida diaria y en tu comunidad escolar.`,
+        icono_fontawesome: ""
+      });
+    }
+    return {
+      titulo: `Cuestionario de Reflexión Didáctica (${grado || 3}º Primaria): ${tema}`,
+      preguntas
+    };
+  }
+
+  if (tipoMaterial === 'SOPA_LETRAS_VOCABULARIO') {
+    const base = palabrasTema.length >= 3 ? palabrasTema : ['COMUNIDAD', 'PROYECTO', 'SABERES', 'ETICA', 'VALORES', 'HISTORIA', 'CULTURA', 'DIALOGO'];
+    const palabras = base.slice(0, cantidadReactivos || 6).map((p, i) => ({
+      palabra: p.normalize("NFD").replace(/[̀-ͯ]/g, ""),
+      pista: `Concepto clave ${i + 1} del tema "${tema}"`
+    }));
+    return {
+      titulo: `Sopa de Letras Didáctica: ${tema}`,
+      palabras
+    };
+  }
+
+  if (tipoMaterial === 'CRUCIGRAMA') {
+    const base = palabrasTema.length >= 3 ? palabrasTema : ['CULTURA', 'IDENTIDAD', 'COMUNIDAD', 'ESCUELA', 'DIALOGO'];
+    const palabras = base.slice(0, cantidadReactivos || 5).map((p, i) => ({
+      palabra: p.normalize("NFD").replace(/[̀-ͯ]/g, ""),
+      pista: `Elemento representativo ${i + 1} de "${tema}"`
+    }));
+    return {
+      titulo: `Crucigrama Didáctico (${grado || 3}º Primaria): ${tema}`,
+      palabras
+    };
+  }
+
+  if (tipoMaterial === 'RUBRICA_EVALUACION') {
+    return {
+      titulo: `Rúbrica Formativa Analítica NEM: ${tema}`,
+      criterios: [
+        {
+          criterio: "Comprensión del Tema",
+          excelente: "Demuestra dominio completo y argumenta con claridad.",
+          bueno: "Comprende los aspectos principales y responde adecuadamente.",
+          suficiente: "Muestra comprensión parcial del tema.",
+          insuficiente: "Presenta dificultades para comprender los conceptos básicos."
+        },
+        {
+          criterio: "Aplicación en la Comunidad",
+          excelente: "Relaciona el aprendizaje con situaciones reales de su entorno.",
+          bueno: "Identifica ejemplos prácticos del contexto comunitario.",
+          suficiente: "Menciona ejemplos sencillos con apoyo del docente.",
+          insuficiente: "No logra relacionar el contenido con su vida cotidiana."
+        },
+        {
+          criterio: "Trabajo Colaborativo",
+          excelente: "Participa activamente, escucha y aporta al grupo respetuosamente.",
+          bueno: "Colabora de forma adecuada en las actividades de equipo.",
+          suficiente: "Participa cuando se le requiere expresamente.",
+          insuficiente: "Muestra desinterés en el trabajo colectivo."
+        }
+      ]
+    };
+  }
+
+  return { titulo: tema, preguntas: [] };
+}
+
 import React, { useState } from 'react';
 import { generarSopaDeLetras } from '../utils/juegosLogic';
 import clg from 'crossword-layout-generator';
@@ -49,12 +148,31 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
       userPrompt = `Genera una rúbrica de evaluación formativa analítica (enfoque NEM) con 5 criterios detallados para evaluar el tema o proyecto: "${tema}". Adecuada para ${grado}º grado de primaria.`;
     }
 
+    const apiKey = window.openaiApiKey || localStorage.getItem('openai_api_key') || localStorage.getItem('openaiApiKey') || '';
+
+    if (!apiKey) {
+      // Sin API Key -> Usar generador local de la NEM directamente sin error
+      const parsedLocal = generarMaterialLocal(tipoMaterial, tema, grado, cantidadReactivos);
+      let sopaData = null;
+      let cruciData = null;
+      if (tipoMaterial === 'SOPA_LETRAS_VOCABULARIO' && parsedLocal.palabras) {
+        sopaData = generarSopaDeLetras(parsedLocal.palabras, 15);
+      }
+      if (tipoMaterial === 'CRUCIGRAMA' && parsedLocal.palabras) {
+        const clgInput = parsedLocal.palabras.map(p => ({ answer: p.palabra.toUpperCase().replace(/[^A-Z]/g,''), clue: p.pista }));
+        cruciData = clg.generateLayout(clgInput);
+      }
+      setResultado({ tipo: tipoMaterial, data: parsedLocal, sopaData, cruciData });
+      setGenerando(false);
+      return;
+    }
+
     try {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${MI_OPENAI_API_KEY}`
+          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
           model: 'gpt-3.5-turbo',
@@ -70,7 +188,6 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
       const data = await response.json();
       const content = data.choices[0].message.content;
       
-      // Intentar parsear el JSON
       const jsonStr = content.substring(content.indexOf('{'), content.lastIndexOf('}') + 1);
       const parsed = JSON.parse(jsonStr);
       let sopaData = null;
@@ -85,8 +202,18 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
       setResultado({ tipo: tipoMaterial, data: parsed, sopaData, cruciData });
 
     } catch (error) {
-      console.error(error);
-      alert("Hubo un error al generar el material. Intenta de nuevo.");
+      console.warn("Fallo de API OpenAI o red. Ejecutando motor de respaldo NEM...", error);
+      const parsedLocal = generarMaterialLocal(tipoMaterial, tema, grado, cantidadReactivos);
+      let sopaData = null;
+      let cruciData = null;
+      if (tipoMaterial === 'SOPA_LETRAS_VOCABULARIO' && parsedLocal.palabras) {
+        sopaData = generarSopaDeLetras(parsedLocal.palabras, 15);
+      }
+      if (tipoMaterial === 'CRUCIGRAMA' && parsedLocal.palabras) {
+        const clgInput = parsedLocal.palabras.map(p => ({ answer: p.palabra.toUpperCase().replace(/[^A-Z]/g,''), clue: p.pista }));
+        cruciData = clg.generateLayout(clgInput);
+      }
+      setResultado({ tipo: tipoMaterial, data: parsedLocal, sopaData, cruciData });
     } finally {
       setGenerando(false);
     }

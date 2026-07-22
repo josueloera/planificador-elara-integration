@@ -5,6 +5,9 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-latest
@@ -27,11 +30,17 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         CSC_IDENTITY_AUTO_DISCOVERY: false
 
-    - name: Upload Mac Installer
-      uses: actions/upload-artifact@v4
+    - name: Upload Mac Installer to GitHub Releases
+      uses: softprops/action-gh-release@v2
       with:
-        name: Planificador-Docente-Mac
-        path: release/*.dmg
+        tag_name: "v1.0.0-build"
+        name: "Planificador Docente Primaria - Compilación"
+        draft: false
+        prerelease: true
+        files: |
+          release/*.dmg
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-windows:
     runs-on: windows-latest
@@ -52,8 +61,14 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload Windows Installer
-      uses: actions/upload-artifact@v4
+    - name: Upload Windows Installer to GitHub Releases
+      uses: softprops/action-gh-release@v2
       with:
-        name: Planificador-Docente-Windows
-        path: release/*.exe
+        tag_name: "v1.0.0-build"
+        name: "Planificador Docente Primaria - Compilación"
+        draft: false
+        prerelease: true
+        files: |
+          release/*.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

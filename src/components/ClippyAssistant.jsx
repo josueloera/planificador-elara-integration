@@ -54,7 +54,7 @@ const ClippyAssistant = () => {
     localStorage.setItem('elara_muted', String(newMuted));
   };
   const [messages, setMessages] = useState([
-    { sender: 'bot', text: '¡Hola! Soy ELARA, tu motor cognitivo. Sincronizo tu salud (pasos diarios), controlo tus alarmas de celular en segundo plano y asisto tu planificación escolar. ¿Qué directriz deseas ejecutar hoy?' }
+    { sender: 'bot', text: '¡Hola! Soy ELARA, tu Asistente Pedagógica de la NEM. Estoy configurada de manera privada en tu equipo para asistirte en planeaciones, gestión de proyectos y evaluación formativa. ¿Qué deseas planificar hoy?' }
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const [tooltip, setTooltip] = useState('');
@@ -680,6 +680,115 @@ Mantén siempre una personalidad inteligente, analítica, empática y de alta te
 
       // 2. Si OpenAI no está disponible o no devolvió respuesta, usar los parsers locales como fail-safe
       if (!botResponse) {
+
+        // Fail-safe parser local para llenado de planeaciones ("llena la planeacion", etc.)
+        if (!actedLocally && (lowerMsg.includes('llena') || lowerMsg.includes('gener') || lowerMsg.includes('crea') || lowerMsg.includes('completa') || lowerMsg.includes('rellena') || lowerMsg.includes('haz') || lowerMsg.includes('estructur')) && (lowerMsg.includes('planeac') || lowerMsg.includes('semana') || lowerMsg.includes('abierta') || lowerMsg.includes('clase'))) {
+          const ctx = window.plannerContext;
+          if (ctx) {
+            const activePdas = (ctx.pdasSemana && ctx.pdasSemana.length > 0) ? ctx.pdasSemana : [{ proyecto: 'Fortalecimiento Académico NEM', pda: 'Desarrollo de pensamiento crítico, análisis de textos y convivencia armónica.' }];
+            const pdaText = activePdas.map(p => p.pda).join(' ');
+            const projText = activePdas.map(p => p.proyecto).join(' ');
+            const gradoActual = ctx.grupoActual?.grado || ctx.grado || 3;
+            const campoNombre = ctx.campoActual || 'Lenguajes';
+            const sem = ctx.semanaPlan || 1;
+
+            const planGenerado = {
+              lunes_inicio: `Saludar a los alumnos de ${gradoActual}º Primaria y explorar conocimientos previos sobre ${projText.substring(0, 70)}... Mediante una lluvia de ideas contextualizada.`,
+              lunes_desarrollo: `Presentar el problema orientador a la comunidad escolar. Lectura comentada y registro individual sobre: "${pdaText.substring(0, 90)}...". Organizar equipos de indagación.`,
+              lunes_cierre: `Socializar en plenario las reflexiones iniciales y registrar los acuerdos del grupo en la bitácora o rotafolio.`,
+
+              martes_inicio: `Retomar la pregunta detonadora del lunes y revisar los conceptos clave aprendidos.`,
+              martes_desarrollo: `Actividad práctica guiada: análisis de información y elaboración de esquemas colaborativos basados en el PDA. Apoyar a los alumnos con dudas.`,
+              martes_cierre: `Retroalimentación grupal rápida y síntesis en el pizarrón de las ideas principales.`,
+
+              miercoles_inicio: `Presentación de la consigna del día para la elaboración del producto intermedio de la secuencia.`,
+              miercoles_desarrollo: `Trabajo en pequeñas comunidades: redacción, cálculo o producción gráfica referente al contenido de la semana (${campoNombre}).`,
+              miercoles_cierre: `Intercambio de borradores entre equipos para realizar coevaluación con sugerencias respetuosas.`,
+
+              jueves_inicio: `Recibir los comentarios de mejora y planificar las correcciones del producto.`,
+              jueves_desarrollo: `Perfeccionamiento del trabajo final individual o colectivo. Integración de evidencias en el portafolio de aula.`,
+              jueves_cierre: `Exposición oral breve de los resultados por parte de los representantes de cada equipo.`,
+
+              viernes_inicio: `Reflexión metacognitiva sobre los logros de la Semana ${sem}.`,
+              viernes_desarrollo: `Presentación final comunitaria de los productos logrados y autoevaluación guiada.`,
+              viernes_cierre: `Conclusión de la secuencia didáctica, registro pedagógico en bitácora e indicaciones para el siguiente proyecto.`,
+
+              recursos: `Libros de texto gratuitos (NEM), cuaderno de trabajo, cartulinas, marcadores, pizarrón y materiales didácticos del aula.`,
+              evaluacion: `Rúbrica formativa de observación, lista de cotejo de productos colectivos y participación reflexiva en plenario.`,
+              adecuaciones: `Acompañamiento personalizado a estudiantes con áreas de oportunidad, apoyo visual en pizarrón y tiempos flexibles.`
+            };
+
+            if (ctx.setPlanData) {
+              ctx.setPlanData(prev => ({ ...prev, ...planGenerado }));
+            }
+            if (ctx.savePlan) {
+              setTimeout(() => ctx.savePlan(), 300);
+            }
+
+            botResponse = `¡Con gusto! He redactado y completado la planeación didáctica semanal (Lunes a Viernes) para la Semana ${sem} (${campoNombre} - ${gradoActual}º Primaria) directamente en tus campos de texto. Puedes revisarla y guardar los cambios.`;
+            actedLocally = true;
+          }
+        }
+
+        // Fail-safe parser local para llenado de proyectos ("llena el proyecto", "llena este proyecto", "llena el proyecto abierto", etc.)
+        if (!actedLocally && (lowerMsg.includes('proyect') || lowerMsg.includes('fase')) && (lowerMsg.includes('llena') || lowerMsg.includes('gener') || lowerMsg.includes('crea') || lowerMsg.includes('completa') || lowerMsg.includes('rellena') || lowerMsg.includes('haz') || lowerMsg.includes('estructur') || lowerMsg.includes('redact') || lowerMsg.includes('abiert'))) {
+          const ctx = window.plannerContext;
+          if (ctx && ctx.proyectoActual) {
+            const proj = ctx.proyectoActual;
+            const met = proj.metodologia || 'SERVICIO';
+            const nom = proj.nombre || 'Higiene para una vida saludable';
+            const grad = ctx.grupoActual?.grado || ctx.grado || 3;
+
+            let fasesGen = {};
+            if (met === 'SERVICIO') { // De lo Humano (Servicio)
+              fasesGen = {
+                0: `1. PUNTO DE PARTIDA: Diálogo reflexivo en asamblea sobre "${nom}" en ${grad}º Primaria. Registrar los saberes previos y las necesidades detectadas en la escuela y el hogar.`,
+                1: `2. ORGANIZACIÓN: Conformar equipos de trabajo, distribuir responsabilidades y coordinar las acciones comunitarias para investigar y abordar la problemática.`,
+                2: `3. CREATIVIDAD: Elaborar productos informativos y prácticos (carteles, folletos, maquetas o trípticos) sobre "${nom}", promoviendo la participación activa de los alumnos.`,
+                3: `4. EVALUACIÓN: Presentar el servicio o producto a la comunidad escolar. Coevaluación entre pares, autoevaluación reflexiva y establecimiento de compromisos permanentes.`
+              };
+            } else if (met === 'STEAM') { // Saberes (STEAM)
+              fasesGen = {
+                0: `1. INDAGACIÓN: Planteamiento de preguntas detonadoras e hipótesis científicas sobre "${nom}". Realizar observaciones guiadas y experimentos sencillos en el aula.`,
+                1: `2. DISEÑO: Organizar la recolección de datos, elaborar tablas comparativas y diseñar modelos explicativos del fenómeno estudiado.`,
+                2: `3. PROTOTIPADO: Construir prototipos o representaciones gráficas para comprobar las hipótesis y proponer soluciones a la problemática.`,
+                3: `4. PRESENTACIÓN: Celebrar una feria de saberes en el aula. Exponer conclusiones, contrastar hipótesis iniciales y realizar autoevaluación formativa.`
+              };
+            } else if (met === 'ABP') { // Ética (ABP)
+              fasesGen = {
+                0: `1. PRESENTEMOS: Análisis crítico de casos situacionales y lectura de problemas comunitarios referentes a "${nom}". Dialogar sobre valores y responsabilidades.`,
+                1: `2. RECOLECTEMOS: Investigación documental y entrevistas a miembros de la comunidad escolar para profundizar en las causas del problema.`,
+                2: `3. PROBLEMA: Delimitar el problema central y proponer alternativas de solución ética, sustentable y pacífica.`,
+                3: `4. EXPERIENCIA: Desarrollo de las actividades planificadas para poner a prueba las soluciones seleccionadas y documentar evidencias.`,
+                4: `5. RESULTADOS: Socializar los resultados logrados, evaluar el impacto en la comunidad y establecer normas de convivencia armónica.`
+              };
+            } else { // COMUNITARIOS (Lenguajes)
+              fasesGen = {
+                0: `1. PLANEACIÓN: Negociar en comunidad el propósito y alcance del proyecto sobre "${nom}". Elaborar el plan de trabajo y asignar comisiones.`,
+                1: `2. ACCIÓN: Búsqueda de información, entrevistas y redacción de borradores. Revisión en pequeños grupos, corrección ortográfica y gramatical.`,
+                2: `3. INTERVENCIÓN: Presentación y difusión comunitaria de las producciones escritas (periódico mural, folletos o antología) con evaluación formativa.`
+              };
+            }
+
+            const problematicaDefault = proj.problemática || `Deficiencia detectada en el entorno escolar y comunitario referente a ${nom}, requiriendo intervención pedagógica formativa.`;
+
+            const updatedProj = {
+              ...proj,
+              problemática: problematicaDefault,
+              fases_contenido: { ...(proj.fases_contenido || {}), ...fasesGen }
+            };
+
+            if (ctx.setProyectoActual) {
+              ctx.setProyectoActual(updatedProj);
+            }
+            if (ctx.guardarProyectoSilencioso) {
+              setTimeout(() => ctx.guardarProyectoSilencioso(updatedProj), 300);
+            }
+
+            botResponse = `¡Por supuesto! He redactado y completado automáticamente todas las fases del proyecto "${nom}" (${met} - ${grad}º Primaria) directamente en tus formularios y guardado los cambios.`;
+            actedLocally = true;
+          }
+        }
         // Fail-safe parser local para creación de grupos/talleres
         if (lowerMsg.includes('crea') && (lowerMsg.includes('grupo') || lowerMsg.includes('materia') || lowerMsg.includes('taller') || lowerMsg.includes('clase') || lowerMsg.includes('asignatura'))) {
           let gradoLocal = 1;
@@ -845,7 +954,7 @@ Mantén siempre una personalidad inteligente, analítica, empática y de alta te
 
       <div className={`clippy-chat-box ${isOpen ? 'open' : 'hidden'}`} style={{ position: 'absolute', bottom: '80px', right: '0' }}>
         <div className="clippy-header">
-          <span>🧬 Motor Cognitivo ELARA</span>
+          <span style={{ display: "flex", alignItems: "center", gap: "8px" }}><img src="./cutout_avatar.png" alt="ELARA" style={{ width: "24px", height: "24px", borderRadius: "50%", objectFit: "cover" }} /> Asistente ELARA</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button 
               type="button"
@@ -886,9 +995,9 @@ Mantén siempre una personalidad inteligente, analítica, empática y de alta te
         onClick={handleAvatarClick}
         title="Arrastrar o hacer clic para abrir a ELARA"
       >
-        <div className="elara-orb-core">
+        <div className="elara-orb-core" style={{ overflow: "hidden", borderRadius: "50%" }}>
           <span className="elara-orb-pulse-ring"></span>
-          <span className="elara-orb-inner">🧬</span>
+          <img src="./cutout_avatar.png" alt="ELARA" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover", display: "block" }} />
         </div>
       </div>
     </div>

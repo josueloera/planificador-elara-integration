@@ -2,45 +2,80 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
-const { seedSepCalendar2026_2027 } = require('./sepCalendar2026');
+
+// Forzar ruta de userData aislada para evitar conflictos de caché y acceso denegado
+const customUserDataPath = path.join(app.getPath('appData'), 'planificador-elara-integration-userdata');
+app.setPath('userData', customUserDataPath);
 
 // --- 1. GESTIÓN DE LA BASE DE DATOS ---
 let dbPath;
-const dbName = 'nem_primaria.db'; 
+const dbName = 'nem_elara_integration.db'; 
+const oldDbName = 'nem_primaria.db';
 
 if (app.isPackaged) {
   // Producción: la DB está en extraResources
-  const rutaResources = path.join(process.resourcesPath, dbName);
+  const rutaResources = path.join(process.resourcesPath, oldDbName);
   const rutaUserData = path.join(app.getPath('userData'), dbName);
   // Copiar la DB a userData si no existe (primera ejecución)
   if (!fs.existsSync(rutaUserData)) {
-    fs.copyFileSync(rutaResources, rutaUserData);
+    if (fs.existsSync(rutaResources)) {
+      fs.copyFileSync(rutaResources, rutaUserData);
+    }
   }
   dbPath = rutaUserData;
 } else {
   // Desarrollo
   const rutaRaiz = path.join(__dirname, '..', dbName);
+  const rutaOldRaiz = path.join(__dirname, '..', oldDbName);
   const rutaMismoDir = path.join(__dirname, dbName);
-  if (fs.existsSync(rutaRaiz)) { dbPath = rutaRaiz; } 
-  else if (fs.existsSync(rutaMismoDir)) { dbPath = rutaMismoDir; } 
-  else { dbPath = rutaRaiz; }
+  const rutaOldMismoDir = path.join(__dirname, oldDbName);
+
+  if (!fs.existsSync(rutaRaiz) && !fs.existsSync(rutaMismoDir)) {
+    // Si no existe la nueva base de datos pero existe la vieja, copiar para migrar los datos
+    if (fs.existsSync(rutaOldRaiz)) {
+      fs.copyFileSync(rutaOldRaiz, rutaRaiz);
+      dbPath = rutaRaiz;
+    } else if (fs.existsSync(rutaOldMismoDir)) {
+      fs.copyFileSync(rutaOldMismoDir, rutaMismoDir);
+      dbPath = rutaMismoDir;
+    } else {
+      dbPath = rutaRaiz;
+    }
+  } else {
+    dbPath = fs.existsSync(rutaRaiz) ? rutaRaiz : (fs.existsSync(rutaMismoDir) ? rutaMismoDir : rutaRaiz);
+  }
 }
 
-console.log(`\n📂 BASE DE DATOS ACTIVA: ${dbPath}\n`);
+console.log(`\n📂 BASE DE DATOS DE INTEGRACION ELARA: ${dbPath}`);
 const db = new sqlite3.Database(dbPath);
+
+// --- 1.B GESTIÓN DE LA BASE DE DATOS UNIVERSAL (SEP) ---
+let universalDbPath;
+const universalDbName = 'nem_primaria.db';
+if (app.isPackaged) {
+  universalDbPath = path.join(process.resourcesPath, universalDbName);
+} else {
+  const rutaRaizUni = path.join(__dirname, '..', universalDbName);
+  universalDbPath = fs.existsSync(rutaRaizUni) ? rutaRaizUni : path.join(__dirname, universalDbName);
+}
+console.log(`📂 BASE DE DATOS UNIVERSAL (SEP): ${universalDbPath}\n`);
+const universalDb = new sqlite3.Database(universalDbPath, sqlite3.OPEN_READONLY, (err) => {
+    if (err) console.error("Error conectando a db universal:", err);
+});
 
 // --- 2. CREACIÓN DE TABLAS ---
 db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS alumnos (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT)`);
-  db.run(`CREATE TABLE IF NOT EXISTS criterios (id INTEGER PRIMARY KEY AUTOINCREMENT, campo TEXT, nombre TEXT, porcentaje REAL)`);
+  db.run(`CREATE TABLE IF NOT EXISTS alumnos (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, grupo_id INTEGER)`);
+  db.run(`CREATE TABLE IF NOT EXISTS criterios (id INTEGER PRIMARY KEY AUTOINCREMENT, campo TEXT, nombre TEXT, porcentaje REAL, grupo_id INTEGER)`);
   db.run(`CREATE TABLE IF NOT EXISTS notas (id INTEGER PRIMARY KEY AUTOINCREMENT, alumno_id INTEGER, criterio_id INTEGER, fecha TEXT, valor REAL)`);
   db.run(`CREATE TABLE IF NOT EXISTS perfil_alumno (alumno_id INTEGER PRIMARY KEY, curp TEXT, f_nacimiento TEXT, edad TEXT, peso TEXT, estatura TEXT, tipo_sangre TEXT, alergias TEXT, servicio_medico TEXT, direccion TEXT, nombre_mama TEXT, tel_mama TEXT, nombre_papa TEXT, tel_papa TEXT, otros_datos TEXT)`);
-  db.run(`CREATE TABLE IF NOT EXISTS incidencias (id INTEGER PRIMARY KEY AUTOINCREMENT, alumno_id INTEGER, fecha TEXT, situacion TEXT, medidas TEXT)`);
-  db.run(`CREATE TABLE IF NOT EXISTS proyectos (id INTEGER PRIMARY KEY AUTOINCREMENT, grado INTEGER, nombre TEXT, metodologia TEXT, escenario TEXT, temporalidad TEXT, problemática TEXT, pdas_seleccionados TEXT, fases_contenido TEXT)`);
+  db.run(`CREATE TABLE IF NOT EXISTS incidencias (id INTEGER PRIMARY KEY AUTOINCREMENT, alumno_id INTEGER, fecha TEXT, situacion TEXT, medidas TEXT, grupo_id INTEGER)`);
+  db.run(`CREATE TABLE IF NOT EXISTS proyectos (id INTEGER PRIMARY KEY AUTOINCREMENT, grado INTEGER, nombre TEXT, metodologia TEXT, escenario TEXT, temporalidad TEXT, problemática TEXT, pdas_seleccionados TEXT, fases_contenido TEXT, grupo_id INTEGER)`);
   
   db.run(`CREATE TABLE IF NOT EXISTS planeacion (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     grado INTEGER,
+    grupo_id INTEGER,
     semana INTEGER,
     lunes_inicio TEXT, lunes_desarrollo TEXT, lunes_cierre TEXT,
     martes_inicio TEXT, martes_desarrollo TEXT, martes_cierre TEXT,
@@ -54,27 +89,87 @@ db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS eventos_oficiales (fecha TEXT PRIMARY KEY, tipo TEXT)`);
   db.run(`CREATE TABLE IF NOT EXISTS configuracion (llave TEXT PRIMARY KEY, valor TEXT)`);
   db.run(`CREATE TABLE IF NOT EXISTS vistos (tipo TEXT, item_id TEXT, PRIMARY KEY(tipo, item_id))`);
+  
+  // Novedades para Secundaria (Múltiples Grupos)
+  db.run(`CREATE TABLE IF NOT EXISTS grupos_maestro (id INTEGER PRIMARY KEY AUTOINCREMENT, grado INTEGER, seccion TEXT, disciplina_id INTEGER, tipo TEXT, ciclo_escolar TEXT)`);
+  
+  // Tabla para Descubrimientos Nocturnos de ELARA
+  db.run(`CREATE TABLE IF NOT EXISTS elara_insights (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    titulo TEXT,
+    mensaje TEXT,
+    fecha TEXT,
+    visto INTEGER DEFAULT 0
+  )`);
+
+  // Sembrar descubrimientos iniciales
+  db.get("SELECT COUNT(*) as count FROM elara_insights", (err, row) => {
+    if (row && row.count === 0) {
+      db.run(`INSERT INTO elara_insights (titulo, mensaje, fecha, visto) VALUES (?, ?, ?, ?)`, [
+        "Descubrimiento de Topología Nocturna",
+        "Durante el ciclo nocturno, expandí la topología sobre el tema de Proyecto 2. He preparado este material didáctico proactivamente para tu grupo.",
+        new Date().toISOString().split('T')[0],
+        0
+      ]);
+    }
+  });
+
+  // Migración segura para bases de datos existentes (añadir columnas sin romper si ya existen)
+  const tablasMigrar = ['alumnos', 'criterios', 'planeacion', 'proyectos', 'incidencias'];
+  tablasMigrar.forEach(tabla => {
+    db.run(`ALTER TABLE ${tabla} ADD COLUMN grupo_id INTEGER`, (err) => { /* Ignorar error si la columna ya existe */ });
+  });
+
+  // Seeding para el nuevo ciclo escolar 2026-2027
+  db.get("SELECT valor FROM configuracion WHERE llave = 'fechaInicioStr'", (err, row) => {
+    if (!row || row.valor.startsWith('2025')) {
+      const defaultPeriodosStr = JSON.stringify({
+        1: { nombre: '1º Trimestre', inicio: '2026-08-31', fin: '2026-11-27' },
+        2: { nombre: '2º Trimestre', inicio: '2026-11-30', fin: '2027-03-19' },
+        3: { nombre: '3º Trimestre', inicio: '2027-03-20', fin: '2027-07-21' }
+      });
+      db.run("INSERT OR REPLACE INTO configuracion (llave, valor) VALUES ('fechaInicioStr', '2026-08-31')");
+      db.run("INSERT OR REPLACE INTO configuracion (llave, valor) VALUES ('periodos', ?)", [defaultPeriodosStr]);
+
+      // Sembrar eventos oficiales del ciclo 2026-2027
+      const defaultEventos = {
+        // CTE (Consejo Técnico Escolar)
+        "2026-08-24": "CTE", "2026-08-25": "CTE", "2026-08-26": "CTE", "2026-08-27": "CTE", "2026-08-28": "CTE",
+        "2026-09-25": "CTE", "2026-10-30": "CTE", "2026-11-27": "CTE", "2027-01-29": "CTE", "2027-02-26": "CTE",
+        "2027-04-30": "CTE", "2027-05-28": "CTE", "2027-06-25": "CTE",
+        // Suspensiones (Feriados)
+        "2026-09-16": "SUSPENSION", "2026-11-02": "SUSPENSION", "2026-11-16": "SUSPENSION", "2027-01-01": "SUSPENSION",
+        "2027-02-01": "SUSPENSION", "2027-03-15": "SUSPENSION", "2027-05-05": "SUSPENSION", "2027-05-15": "SUSPENSION",
+        // Vacaciones (Periodos Vacacionales)
+        "2026-12-21": "VACACIONES", "2026-12-22": "VACACIONES", "2026-12-23": "VACACIONES", "2026-12-24": "VACACIONES", "2026-12-25": "VACACIONES",
+        "2026-12-28": "VACACIONES", "2026-12-29": "VACACIONES", "2026-12-30": "VACACIONES", "2026-12-31": "VACACIONES",
+        "2027-01-04": "VACACIONES", "2027-01-05": "VACACIONES", "2027-01-06": "VACACIONES", "2027-01-07": "VACACIONES", "2027-01-08": "VACACIONES",
+        "2027-03-22": "VACACIONES", "2027-03-23": "VACACIONES", "2027-03-24": "VACACIONES", "2027-03-25": "VACACIONES", "2027-03-26": "VACACIONES",
+        "2027-03-29": "VACACIONES", "2027-03-30": "VACACIONES", "2027-03-31": "VACACIONES", "2027-04-01": "VACACIONES", "2027-04-02": "VACACIONES"
+      };
+
+      db.serialize(() => {
+        const stmt = db.prepare("INSERT OR REPLACE INTO eventos_oficiales (fecha, tipo) VALUES (?, ?)");
+        for (const [fecha, tipo] of Object.entries(defaultEventos)) {
+          stmt.run(fecha, tipo);
+        }
+        stmt.finalize();
+      });
+    }
+  });
+
+  // Añadir score de confianza a la planeación
+  db.run(`ALTER TABLE planeacion ADD COLUMN confidence_score REAL DEFAULT 1.0`, (err) => {
+    // Intentar simular una duda epistémica (score 0.65) en la primera planeación existente para prueba visual
+    db.run(`UPDATE planeacion SET confidence_score = 0.65 WHERE id = (SELECT id FROM planeacion LIMIT 1)`);
+  });
 });
 
-// Seed fuera del serialize para no bloquear el inicio
-seedSepCalendar2026_2027(db);
-
 function createWindow() {
-  // process.execPath = ruta al .exe → su carpeta tiene la carpeta resources/
-  const appDir = require('path').dirname(process.execPath);
-  const iconCandidates = [
-    path.join(appDir, 'resources', 'elara-icon.ico'),
-    path.join(process.resourcesPath, 'elara-icon.ico'),
-    path.join(__dirname, '..', 'dist', 'elara-icon.ico')
-  ];
-  const iconPath = iconCandidates.find(p => { try { return fs.existsSync(p); } catch(e) { return false; } });
-  console.log('[Icon] Path:', iconPath || 'no encontrado');
-
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
     title: "Planificador Docente",
-    icon: iconPath,
     show: false,
     backgroundColor: '#ffffff',
     webPreferences: {
@@ -85,11 +180,30 @@ function createWindow() {
     }
   });
 
+  // Permitir acceso al micrófono para reconocimiento de voz (SpeechRecognition/getUserMedia)
+  win.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media') {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
+  win.webContents.session.setPermissionCheckHandler((webContents, permission, origin) => {
+    return permission === 'media';
+  });
+
   if (app.isPackaged) {
     win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   } else {
-    win.loadURL('http://localhost:5173');
+    win.loadURL('http://localhost:5173').catch(() => {
+      win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    });
   }
+
+  win.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[RENDERER CONSOLE] ${message} (at ${sourceId}:${line})`);
+  });
 
   win.once('ready-to-show', () => {
     win.maximize();
@@ -127,17 +241,68 @@ ipcMain.handle('start-trial', () => {
 
 // --- TRUCO MAESTRO: FORZAR FOCO AUNQUE SE PIERDA ---
 ipcMain.handle('app-focus', () => {
+    // Intenta obtener la ventana enfocada, si no hay (que es el problema), agarra la primera
     const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
     if (win) {
-        win.show();
-        win.focus();
+        win.show(); // Asegura que esté visible
+        win.focus(); // Fuerza el foco del sistema
     }
     return true;
 });
 
+// -- CURRICULUM UNIVERSAL (SEP) --
+ipcMain.handle('get-campos-formativos', async () => new Promise(r => universalDb.all("SELECT * FROM campos_formativos", [], (e, rows) => r(rows || []))));
+ipcMain.handle('get-disciplinas', async () => new Promise(r => universalDb.all("SELECT * FROM disciplinas", [], (e, rows) => r(rows || []))));
+ipcMain.handle('get-disciplinas-por-grado', async (e, grado) => {
+    return new Promise(r => {
+        const query = `
+            SELECT DISTINCT d.id, d.nombre 
+            FROM disciplinas d
+            JOIN contenidos c ON c.disciplina_id = d.id
+            JOIN pdas p ON p.contenido_id = c.id
+            WHERE p.grado = ?
+            ORDER BY d.nombre ASC
+        `;
+        universalDb.all(query, [grado], (err, rows) => r(rows || []));
+    });
+});
+ipcMain.handle('get-contenidos-disciplina', async (e, d_id, f_id) => new Promise(r => universalDb.all("SELECT * FROM contenidos WHERE disciplina_id = ? AND fase_id = ?", [d_id, f_id], (e, rows) => r(rows || []))));
+ipcMain.handle('get-pdas-contenido', async (e, c_id, grado) => new Promise(r => universalDb.all("SELECT * FROM pdas WHERE contenido_id = ? AND grado = ?", [c_id, grado], (e, rows) => r(rows || []))));
+
+ipcMain.handle('get-pdas-disciplina', async (e, disciplina_id, grado) => {
+    return new Promise(r => {
+        const targetGrado = parseInt(grado) || 3;
+        const query = `
+            SELECT p.id, p.grado, cf.nombre as campo, c.descripcion as contenido, p.descripcion as pda, p.proyecto as proyecto_sugerido
+            FROM pdas p 
+            JOIN contenidos c ON p.contenido_id = c.id 
+            JOIN campos_formativos cf ON c.campo_id = cf.id
+            WHERE p.grado = ?
+            ORDER BY p.id ASC
+        `;
+        universalDb.all(query, [targetGrado], (err, rows) => {
+            if (err) {
+                console.error("Error al consultar PDAs de Primaria:", err);
+                r([]);
+            } else {
+                r(rows || []);
+            }
+        });
+    });
+});
+
+// -- GRUPOS --
+ipcMain.handle('get-grupos', async () => new Promise(r => db.all("SELECT * FROM grupos_maestro", [], (e, rows) => r(rows || []))));
+ipcMain.handle('add-grupo', async (e, g) => new Promise((r, j) => db.run("INSERT INTO grupos_maestro (grado, seccion, disciplina_id, tipo, ciclo_escolar) VALUES (?, ?, ?, ?, ?)", [g.grado, g.seccion, g.disciplina_id, g.tipo, g.ciclo_escolar], function(err){ err ? j(err) : r({id: this.lastID, ...g}) })));
+ipcMain.handle('delete-grupo', async (e, id) => new Promise(r => db.run("DELETE FROM grupos_maestro WHERE id = ?", [id], () => r(true))));
+
 // -- ALUMNOS --
-ipcMain.handle('get-alumnos', async () => new Promise(r => db.all("SELECT * FROM alumnos ORDER BY nombre ASC", [], (e, rows) => r(rows || []))));
-ipcMain.handle('add-alumno', async (e, nombre) => new Promise((r, j) => db.run("INSERT INTO alumnos (nombre) VALUES (?)", [nombre], function(err){ err ? j(err) : r(this.lastID) })));
+ipcMain.handle('get-alumnos', async (e, grupo_id) => {
+    const query = grupo_id ? "SELECT * FROM alumnos WHERE grupo_id = ? ORDER BY nombre ASC" : "SELECT * FROM alumnos ORDER BY nombre ASC";
+    const params = grupo_id ? [grupo_id] : [];
+    return new Promise(r => db.all(query, params, (err, rows) => r(rows || [])));
+});
+ipcMain.handle('add-alumno', async (e, nombre, grupo_id) => new Promise((r, j) => db.run("INSERT INTO alumnos (nombre, grupo_id) VALUES (?, ?)", [nombre, grupo_id || null], function(err){ err ? j(err) : r(this.lastID) })));
 ipcMain.handle('delete-alumno', async (e, id) => new Promise(r => db.run("DELETE FROM alumnos WHERE id = ?", [id], () => r(true))));
 
 // -- VISTOS --
@@ -161,36 +326,45 @@ ipcMain.handle('toggle-visto', async (e, tipo, itemId, completado) => {
 });
 
 // -- CRITERIOS --
-ipcMain.handle('get-criterios', async (e, campo) => {
+// -- CRITERIOS (AISLADOS POR CAMPO FORMATIVO) --
+ipcMain.handle('get-criterios', async (e, grupo_id, campo) => {
   return new Promise(r => {
-    const query = campo ? "SELECT * FROM criterios WHERE campo = ?" : "SELECT * FROM criterios";
-    const params = campo ? [campo] : [];
+    let query = "SELECT * FROM criterios WHERE grupo_id = ?";
+    let params = [grupo_id];
+    if (campo) {
+      query += " AND (campo = ? OR ((campo IS NULL OR campo = '') AND ? = 'LENGUAJES'))";
+      params.push(campo, campo);
+    }
     db.all(query, params, (err, rows) => r(err ? [] : rows));
   });
 });
 
-ipcMain.handle('save-criterios', async (e, listaCriterios, campo) => {
+ipcMain.handle('save-criterios', async (e, listaCriterios, grupo_id, campo) => {
+  if (!grupo_id) {
+    return Promise.reject(new Error("No se ha seleccionado un grupo válido para guardar los criterios."));
+  }
+  const targetCampo = campo || 'LENGUAJES';
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       try {
-        const idsConservados = listaCriterios.map(c => c.id).filter(id => id);
-        if (idsConservados.length > 0) {
-          const placeholders = idsConservados.map(() => '?').join(',');
-          db.run(`DELETE FROM criterios WHERE campo = ? AND id NOT IN (${placeholders})`, [campo, ...idsConservados], (err) => { if (err) reject(err); });
-        } else {
-          db.run("DELETE FROM criterios WHERE campo = ?", [campo], (err) => { if (err) reject(err); });
-        }
-        
-        const stmtInsert = db.prepare("INSERT INTO criterios (campo, nombre, porcentaje) VALUES (?, ?, ?)");
-        const stmtUpdate = db.prepare("UPDATE criterios SET nombre = ?, porcentaje = ? WHERE id = ?");
-        
-        listaCriterios.forEach(c => {
-          if (c.id) stmtUpdate.run(c.nombre, c.porcentaje || 0, c.id, (err) => { if (err) reject(err); });
-          else stmtInsert.run(campo, c.nombre, c.porcentaje || 0, (err) => { if (err) reject(err); });
+        db.run("DELETE FROM criterios WHERE grupo_id = ? AND (campo = ? OR ((campo IS NULL OR campo = '') AND ? = 'LENGUAJES'))", [grupo_id, targetCampo, targetCampo], (err) => {
+          if (err) return reject(err);
+          
+          if (!listaCriterios || listaCriterios.length === 0) {
+            return resolve(true);
+          }
+          
+          const stmtInsert = db.prepare("INSERT INTO criterios (grupo_id, campo, nombre, porcentaje) VALUES (?, ?, ?, ?)");
+          listaCriterios.forEach(c => {
+            if (c.nombre && c.nombre.trim() !== '') {
+              stmtInsert.run(grupo_id, targetCampo, c.nombre.trim(), parseFloat(c.porcentaje) || 0);
+            }
+          });
+          stmtInsert.finalize(err => {
+            if (err) reject(err);
+            else resolve(true);
+          });
         });
-        
-        stmtInsert.finalize();
-        stmtUpdate.finalize(() => resolve(true));
       } catch (err) {
         reject(err);
       }
@@ -198,7 +372,6 @@ ipcMain.handle('save-criterios', async (e, listaCriterios, campo) => {
   });
 });
 
-// -- NOTAS --
 ipcMain.handle('get-notas-fecha', async (e, fecha) => new Promise(r => db.all("SELECT * FROM notas WHERE fecha = ?", [fecha], (err, rows) => r(rows || []))));
 ipcMain.handle('get-notas-rango', async (e, f1, f2) => new Promise(r => db.all("SELECT * FROM notas WHERE fecha >= ? AND fecha <= ?", [f1, f2], (err, rows) => r(rows || []))));
 ipcMain.handle('save-nota', async (e, aid, cid, fecha, valor) => {
@@ -230,12 +403,15 @@ ipcMain.handle('get-incidencias', async (e, id) => new Promise(r => db.all("SELE
 ipcMain.handle('save-incidencia', async (e, d) => new Promise(r => db.run("INSERT INTO incidencias (alumno_id, fecha, situacion, medidas) VALUES (?,?,?,?)", [d.alumno_id, d.fecha, d.situacion, d.medidas], () => r(true))));
 
 // -- PROYECTOS --
-ipcMain.handle('get-proyectos', async (e, grado) => new Promise(r => db.all("SELECT * FROM proyectos WHERE grado = ?", [grado], (err, rows) => r(rows || []))));
-ipcMain.handle('save-proyecto', async (e, p) => new Promise((resolve) => {
-  const { id, grado, nombre, metodologia, escenario, temporalidad, problemática, pdas_seleccionados, fases_contenido } = p;
+ipcMain.handle('get-proyectos', async (e, grupo_id) => new Promise(r => db.all("SELECT * FROM proyectos WHERE grupo_id = ?", [grupo_id], (err, rows) => r(rows || []))));
+ipcMain.handle('save-proyecto', async (e, p) => new Promise((resolve, reject) => {
+  const { id, grado, grupo_id, nombre, metodologia, escenario, temporalidad, problemática, pdas_seleccionados, fases_contenido } = p;
+  if (!grupo_id) {
+    return reject(new Error("No se ha seleccionado un grupo válido para guardar el proyecto."));
+  }
   const pdaStr = JSON.stringify(pdas_seleccionados); const fasesStr = JSON.stringify(fases_contenido);
   if (id) db.run("UPDATE proyectos SET nombre=?, metodologia=?, escenario=?, temporalidad=?, problemática=?, pdas_seleccionados=?, fases_contenido=? WHERE id=?", [nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr, id], () => resolve(true));
-  else db.run("INSERT INTO proyectos (grado, nombre, metodologia, escenario, temporalidad, problemática, pdas_seleccionados, fases_contenido) VALUES (?,?,?,?,?,?,?,?)", [grado, nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr], () => resolve(true));
+  else db.run("INSERT INTO proyectos (grado, grupo_id, nombre, metodologia, escenario, temporalidad, problemática, pdas_seleccionados, fases_contenido) VALUES (?,?,?,?,?,?,?,?,?)", [grado, grupo_id, nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr], () => resolve(true));
 }));
 ipcMain.handle('get-pdas', async () => new Promise((r, j) => {
   db.all(`
@@ -248,13 +424,50 @@ ipcMain.handle('get-pdas', async () => new Promise((r, j) => {
 }));
 
 // -- PLANEACION --
-ipcMain.handle('get-planeacion', async (e, g, s) => new Promise(r => db.get("SELECT * FROM planeacion WHERE grado=? AND semana=?", [g, s], (err, row) => r(row || {}))));
-ipcMain.handle('save-planeacion', async (e, d) => new Promise(r => {
-  db.run("DELETE FROM planeacion WHERE grado=? AND semana=?", [d.grado, d.semana], () => {
-    db.run(`INSERT INTO planeacion (grado, semana, lunes_inicio, lunes_desarrollo, lunes_cierre, martes_inicio, martes_desarrollo, martes_cierre, miercoles_inicio, miercoles_desarrollo, miercoles_cierre, jueves_inicio, jueves_desarrollo, jueves_cierre, viernes_inicio, viernes_desarrollo, viernes_cierre, recursos, evaluacion, adecuaciones) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [d.grado, d.semana, d.lunes_inicio, d.lunes_desarrollo, d.lunes_cierre, d.martes_inicio, d.martes_desarrollo, d.martes_cierre, d.miercoles_inicio, d.miercoles_desarrollo, d.miercoles_cierre, d.jueves_inicio, d.jueves_desarrollo, d.jueves_cierre, d.viernes_inicio, d.viernes_desarrollo, d.viernes_cierre, d.recursos, d.evaluacion, d.adecuaciones], () => r(true));
+ipcMain.handle('get-planeacion', async (e, grupo_id, s) => new Promise(r => db.get("SELECT * FROM planeacion WHERE grupo_id=? AND semana=?", [grupo_id, s], (err, row) => r(row || {}))));
+ipcMain.handle('save-planeacion', async (e, d) => new Promise((resolve, reject) => {
+  if (!d.grupo_id) {
+    return reject(new Error("No se ha seleccionado un grupo válido para guardar la planeación."));
+  }
+  db.run("DELETE FROM planeacion WHERE grupo_id=? AND semana=?", [d.grupo_id, d.semana], () => {
+    db.run(`INSERT INTO planeacion (grado, grupo_id, semana, lunes_inicio, lunes_desarrollo, lunes_cierre, martes_inicio, martes_desarrollo, martes_cierre, miercoles_inicio, miercoles_desarrollo, miercoles_cierre, jueves_inicio, jueves_desarrollo, jueves_cierre, viernes_inicio, viernes_desarrollo, viernes_cierre, recursos, evaluacion, adecuaciones, confidence_score) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [d.grado, d.grupo_id, d.semana, d.lunes_inicio, d.lunes_desarrollo, d.lunes_cierre, d.martes_inicio, d.martes_desarrollo, d.martes_cierre, d.miercoles_inicio, d.miercoles_desarrollo, d.miercoles_cierre, d.jueves_inicio, d.jueves_desarrollo, d.jueves_cierre, d.viernes_inicio, d.viernes_desarrollo, d.viernes_cierre, d.recursos, d.evaluacion, d.adecuaciones, d.confidence_score ?? 1.0], () => resolve(true));
   });
 }));
+
+// -- INTEGRACION ELARA --
+ipcMain.handle('get-elara-insights', async () => new Promise(r => db.all("SELECT * FROM elara_insights ORDER BY id DESC", [], (e, rows) => r(rows || []))));
+ipcMain.handle('mark-insight-visto', async (e, id) => new Promise(r => db.run("UPDATE elara_insights SET visto = 1 WHERE id = ?", [id], () => r(true))));
+ipcMain.handle('trigger-curiosity-rewrite', async (e, id, newText) => new Promise(r => {
+  db.run("UPDATE planeacion SET confidence_score = 1.0, lunes_desarrollo = ? WHERE id = ?", [newText, id], () => r(true));
+}));
+
+ipcMain.handle('elara-speak', async (e, text) => {
+  return new Promise((resolve, reject) => {
+    const { exec } = require('child_process');
+    const cleanText = text.replace(/"/g, '\\"')
+                          .replace(/\n/g, ' ')
+                          .trim();
+                          
+    const outputDir = path.join(__dirname, '..', 'public');
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+    const outputPath = path.join(outputDir, 'elara_voice.mp3');
+    
+    const edgeTtsPath = `C:\\Users\\USER\\Desktop\\ELARA\\Backend\\venv\\Scripts\\edge-tts.exe`;
+    const command = `"${edgeTtsPath}" --voice es-MX-DaliaNeural --rate "+5%" --text "${cleanText}" --write-media "${outputPath}"`;
+    
+    exec(command, { timeout: 10000 }, (error, stdout, stderr) => {
+      if (error) {
+        console.error("Error al generar audio de ELARA:", error);
+        reject(error);
+      } else {
+        resolve('/elara_voice.mp3?t=' + Date.now());
+      }
+    });
+  });
+});
 
 // -- EXTRAS --
 ipcMain.handle('get-comisiones', async () => new Promise(r => db.all("SELECT * FROM comisiones", [], (e, rows) => r(rows || []))));

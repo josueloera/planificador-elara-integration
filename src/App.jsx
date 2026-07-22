@@ -74,8 +74,8 @@ const TIPOS_EVENTO = {
 };
 
 function App() {
-  const [vista, setVista] = useState('GRUPOS');
-  const [grupoActual, setGrupoActual] = useState(null);
+  const [vista, setVista] = useState('MENU');
+  const [grupoActual, setGrupoActual] = useState({ id: 1, grado: 3, seccion: 'A', disciplina_id: 1, nombre_disciplina: 'Primaria', tipo: 'Primaria' });
   
   // LICENCIA
   const [licenciaInfo, setLicenciaInfo] = useState(null);
@@ -204,6 +204,7 @@ function App() {
       procesarListaAlumnos,
       savePlan,
       guardarProyecto,
+      guardarProyectoSilencioso,
       editarProyectoSafe,
       ipcRenderer
     };
@@ -221,10 +222,13 @@ function App() {
         setCargandoLicencia(false);
       });
       ipcRenderer.invoke('get-config').then(cfg => {
-        if (cfg.fechaInicioStr || cfg.periodos) {
+        if (cfg.fechaInicioStr || cfg.periodos || cfg.nombreDocente) {
             setConfigCiclo({
                 fechaInicioStr: cfg.fechaInicioStr || '2026-08-31',
-                periodos: cfg.periodos ? JSON.parse(cfg.periodos) : DEFAULT_PERIODOS
+                periodos: cfg.periodos ? JSON.parse(cfg.periodos) : DEFAULT_PERIODOS,
+                nombreDocente: cfg.nombreDocente || 'DOCENTE TITULAR',
+                nombreEscuela: cfg.nombreEscuela || 'ESCUELA PRIMARIA',
+                cct: cfg.cct || 'S/N'
             });
         }
       });
@@ -245,13 +249,26 @@ function App() {
     cargarInsights();
   }, [vista, cargarInsights]);
 
-  // Redirección si se intenta acceder a una vista sin grupo seleccionado (Secundaria)
+  // Carga automática del grupo de Primaria (sin seleccionador de grupos)
   useEffect(() => {
-    const vistasConGrupo = ['MENU', 'EVAL', 'TRIMESTRAL', 'PLANNER', 'DOSIF', 'PROYECTOS', 'BITACORA', 'GRUPO'];
-    if (vistasConGrupo.includes(vista) && !grupoActual) {
-      setVista('GRUPOS');
+    if (ipcRenderer) {
+      ipcRenderer.invoke('get-grupos').then(res => {
+        const savedGrado = localStorage.getItem('grado');
+        const currentG = savedGrado ? Number(savedGrado) : 1;
+        setGrado(currentG);
+        if (res && res.length > 0) {
+          setGrupoActual({ ...res[0], grado: currentG, seccion: '' });
+        } else {
+          const defaultGrupo = { grado: currentG, seccion: '', disciplina_id: 1, tipo: 'Primaria', ciclo_escolar: '2026-2027' };
+          ipcRenderer.invoke('add-grupo', defaultGrupo).then(() => {
+            ipcRenderer.invoke('get-grupos').then(newRes => {
+              if (newRes && newRes.length > 0) setGrupoActual({ ...newRes[0], grado: currentG, seccion: '' });
+            });
+          });
+        }
+      }).catch(console.error);
     }
-  }, [vista, grupoActual]);
+  }, []);
 
   const handleMarcarInsightVisto = (id) => {
     if (ipcRenderer) {
@@ -338,8 +355,8 @@ function App() {
   useEffect(() => { if(ipcRenderer) { ipcRenderer.invoke('get-comisiones').then(res => { setComisiones(res || []); }); ipcRenderer.invoke('get-vistos').then(res => setVistos(res || {})); } }, [vista]);
 
   useEffect(() => {
-    if (ipcRenderer && grupoActual) {
-      ipcRenderer.invoke('get-pdas-disciplina', grupoActual.disciplina_id, grupoActual.grado).then(res => {
+    if (ipcRenderer) {
+      ipcRenderer.invoke('get-pdas-disciplina', 0, grado).then(res => {
         const filePdas = (res || []).map((item, idx) => {
           const semanaCorrespondiente = Math.min(42, Math.floor((idx / res.length) * 42) + 1);
           let nombreProyecto = 'Proyecto: ' + item.contenido;
@@ -440,14 +457,15 @@ function App() {
   }, [vista, semanaPlan, grado, grupoActual, configCiclo]);
 
   // --- LÓGICA DE EVALUACIÓN ---
-  const cargarEval = () => { 
+      const cargarEval = (campoF) => { 
+      const targetCampo = campoF || campoActual;
       if(ipcRenderer){ 
           ipcRenderer.invoke('get-alumnos', grupoActual?.id).then(r => setAlumnos(r || [])); 
-          ipcRenderer.invoke('get-criterios', grupoActual?.id).then(r=>{ 
+          ipcRenderer.invoke('get-criterios', grupoActual?.id, targetCampo).then(r=>{ 
               const lista = r || []; 
               const criteriosSeguros = lista.map((c, idx) => ({ 
                   ...c, 
-                  frontId: c.id ? `db-${c.id}` : `temp-${campoActual}-${idx}` 
+                  frontId: c.id ? `db-${c.id}` : `temp-${targetCampo}-${idx}` 
               })); 
               
               if(criteriosSeguros.length === 0) setModoConfig(true); 
@@ -459,8 +477,13 @@ function App() {
       } 
   };
 
-  useEffect(() => { if(vista === 'EVAL') cargarEval(); }, [grupoActual, vista]); 
-  
+  const cambiarCampo = (nuevoCampo) => {
+      setCampoActual(nuevoCampo);
+      cargarEval(nuevoCampo);
+  };
+
+  useEffect(() => { if(vista === 'EVAL') cargarEval(campoActual); }, [grupoActual, vista]);
+
   const handleChangeCriterio = (index, campo, valor) => {
       setCriterios(prev => prev.map((c, i) => i === index ? { ...c, [campo]: valor } : c));
   };
@@ -473,27 +496,49 @@ function App() {
       setCriterios(prev => [...prev, { frontId: `new-${Date.now()}`, nombre: '', porcentaje: '' }]);
   };
   
-  const handleSaveNota = useCallback((aid, cid, val) => { setNotas(prev => ({...prev, [`${aid}-${cid}`]: val})); if(cid && typeof cid === 'number') { ipcRenderer.invoke('save-nota', aid, cid, fechaEval, val).catch(console.error); } }, [fechaEval]);
-  
-  const guardarConfig = (customCriterios, customGrupoId) => { 
+  const handleSaveNota = useCallback((aid, cid, val) => { 
+      setNotas(prev => ({...prev, [`${aid}-${cid}`]: val})); 
+      if(cid && typeof cid === 'number') { 
+          ipcRenderer.invoke('save-nota', aid, cid, fechaEval, val).catch(console.error); 
+      } 
+  }, [fechaEval]);
+
+  const calcularPromedioDiario = (alumnoId) => {
+      if (!criterios || criterios.length === 0) return null;
+      let sumaWeighted = 0;
+      let totalPorcentaje = 0;
+      criterios.forEach(c => {
+          const val = parseFloat(notas[`${alumnoId}-${c.id}`]);
+          const peso = parseFloat(c.porcentaje) || 0;
+          if (!isNaN(val) && peso > 0) {
+              sumaWeighted += val * peso;
+              totalPorcentaje += peso;
+          }
+      });
+      if (totalPorcentaje === 0) return null;
+      return (sumaWeighted / totalPorcentaje).toFixed(1);
+  };
+
+  const guardarConfig = (customCriterios) => { 
       if(ipcRenderer) { 
-          const targetGrupoId = customGrupoId || grupoActual?.id;
+          const targetGrupoId = grupoActual?.id;
           if (!targetGrupoId) {
               showToast("⚠️ Por favor, selecciona primero un grupo en el menú principal.");
               return;
           }
-          const prev = customCriterios || criteriosRef.current || [];
+          const prev = Array.isArray(customCriterios) ? customCriterios : (criterios || []);
           const total = prev.reduce((acc, c) => acc + (parseFloat(c.porcentaje) || 0), 0); 
           if (Math.abs(total - 100) > 0.1) showToast(`⚠️ OJO: Los porcentajes suman ${total}%.`); 
           
           const validos = prev.filter(c => c.nombre && c.nombre.trim() !== ""); 
-          const paraGuardar = validos.map(c => ({ id: c.id, nombre: c.nombre, porcentaje: c.porcentaje })); 
+          const paraGuardar = validos.map(c => ({ id: c.id, nombre: c.nombre, porcentaje: parseFloat(c.porcentaje) || 0 })); 
           
-          ipcRenderer.invoke('save-criterios', paraGuardar, targetGrupoId).then(() => { 
+          ipcRenderer.invoke('save-criterios', paraGuardar, targetGrupoId, campoActual).then(() => { 
               setModoConfig(false); 
-              showToast(`✅ Guardado para ${campoActual}`); 
-              cargarEval(); 
+              showToast(`✅ Criterios guardados para ${campoActual}`); 
+              cargarEval(campoActual); 
           }).catch(err => {
+              console.error(err);
               showToast(`❌ Error al guardar: ${err.message || err}`);
           }); 
       } 
@@ -503,35 +548,47 @@ function App() {
   const generarReporteTrimestral = () => {
       if (!ipcRenderer || alumnos.length === 0) return;
       setCargandoReporte(true);
-      const periodo = configCiclo.periodos[trimestre];
+      const periodo = configCiclo.periodos[trimestre] || { inicio: '2026-08-31', fin: '2026-11-27' };
       if(ipcRenderer) {
           Promise.all([ ipcRenderer.invoke('get-criterios', grupoActual?.id), ipcRenderer.invoke('get-notas-rango', periodo.inicio, periodo.fin) ]).then(([todosCriterios, todasNotas]) => {
+          const camposIds = ['LENGUAJES', 'SABERES', 'ETICA', 'HUMANO'];
+          
           const reporte = alumnos.map(alumno => {
               const fila = { id: alumno.id, nombre: alumno.nombre };
-              const criteriosAsignatura = todosCriterios || [];
-              const idsCriterios = criteriosAsignatura.map(c => c.id);
-              const notasAlumno = (todasNotas || []).filter(n => n.alumno_id === alumno.id);
-              const notasValid = notasAlumno.filter(n => idsCriterios.includes(n.criterio_id));
-              const fechasUnicas = [...new Set(notasValid.map(n => n.fecha))];
-              
-              let sumaPromediosDiarios = 0; let diasTrabajados = 0;
-              fechasUnicas.forEach(fecha => {
-                  let sumaPonderadaDia = 0; let diaConNotas = false;
-                  criteriosAsignatura.forEach(c => {
-                      const n = notasValid.find(x => x.fecha === fecha && x.criterio_id === c.id);
-                      const val = n ? parseFloat(n.valor) : NaN;
-                      if (!isNaN(val)) {
-                          sumaPonderadaDia += val;
-                          diaConNotas = true;
+              const promsCampos = [];
+
+              camposIds.forEach(campoKey => {
+                  const criteriosCampo = (todosCriterios || []).filter(c => (c.campo === campoKey) || (!c.campo && campoKey === 'LENGUAJES'));
+                  const idsCritCampo = criteriosCampo.map(c => c.id);
+                  const notasAlumno = (todasNotas || []).filter(n => n.alumno_id === alumno.id && idsCritCampo.includes(n.criterio_id));
+                  const fechasUnicas = [...new Set(notasAlumno.map(n => n.fecha))];
+
+                  let sumaPromediosDiarios = 0; let diasTrabajados = 0;
+                  fechasUnicas.forEach(fecha => {
+                      let sumaWeightedDia = 0;
+                      let totalPorcentajeDia = 0;
+                      criteriosCampo.forEach(c => {
+                          const n = notasAlumno.find(x => x.fecha === fecha && x.criterio_id === c.id);
+                          const val = n ? parseFloat(n.valor) : NaN;
+                          const peso = parseFloat(c.porcentaje) || 0;
+                          if (!isNaN(val) && peso > 0) {
+                              sumaWeightedDia += val * peso;
+                              totalPorcentajeDia += peso;
+                          }
+                      });
+                      if(totalPorcentajeDia > 0) {
+                          const promDia = sumaWeightedDia / totalPorcentajeDia;
+                          sumaPromediosDiarios += promDia;
+                          diasTrabajados++;
                       }
                   });
-                  if(diaConNotas) {
-                      sumaPromediosDiarios += (sumaPonderadaDia / 10);
-                      diasTrabajados++;
-                  }
+
+                  const promCampo = diasTrabajados > 0 ? parseFloat((sumaPromediosDiarios / diasTrabajados).toFixed(1)) : null;
+                  fila[campoKey] = promCampo !== null ? promCampo : '-';
+                  if (promCampo !== null) promsCampos.push(promCampo);
               });
-              
-              const promedioFinal = diasTrabajados > 0 ? (sumaPromediosDiarios / diasTrabajados).toFixed(1) : '-';
+
+              const promedioFinal = promsCampos.length > 0 ? (promsCampos.reduce((a, b) => a + b, 0) / promsCampos.length).toFixed(1) : '-';
               fila.promedioFinal = promedioFinal;
               return fila;
           });
@@ -550,6 +607,26 @@ function App() {
       setModoEdicionProy(true); 
   };
   const guardarProyecto = () => { if(!proyectoActual.nombre) return showToast("Falta nombre"); const proy = { ...proyectoActual, id: (typeof proyectoActual.id === 'string' && proyectoActual.id.startsWith('sug-')) ? null : proyectoActual.id, grado, grupo_id: grupoActual?.id }; ipcRenderer.invoke('save-proyecto', proy).then(()=>{ showToast("✅ Proyecto guardado"); setModoEdicionProy(false); setVista('MENU'); setTimeout(() => setVista('PROYECTOS'), 50); }); };
+  const guardarProyectoSilencioso = (proyectoData) => {
+    const target = proyectoData || proyectoActual;
+    if (!target || !target.nombre) return Promise.resolve(false);
+    const proy = {
+      ...target,
+      id: (typeof target.id === 'string' && target.id.startsWith('sug-')) ? null : target.id,
+      grado,
+      grupo_id: grupoActual?.id
+    };
+    if (ipcRenderer) {
+      return ipcRenderer.invoke('save-proyecto', proy).then(() => {
+        showToast("✅ Proyecto guardado");
+        return true;
+      }).catch(err => {
+        console.error("Error al guardar proyecto:", err);
+        return false;
+      });
+    }
+    return Promise.resolve(false);
+  };
   const togglePdaProyecto = (id) => { const s = Array.isArray(proyectoActual.pdas_seleccionados) ? proyectoActual.pdas_seleccionados : []; const n = s.includes(id) ? s.filter(x => x !== id) : [...s, id]; setProyectoActual({...proyectoActual, pdas_seleccionados: n}); };
   const calcularColorSemaforo = (p) => { const f = Object.values(safeParse(p.fases_contenido, {})); const l = f.filter(x => x && x.length > 5).length; if (l === 0) return '#ffebee'; if (l < 4) return '#fff9c4'; return '#e8f5e9'; };
   const actualizarDatoProyecto = (campo, valor) => { setProyectoActual(prev => ({ ...prev, [campo]: valor })); };
@@ -601,30 +678,15 @@ function App() {
     return arr;
   };
 
-  const calcularPromedioDiario = (alumnoId) => {
-      let sumaTotal = 0; let tieneNotas = false;
-      criterios.forEach(c => {
-          if(!c.id) return;
-          const val = parseFloat(notas[`${alumnoId}-${c.id}`]);
-          if (!isNaN(val)) {
-              sumaTotal += val;
-              tieneNotas = true;
-          }
-      });
-      return tieneNotas ? sumaTotal.toFixed(1) : '-';
-  };
   
-  const getColorSemaforo = (promedio, escala10 = false) => { 
+  
+  const getColorSemaforo = (promedio) => { 
+      if (promedio === null || promedio === undefined || promedio === '' || promedio === '-') return 'transparent';
       const p = parseFloat(promedio); 
-      if(isNaN(p)) return 'white'; 
-      if (escala10) {
-          if(p < 6.0) return '#ffcdd2'; 
-          if(p < 9.0) return '#fff9c4'; 
-          return '#c8e6c9'; 
-      }
-      if(p < 60.0) return '#ffcdd2'; 
-      if(p < 90.0) return '#fff9c4'; 
-      return '#c8e6c9'; 
+      if (isNaN(p)) return 'transparent'; 
+      if (p < 6.0) return '#ffcdd2'; // Rojo (5 a 6)
+      if (p < 9.0) return '#fff9c4'; // Amarillo (6 a 9)
+      return '#c8e6c9';             // Verde (9 a 10)
   };
 
   // ================= RENDER INTERFACES DE ELARA =================
@@ -739,7 +801,8 @@ function App() {
   // ================= SWITCH PRINCIPAL DE VISTAS (React Router alternativo) =================
   const renderVistaContent = () => {
     if (vista === 'GRUPOS') {
-      return <DashboardGrupos onSelectGrupo={(g) => { setGrupoActual(g); setGrado(g.grado); localStorage.setItem('grado', g.grado); setVista('MENU'); }} />;
+      setVista('MENU');
+      return null;
     }
 
     if(vista === 'MENU') {
@@ -756,32 +819,48 @@ function App() {
         { id: 'MATERIALES', icon: '🧩', label: 'Materiales', desc: 'Exámenes y juegos', color: '#FF9F43', action: ()=>setVista('MATERIALES') },
         { id: 'CONFIG', icon: '⚙️', label: 'Ajustes Ciclo', desc: 'Fechas y SEP', color: '#2C3E50', action: ()=>setVista('CONFIG') },
       ];
+
       return (
-      <div className="pantalla-menu">
+        <div className="pantalla-menu">
           <div className="menu-header-zone">
-              <div className="menu-header-glow"></div>
-              <h1 className="titulo-principal">PLANIFICADOR DOCENTE</h1>
-              <p className="menu-subtitle">Ciclo Escolar 2026 - 2027 (INTEGRACIÓN ELARA)</p>
-              {licenciaInfo && licenciaInfo.isTrialValid && !licenciaInfo.isActivated && (
-                  <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px', marginTop: '10px'}}>
-                      <div style={{background: '#f39c12', color: 'white', padding: '5px 15px', borderRadius: '15px', fontSize: '0.9rem', fontWeight: 'bold'}}>
-                          Prueba Gratuita: {licenciaInfo.trialDaysRemaining} días restantes
-                      </div>
-                      <button 
-                          onClick={() => setVista('LICENCIA')}
-                          style={{background: '#27ae60', color: 'white', padding: '5px 15px', borderRadius: '15px', border: 'none', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold', boxShadow: '0 2px 5px rgba(0,0,0,0.2)'}}>
-                          🔑 Adquirir Licencia
-                      </button>
-                  </div>
-              )}
-              {grupoActual && (
-                  <div style={{marginTop: 15, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px'}}>
-                      <h2 style={{color: '#fff', background: 'rgba(0,0,0,0.2)', padding: '5px 20px', borderRadius: '20px', display: 'inline-block', margin: 0}}>
-                          {grupoActual.grado}º {grupoActual.seccion} - {grupoActual.tipo}
-                      </h2>
-                      <button className="btn-volver" onClick={() => { setGrupoActual(null); setVista('GRUPOS'); }} style={{marginBottom: '10px'}}>⬅ Cambiar de Grupo</button>
-                  </div>
-              )}
+            <div className="menu-header-glow"></div>
+            <h1 className="titulo-principal">PLANIFICADOR DOCENTE</h1>
+            <p className="menu-subtitle">Ciclo Escolar 2026 - 2027 (INTEGRACIÓN ELARA)</p>
+            {licenciaInfo && licenciaInfo.isTrialValid && !licenciaInfo.isActivated && (
+              <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px', marginTop: '10px'}}>
+                <div style={{background: '#f39c12', color: 'white', padding: '5px 15px', borderRadius: '15px', fontSize: '0.9rem', fontWeight: 'bold'}}>
+                  Prueba Gratuita: {licenciaInfo.trialDaysRemaining} días restantes
+                </div>
+                <button 
+                  onClick={() => setVista('LICENCIA')}
+                  style={{background: '#27ae60', color: 'white', padding: '5px 15px', borderRadius: '15px', border: 'none', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold', boxShadow: '0 2px 5px rgba(0,0,0,0.2)'}}>
+                  🔑 Adquirir Licencia
+                </button>
+              </div>
+            )}
+
+            <div style={{marginTop: 15, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px'}}>
+              <div style={{background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(10px)', padding: '6px 20px', borderRadius: '30px', border: '1px solid rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', gap: '10px'}}>
+                <span style={{color: 'white', fontWeight: 'bold', fontSize: '1.1rem'}}>Grado Activo:</span>
+                <select 
+                  value={grado} 
+                  onChange={e => {
+                    const g = Number(e.target.value);
+                    setGrado(g);
+                    localStorage.setItem('grado', g);
+                    setGrupoActual(prev => ({ ...(prev||{}), grado: g, seccion: '' }));
+                  }}
+                  style={{fontSize: '1.1rem', padding: '6px 15px', borderRadius: '20px', border: 'none', fontWeight: 'bold', background: 'white', color: '#2c3e50', cursor: 'pointer', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.2)'}}
+                >
+                  <option value={1}>1º Primaria</option>
+                  <option value={2}>2º Primaria</option>
+                  <option value={3}>3º Primaria</option>
+                  <option value={4}>4º Primaria</option>
+                  <option value={5}>5º Primaria</option>
+                  <option value={6}>6º Primaria</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           {/* Feed de Descubrimientos Nocturnos de ELARA */}
@@ -855,9 +934,8 @@ function App() {
       />;
     }
 
-    if(vista === 'EVAL') { 
+            if(vista === 'EVAL') { 
       const sumaPorcentajes = (criterios || []).reduce((acc, c) => acc + (parseFloat(c.porcentaje) || 0), 0); 
-      const estiloCampo = CAMPOS_FORMATIVOS.find(c => c.id === campoActual) || CAMPOS_FORMATIVOS[0]; 
       
       return (
       <div className="pantalla-dosificador">
@@ -867,24 +945,33 @@ function App() {
               </div>
           )}
           <div className="header-dosificador">
-              <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>📝 Evaluación ({grupoActual?.grado}º{grupoActual?.seccion} - {grupoActual?.nombre_disciplina})</h2><input type="date" value={fechaEval} onChange={e=>{setFechaEval(e.target.value); cargarEval();}} style={{fontSize:'1.1rem', padding:'5px', border:'2px solid #004aad', borderRadius:5}} /></div>
-              <div><button className="btn-volver" style={{marginRight:10, background: modoConfig ? '#7f8c8d' : '#e67e22'}} onClick={()=>setModoConfig(!modoConfig)}>{modoConfig ? '↩ Volver' : '⚙️ Configurar'}</button><button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button></div>
+              <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>📝 Evaluación ({grado}º Primaria)</h2><input type="date" value={fechaEval} onChange={e=>{setFechaEval(e.target.value); cargarEval(campoActual);}} style={{fontSize:'1.1rem', padding:'5px', border:'2px solid #004aad', borderRadius:5}} /></div>
+              <div><button className="btn-volver" style={{marginRight:10, background: modoConfig ? '#7f8c8d' : '#e67e22'}} onClick={()=>setModoConfig(!modoConfig)}>{modoConfig ? '↩ Volver' : '⚙️ Configurar Criterios'}</button><button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button></div>
           </div>
-          <div style={{borderTop:`5px solid ${estiloCampo.borde}`, flexGrow:1, display:'flex', flexDirection:'column'}}>
+
+          {/* BARRA DE SELECCION DE MATERIAS / CAMPOS FORMATIVOS */}
+          <div className="no-print" style={{display:'flex', gap:10, padding:'10px 20px', background:'#f8f9fa', borderBottom:'1px solid #e0e0e0', overflowX:'auto'}}>
+            <button onClick={()=>cambiarCampo('LENGUAJES')} style={{padding:'8px 16px', borderRadius:20, border:'none', cursor:'pointer', fontWeight:'bold', background: campoActual==='LENGUAJES' ? '#8E24AA' : '#e0e0e0', color: campoActual==='LENGUAJES' ? 'white' : '#333', transition:'all 0.3s'}}>🟣 Lenguajes</button>
+            <button onClick={()=>cambiarCampo('SABERES')} style={{padding:'8px 16px', borderRadius:20, border:'none', cursor:'pointer', fontWeight:'bold', background: campoActual==='SABERES' ? '#00897B' : '#e0e0e0', color: campoActual==='SABERES' ? 'white' : '#333', transition:'all 0.3s'}}>🟢 Saberes y Pensamiento C.</button>
+            <button onClick={()=>cambiarCampo('ETICA')} style={{padding:'8px 16px', borderRadius:20, border:'none', cursor:'pointer', fontWeight:'bold', background: campoActual==='ETICA' ? '#1E88E5' : '#e0e0e0', color: campoActual==='ETICA' ? 'white' : '#333', transition:'all 0.3s'}}>🔵 Ética, Naturaleza y Soc.</button>
+            <button onClick={()=>cambiarCampo('HUMANO')} style={{padding:'8px 16px', borderRadius:20, border:'none', cursor:'pointer', fontWeight:'bold', background: campoActual==='HUMANO' ? '#E53935' : '#e0e0e0', color: campoActual==='HUMANO' ? 'white' : '#333', transition:'all 0.3s'}}>🔴 De lo Humano y lo Com.</button>
+          </div>
+
+          <div style={{flexGrow:1, display:'flex', flexDirection:'column', padding:15}}>
             
             {modoConfig ? (
-                <div className="columna-gestion" style={{maxWidth:700, margin:'20px auto', padding:30, borderRadius:15, boxShadow:'0 4px 15px rgba(0,0,0,0.1)'}}>
-                    <h3 style={{textAlign:'center', color:estiloCampo.borde}}>⚙️ Criterios de Evaluación</h3>
-                    <div style={{background:'#eee', height:25, borderRadius:15, margin:'20px 0', position:'relative', overflow:'hidden'}}><div style={{width:`${Math.min(sumaPorcentajes, 100)}%`, background:sumaPorcentajes===100?'#2ecc71':'#e74c3c', height:'100%', transition:'width 0.5s'}}></div><span style={{position:'absolute', width:'100%', textAlign:'center', top:3, fontWeight:'bold', fontSize:'0.9rem', color:'#333'}}>Suma: {sumaPorcentajes}%</span></div>
+                <div className="columna-gestion" style={{maxWidth:700, margin:'10px auto', padding:25, borderRadius:15, boxShadow:'0 4px 15px rgba(0,0,0,0.1)', background:'white'}}>
+                    <h3 style={{textAlign:'center', color:'#004aad'}}>⚙️ Configurar Criterios para {campoActual}</h3>
+                    <div style={{background:'#eee', height:25, borderRadius:15, margin:'15px 0', position:'relative', overflow:'hidden'}}><div style={{width:`${Math.min(sumaPorcentajes, 100)}%`, background:sumaPorcentajes===100?'#2ecc71':'#e74c3c', height:'100%', transition:'width 0.5s'}}></div><span style={{position:'absolute', width:'100%', textAlign:'center', top:3, fontWeight:'bold', fontSize:'0.9rem', color:'#333'}}>Suma: {sumaPorcentajes}%</span></div>
                     <div style={{background:'#fafafa', padding:15, borderRadius:10, border:'1px solid #ddd'}}>
                         
                         {(criterios || []).map((c, i)=>(
-                            <div key={`crit-${campoActual}-${i}`} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                            <div key={`crit-${i}`} style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
                                 <span style={{fontWeight:'bold', width:30}}>{i+1}.</span>
                                 <input
                                     value={c.nombre}
                                     onChange={(e) => handleChangeCriterio(i, 'nombre', e.target.value)}
-                                    placeholder="Ej: Tareas..."
+                                    placeholder="Ej: Tareas, Examen, Participación..."
                                     style={{flexGrow:1, padding:10, border:'1px solid #ccc', borderRadius:5}}
                                 />
                                 <div style={{position:'relative'}}>
@@ -900,11 +987,11 @@ function App() {
                             </div>
                         ))}
 
-                        <div style={{display:'flex', gap:20, marginTop:20, justifyContent:'center'}}><button onClick={agregarCriterioNuevo} style={{padding:'10px 20px', background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>+ Criterio</button><button className="btn-guardar" onClick={guardarConfig} style={{width:'auto', padding:'10px 30px', background: sumaPorcentajes===100 ? '#2ecc71' : '#95a5a6'}}>💾 GUARDAR CRITERIOS</button></div>
+                        <div style={{display:'flex', gap:20, marginTop:20, justifyContent:'center'}}><button onClick={agregarCriterioNuevo} style={{padding:'10px 20px', background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>+ Criterio</button><button className="btn-guardar" onClick={()=>guardarConfig(criterios)} style={{width:'auto', padding:'10px 30px', background: sumaPorcentajes===100 ? '#2ecc71' : '#95a5a6'}}>💾 GUARDAR CRITERIOS DE {campoActual}</button></div>
                     </div>
                 </div>
             ) : (
-                <div className="tabla-container"><table className="tabla-eval"><thead><tr><th style={{width:50, textAlign:'center'}}>Nº</th><th style={{width:250}}>ALUMNO</th>{(criterios || []).map((c,i)=><th key={i}>{c.nombre}<br/><small style={{opacity:0.8}}>{c.porcentaje}%</small></th>)}<th style={{background:'#2c3e50', color:'white', width:'80px', textAlign:'center'}}>HOY</th></tr></thead><tbody>{(alumnos || []).map((al, index)=>{const prom = calcularPromedioDiario(al.id); return (<tr key={al.id} style={{backgroundColor: getColorSemaforo(prom)}}><td style={{textAlign:'center', fontWeight:'bold', color:'#555'}}>{index + 1}</td><td className="celda-nombre">{al.nombre}</td>{(criterios || []).map(c=>( <td key={c.frontId}><CeldaNota idAlumno={al.id} idCriterio={c.id} valorInicial={notas[`${al.id}-${c.id}`]} onGuardar={handleSaveNota} /></td> ))}<td style={{textAlign:'center', fontWeight:'bold', fontSize:'1.2rem'}}>{prom || '-'}</td></tr>);})}</tbody></table></div>
+                <div className="tabla-container"><table className="tabla-eval"><thead><tr><th style={{width:50, textAlign:'center'}}>Nº</th><th style={{width:250}}>ALUMNO</th>{(criterios || []).map((c,i)=><th key={i}>{c.nombre}<br/><small style={{opacity:0.8}}>{c.porcentaje}%</small></th>)}<th style={{background:'#2c3e50', color:'white', width:'80px', textAlign:'center'}}>PROMEDIO</th></tr></thead><tbody>{(alumnos || []).map((al, index)=>{const prom = calcularPromedioDiario(al.id); return (<tr key={al.id} style={{backgroundColor: getColorSemaforo(prom)}}><td style={{textAlign:'center', fontWeight:'bold', color:'#555'}}>{index + 1}</td><td className="celda-nombre">{al.nombre}</td>{(criterios || []).map(c=>( <td key={c.frontId}><CeldaNota idAlumno={al.id} idCriterio={c.id} valorInicial={notas[`${al.id}-${c.id}`]} onGuardar={handleSaveNota} /></td> ))}<td style={{textAlign:'center', fontWeight:'bold', fontSize:'1.2rem'}}>{prom || '-'}</td></tr>);})}</tbody></table></div>
             )}
           </div>
       </div>
@@ -972,14 +1059,40 @@ function App() {
       return (
         <div className="pantalla-dosificador">
           <div className="header-dosificador no-print">
-            <h2>Trimestral</h2>
-            <div style={{display:'flex', gap:10}}><button className="btn-guardar" onClick={generarReporteTrimestral}>{cargandoReporte ? '⏳...' : '🔄 Recalcular'}</button><button className="btn-volver" onClick={()=>window.print()}>🖨️ Imprimir</button><button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button></div>
+            <h2>📊 Reporte de Evaluaciones Trimestrales ({grado}º Primaria)</h2>
+            <div style={{display:'flex', gap:10}}>
+              <button className="btn-guardar" onClick={generarReporteTrimestral}>{cargandoReporte ? '⏳ Calculando...' : '🔄 Recalcular'}</button>
+              <button className="btn-volver" onClick={()=>window.print()}>🖨️ Imprimir Reporte</button>
+              <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button>
+            </div>
           </div>
           <div className="tabs-trimestres no-print">{[1,2,3].map(id=><button key={id} className={`tab-btn ${trimestre===id?'activo':''}`} onClick={()=>setTrimestre(id)}>{configCiclo.periodos[id].nombre}</button>)}</div>
           <div className="tabla-container">
-            <table className="tabla-eval" style={{maxWidth: '800px'}}>
-              <thead><tr><th style={{width:50, textAlign:'center'}}>Nº</th><th style={{width: 300}}>ALUMNO</th><th style={{background:'#2c3e50', color:'white', width:150}}>PROMEDIO TRIMESTRAL</th></tr></thead>
-              <tbody>{(resumen || []).map((r, i)=><tr key={r.id}><td style={{textAlign:'center', fontWeight:'bold', color:'#555'}}>{i + 1}</td><td className="celda-nombre">{r.nombre}</td><td style={{textAlign:'center', fontWeight:'bold', fontSize:'1.5rem', background:getColorSemaforo(r.promedioFinal, true)}}>{r.promedioFinal}</td></tr>)}</tbody>
+            <table className="tabla-eval" style={{maxWidth: '1150px', width: '100%'}}>
+              <thead>
+                <tr>
+                  <th style={{width:40, textAlign:'center'}}>Nº</th>
+                  <th style={{width: 250}}>ALUMNO</th>
+                  <th style={{background:'#8E24AA', color:'white', textAlign:'center'}}>🟣 LENGUAJES</th>
+                  <th style={{background:'#00897B', color:'white', textAlign:'center'}}>🟢 SABERES Y P.C.</th>
+                  <th style={{background:'#1E88E5', color:'white', textAlign:'center'}}>🔵 ÉTICA, NAT. Y SOC.</th>
+                  <th style={{background:'#E53935', color:'white', textAlign:'center'}}>🔴 DE LO HUMANO</th>
+                  <th style={{background:'#2c3e50', color:'white', width:140, textAlign:'center'}}>PROMEDIO TRIMESTRAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(resumen || []).map((r, i)=>(
+                  <tr key={r.id}>
+                    <td style={{textAlign:'center', fontWeight:'bold', color:'#555'}}>{i + 1}</td>
+                    <td className="celda-nombre">{r.nombre}</td>
+                    <td style={{textAlign:'center', fontWeight:'bold', background:getColorSemaforo(r.LENGUAJES)}}>{r.LENGUAJES || '-'}</td>
+                    <td style={{textAlign:'center', fontWeight:'bold', background:getColorSemaforo(r.SABERES)}}>{r.SABERES || '-'}</td>
+                    <td style={{textAlign:'center', fontWeight:'bold', background:getColorSemaforo(r.ETICA)}}>{r.ETICA || '-'}</td>
+                    <td style={{textAlign:'center', fontWeight:'bold', background:getColorSemaforo(r.HUMANO)}}>{r.HUMANO || '-'}</td>
+                    <td style={{textAlign:'center', fontWeight:'bold', fontSize:'1.3rem', background:getColorSemaforo(r.promedioFinal)}}>{r.promedioFinal}</td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
           </div>
         </div>
@@ -990,7 +1103,7 @@ function App() {
       return ( 
       <div className="pantalla-dosificador"> 
         <div className="header-dosificador no-print"> 
-          <h2>Dosificador Anual</h2> 
+          <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>Dosificador Anual</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #FDCB6E', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select></div> 
           <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button> 
         </div> 
         <div className="tabla-semanal"> 
@@ -1030,7 +1143,7 @@ function App() {
                     {toast}
                 </div>
             )}
-            <div className="header-dosificador"> <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>🚀 Proyectos</h2></div> <div> {!modoEdicionProy && <button className="btn-guardar" onClick={()=>{setProyectoActual({id:null, nombre:'', metodologia:'COMUNITARIOS', escenario:'AULA', temporalidad:'', pdas_seleccionados:[], fases_contenido:{}}); setBusquedaPda(""); setModoEdicionProy(true);}}>+ Nuevo</button>} <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button> </div> </div> {modoEdicionProy ? ( <div key={proyectoActual.id || 'nuevo'} className="hoja-planeacion" style={{ background: `linear-gradient(to bottom, ${calcularColorSemaforo(proyectoActual)} 0%, #ffffff 350px)` }}> <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}> <h3 className="titulo-edicion">✏️ Editar Proyecto</h3> <div className="botones-edicion"><button className="btn-guardar" onClick={()=>window.print()} style={{marginRight:10}}>🖨️ Imprimir</button><button className="btn-volver" onClick={()=>setModoEdicionProy(false)}>🔙 Volver</button></div> </div> <div className="grid-dos"> <div className="grupo-input grupo-nombre"> <label>Nombre:</label> <input defaultValue={proyectoActual.nombre} onBlur={e => actualizarDatoProyecto('nombre', e.target.value)} style={{padding:'8px'}} placeholder="Nombre..." /> </div> <div className="grupo-input"><label>Metodología:</label><select value={proyectoActual.metodologia} onChange={e=>actualizarDatoProyecto('metodologia', e.target.value)} style={{padding:10}}> {Object.keys(METODOLOGIAS).map(k=><option key={k} value={k}>{METODOLOGIAS[k].nombre}</option>)} </select></div> </div> <div className="seccion-plan" style={{marginTop:20, borderLeft:`6px solid ${METODOLOGIAS[proyectoActual.metodologia].borde}`}}> <h4>Fases ({METODOLOGIAS[proyectoActual.metodologia].nombre})</h4> {METODOLOGIAS[proyectoActual.metodologia].fases.map((fase, i) => ( <div key={i} className="momento" style={{flexDirection:'column', marginBottom:15}}> <span className="label-momento" style={{fontSize:'0.9rem'}}>{fase}</span> <textarea style={{width:"100%", minHeight:80}} value={(safeParse(proyectoActual.fases_contenido, {}))[i] || ""} onChange={e => actualizarFaseProyecto(i, e.target.value)} placeholder="Desarrollo..." /> </div> ))} </div> <div className="pdas-print-view" style={{display:'none'}}> <h4 style={{marginTop:20, textTransform:'uppercase', borderBottom:'1px solid black'}}>Vinculación de Aprendizajes (PDAs)</h4> <ul style={{listStyle:'none', padding:0}}> {pdasSeleccionadosParaImprimir.length === 0 && <li>Sin aprendizajes vinculados.</li>} {pdasSeleccionadosParaImprimir.map(p => ( <li key={p.id} style={{marginBottom:10, fontSize:'11pt', fontFamily:'Times New Roman'}}> <b>• {p.proyecto_sugerido}:</b> {p.descripcion} </li> ))} </ul> </div> <div className="seccion-plan no-print" style={{marginTop:20, background:'rgba(0,0,0,0.03)'}}> <h4>Vincular PDAs</h4> <input placeholder="Buscar tema..." value={busquedaPda} onChange={e=>setBusquedaPda(e.target.value)} style={{width:'100%', padding:8, marginBottom:10}}/> <div style={{maxHeight:150, overflowY:'auto'}}> {pdasFiltrados.length === 0 && <p style={{fontStyle:'italic', color:'#999'}}>No hay PDAs.</p>} {pdasFiltrados.map(p=>( <div key={p.id} style={{display:'flex', gap:5, marginBottom:5}}> <input type="checkbox" checked={(Array.isArray(proyectoActual.pdas_seleccionados) ? proyectoActual.pdas_seleccionados : []).includes(p.id)} onChange={()=>togglePdaProyecto(p.id)} /> <span><b>{p.proyecto_sugerido}</b>: {p.descripcion}</span> </div> ))} </div> </div> <button className="btn-guardar botones-edicion" onClick={guardarProyecto} style={{marginTop:20, width:'100%', padding:15}}>💾 GUARDAR</button> </div> ) : ( <div className="grid-proyectos-scroll" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:20, alignContent:'start'}}> {listaProyectos.map(p => { const estilo = METODOLOGIAS[p.metodologia] || {color:'#fff', borde:'#ccc'}; const isVisto = (vistos.proyecto || []).includes(String(p.id)); return ( <div key={p.id} className="tarjeta-proyecto" onClick={() => editarProyectoSafe(p)} style={{ cursor:'pointer', borderLeft:`8px solid ${estilo.borde}`, background: estilo.color, padding: 15, borderRadius: 8, height: '140px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', opacity: isVisto ? 0.6 : 1, transition: 'opacity 0.3s' }}> <div> <h3 style={{margin:'0 0 5px 0', fontSize:'1.1rem', color:'#333'}}>{p.nombre}</h3> <span style={{fontSize:'0.8rem', background:'rgba(255,255,255,0.6)', padding:'2px 6px', borderRadius:4, fontWeight:'bold', color:estilo.borde}}> {estilo.nombre} {p.es_sugerido && '⭐'} </span> </div> <div style={{alignSelf: 'flex-end', marginTop: 10}}><button className="no-print" onClick={(e)=>{e.stopPropagation(); toggleVisto('proyecto', p.id)}} style={{padding: '5px 10px', fontSize: '0.8rem', cursor: 'pointer', background: isVisto ? '#2ecc71' : 'rgba(255,255,255,0.8)', color: isVisto ? 'white' : '#333', border: 'none', borderRadius: 5, fontWeight:'bold'}}> {isVisto ? '✅ Terminado' : 'Marcar Terminado'} </button></div> </div> ); })} </div> )} </div> 
+            <div className="header-dosificador"> <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>🚀 Proyectos</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #00CEC9', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select></div> <div> {!modoEdicionProy && <button className="btn-guardar" onClick={()=>{setProyectoActual({id:null, nombre:'', metodologia:'COMUNITARIOS', escenario:'AULA', temporalidad:'', pdas_seleccionados:[], fases_contenido:{}}); setBusquedaPda(""); setModoEdicionProy(true);}}>+ Nuevo</button>} <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button> </div> </div> {modoEdicionProy ? ( <div key={proyectoActual.id || 'nuevo'} className="hoja-planeacion" style={{ background: `linear-gradient(to bottom, ${calcularColorSemaforo(proyectoActual)} 0%, #ffffff 350px)` }}> <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}> <h3 className="titulo-edicion">✏️ Editar Proyecto</h3> <div className="botones-edicion"><button className="btn-guardar" onClick={()=>window.print()} style={{marginRight:10}}>🖨️ Imprimir</button><button className="btn-volver" onClick={()=>setModoEdicionProy(false)}>🔙 Volver</button></div> </div> <div className="grid-dos"> <div className="grupo-input grupo-nombre"> <label>Nombre:</label> <input defaultValue={proyectoActual.nombre} onBlur={e => actualizarDatoProyecto('nombre', e.target.value)} style={{padding:'8px'}} placeholder="Nombre..." /> </div> <div className="grupo-input"><label>Metodología:</label><select value={proyectoActual.metodologia} onChange={e=>actualizarDatoProyecto('metodologia', e.target.value)} style={{padding:10}}> {Object.keys(METODOLOGIAS).map(k=><option key={k} value={k}>{METODOLOGIAS[k].nombre}</option>)} </select></div> </div> <div className="seccion-plan" style={{marginTop:20, borderLeft:`6px solid ${METODOLOGIAS[proyectoActual.metodologia].borde}`}}> <h4>Fases ({METODOLOGIAS[proyectoActual.metodologia].nombre})</h4> {METODOLOGIAS[proyectoActual.metodologia].fases.map((fase, i) => ( <div key={i} className="momento" style={{flexDirection:'column', marginBottom:15}}> <span className="label-momento" style={{fontSize:'0.9rem'}}>{fase}</span> <textarea style={{width:"100%", minHeight:80}} value={(safeParse(proyectoActual.fases_contenido, {}))[i] || ""} onChange={e => actualizarFaseProyecto(i, e.target.value)} placeholder="Desarrollo..." /> </div> ))} </div> <div className="pdas-print-view" style={{display:'none'}}> <h4 style={{marginTop:20, textTransform:'uppercase', borderBottom:'1px solid black'}}>Vinculación de Aprendizajes (PDAs)</h4> <ul style={{listStyle:'none', padding:0}}> {pdasSeleccionadosParaImprimir.length === 0 && <li>Sin aprendizajes vinculados.</li>} {pdasSeleccionadosParaImprimir.map(p => ( <li key={p.id} style={{marginBottom:10, fontSize:'11pt', fontFamily:'Times New Roman'}}> <b>• {p.proyecto_sugerido}:</b> {p.descripcion} </li> ))} </ul> </div> <div className="seccion-plan no-print" style={{marginTop:20, background:'rgba(0,0,0,0.03)'}}> <h4>Vincular PDAs</h4> <input placeholder="Buscar tema..." value={busquedaPda} onChange={e=>setBusquedaPda(e.target.value)} style={{width:'100%', padding:8, marginBottom:10}}/> <div style={{maxHeight:150, overflowY:'auto'}}> {pdasFiltrados.length === 0 && <p style={{fontStyle:'italic', color:'#999'}}>No hay PDAs.</p>} {pdasFiltrados.map(p=>( <div key={p.id} style={{display:'flex', gap:5, marginBottom:5}}> <input type="checkbox" checked={(Array.isArray(proyectoActual.pdas_seleccionados) ? proyectoActual.pdas_seleccionados : []).includes(p.id)} onChange={()=>togglePdaProyecto(p.id)} /> <span><b>{p.proyecto_sugerido}</b>: {p.descripcion}</span> </div> ))} </div> </div> <button className="btn-guardar botones-edicion" onClick={guardarProyecto} style={{marginTop:20, width:'100%', padding:15}}>💾 GUARDAR</button> </div> ) : ( <div className="grid-proyectos-scroll" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:20, alignContent:'start'}}> {listaProyectos.map(p => { const estilo = METODOLOGIAS[p.metodologia] || {color:'#fff', borde:'#ccc'}; const isVisto = (vistos.proyecto || []).includes(String(p.id)); return ( <div key={p.id} className="tarjeta-proyecto" onClick={() => editarProyectoSafe(p)} style={{ cursor:'pointer', borderLeft:`8px solid ${estilo.borde}`, background: estilo.color, padding: 15, borderRadius: 8, height: '140px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', opacity: isVisto ? 0.6 : 1, transition: 'opacity 0.3s' }}> <div> <h3 style={{margin:'0 0 5px 0', fontSize:'1.1rem', color:'#333'}}>{p.nombre}</h3> <span style={{fontSize:'0.8rem', background:'rgba(255,255,255,0.6)', padding:'2px 6px', borderRadius:4, fontWeight:'bold', color:estilo.borde}}> {estilo.nombre} {p.es_sugerido && '⭐'} </span> </div> <div style={{alignSelf: 'flex-end', marginTop: 10}}><button className="no-print" onClick={(e)=>{e.stopPropagation(); toggleVisto('proyecto', p.id)}} style={{padding: '5px 10px', fontSize: '0.8rem', cursor: 'pointer', background: isVisto ? '#2ecc71' : 'rgba(255,255,255,0.8)', color: isVisto ? 'white' : '#333', border: 'none', borderRadius: 5, fontWeight:'bold'}}> {isVisto ? '✅ Terminado' : 'Marcar Terminado'} </button></div> </div> ); })} </div> )} </div> 
       );
     }
 
@@ -1041,7 +1154,7 @@ function App() {
       return ( 
         <div className="pantalla-dosificador"> 
           <div className="header-dosificador no-print"> 
-            <div style={{display:'flex', gap:10}}><h2>Planeación</h2><select value={semanaPlan} onChange={e=>setSemanaPlan(Number(e.target.value))}>{SEMANAS_CLASE.map(s=><option key={s.id} value={s.id}>Sem {s.id} ({obtenerFechasSemana(s.id)})</option>)}</select></div> 
+            <div style={{display:'flex', gap:10, alignItems:'center'}}><h2>Planeación</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #0984E3', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select><select value={semanaPlan} onChange={e=>setSemanaPlan(Number(e.target.value))}>{SEMANAS_CLASE.map(s=><option key={s.id} value={s.id}>Sem {s.id} ({obtenerFechasSemana(s.id)})</option>)}</select></div> 
             <div>
               {hasDudaEpistemica && (
                 <button 
@@ -1059,7 +1172,22 @@ function App() {
             </div> 
           </div> 
           
-          <div className={`hoja-planeacion ${hasDudaEpistemica ? 'alert-duda-epistemica' : ''}`} style={{opacity: isVisto ? 0.8 : 1, position: 'relative'}}> 
+          <div className={`hoja-planeacion ${hasDudaEpistemica ? 'alert-duda-epistemica' : ''}`} style={{opacity: isVisto ? 0.8 : 1, position: 'relative'}}>
+            {/* Encabezado Oficial SEP solo visible al imprimir */}
+            <div className="print-header-oficial" style={{display: 'none'}}>
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #004aad', paddingBottom: '10px', marginBottom: '15px'}}>
+                <div>
+                  <h2 style={{margin: 0, fontSize: '13pt', color: '#004aad', textTransform: 'uppercase', fontWeight: 'bold'}}>SECRETARÍA DE EDUCACIÓN PÚBLICA</h2>
+                  <h3 style={{margin: '3px 0 0 0', fontSize: '11pt', color: '#333', fontWeight: 'bold'}}>PLANIFICACIÓN DIDÁCTICA SEMANAL - NUEVA ESCUELA MEXICANA (NEM)</h3>
+                </div>
+                <div style={{textAlign: 'right', fontSize: '9pt', color: '#333', lineHeight: '1.4'}}>
+                  <div><b>Escuela:</b> {configCiclo.nombreEscuela || 'ESCUELA PRIMARIA'}</div>
+                  <div><b>CCT:</b> {configCiclo.cct || 'S/N'} | <b>Ciclo Escolar:</b> 2025-2026</div>
+                  <div><b>Docente:</b> {configCiclo.nombreDocente || 'DOCENTE TITULAR'}</div>
+                  <div><b>Grado:</b> {grado}º Primaria | <b>Semana:</b> Sem {semanaPlan} ({obtenerFechasSemana(semanaPlan)})</div>
+                </div>
+              </div>
+            </div> 
             {hasDudaEpistemica && (
               <div className="elara-duda-alert-bar" onClick={() => setMostrarDudaModal(true)}>
                 <div className="alert-bar-glow"></div>
@@ -1080,17 +1208,70 @@ function App() {
               {['lunes','martes','miercoles','jueves','viernes'].map(d=>(
                 <div key={d} className="dia-plan">
                   <div className="titulo-dia">{d.toUpperCase()}</div>
-                  <textarea placeholder="Inicio" value={planData[`${d}_inicio`] || ''} onChange={e=>setPlanData({...planData,[`${d}_inicio`]:e.target.value})} />
-                  <textarea placeholder="Desarrollo" style={{height:100}} value={planData[`${d}_desarrollo`] || ''} onChange={e=>setPlanData({...planData,[`${d}_desarrollo`]:e.target.value})} />
-                  <textarea placeholder="Cierre" value={planData[`${d}_cierre`] || ''} onChange={e=>setPlanData({...planData,[`${d}_cierre`]:e.target.value})} />
+                  
+                  {/* Vista en Pantalla (Campos editables) */}
+                  <div className="no-print" style={{display:'flex', flexDirection:'column', gap:5}}>
+                    <textarea placeholder="Inicio" style={{minHeight:70, width:'100%', padding:5}} value={planData[`${d}_inicio`] || ''} onChange={e=>setPlanData({...planData,[`${d}_inicio`]:e.target.value})} />
+                    <textarea placeholder="Desarrollo" style={{minHeight:140, width:'100%', padding:5}} value={planData[`${d}_desarrollo`] || ''} onChange={e=>setPlanData({...planData,[`${d}_desarrollo`]:e.target.value})} />
+                    <textarea placeholder="Cierre" style={{minHeight:70, width:'100%', padding:5}} value={planData[`${d}_cierre`] || ''} onChange={e=>setPlanData({...planData,[`${d}_cierre`]:e.target.value})} />
+                  </div>
+
+                  {/* Vista en Impresión (Texto plano expandido sin scrollbars ni flechas) */}
+                  <div className="only-print-text">
+                    {planData[`${d}_inicio`] && (
+                      <div style={{marginBottom: 8}}>
+                        <b style={{fontSize:'8.5pt', color:'#2c3e50', textTransform:'uppercase'}}>Inicio:</b>
+                        <div style={{fontSize:'9.5pt', whiteSpace:'pre-wrap', wordBreak:'break-word', marginTop:2, textAlign:'justify'}}>{planData[`${d}_inicio`]}</div>
+                      </div>
+                    )}
+                    {planData[`${d}_desarrollo`] && (
+                      <div style={{marginBottom: 8}}>
+                        <b style={{fontSize:'8.5pt', color:'#2c3e50', textTransform:'uppercase'}}>Desarrollo:</b>
+                        <div style={{fontSize:'9.5pt', whiteSpace:'pre-wrap', wordBreak:'break-word', marginTop:2, textAlign:'justify'}}>{planData[`${d}_desarrollo`]}</div>
+                      </div>
+                    )}
+                    {planData[`${d}_cierre`] && (
+                      <div>
+                        <b style={{fontSize:'8.5pt', color:'#2c3e50', textTransform:'uppercase'}}>Cierre:</b>
+                        <div style={{fontSize:'9.5pt', whiteSpace:'pre-wrap', wordBreak:'break-word', marginTop:2, textAlign:'justify'}}>{planData[`${d}_cierre`]}</div>
+                      </div>
+                    )}
+                  </div>
+
                 </div>
               ))}
             </div> 
             
             <div className="footer-plan">
-              <div className="caja-footer"><h4>Recursos</h4><textarea value={planData.recursos || ''} onChange={e=>setPlanData({...planData,recursos:e.target.value})}/></div>
-              <div className="caja-footer"><h4>Evaluación</h4><textarea value={planData.evaluacion || ''} onChange={e=>setPlanData({...planData,evaluacion:e.target.value})}/></div>
-              <div className="caja-footer"><h4>Adecuaciones</h4><textarea value={planData.adecuaciones || ''} onChange={e=>setPlanData({...planData,adecuaciones:e.target.value})}/></div>
+              <div className="caja-footer">
+                <h4>Recursos</h4>
+                <textarea className="no-print" value={planData.recursos || ''} onChange={e=>setPlanData({...planData,recursos:e.target.value})}/>
+                <div className="only-print-text" style={{fontSize:'9.5pt', whiteSpace:'pre-wrap', textAlign:'justify'}}>{planData.recursos || 'Sin especificación.'}</div>
+              </div>
+              <div className="caja-footer">
+                <h4>Evaluación</h4>
+                <textarea className="no-print" value={planData.evaluacion || ''} onChange={e=>setPlanData({...planData,evaluacion:e.target.value})}/>
+                <div className="only-print-text" style={{fontSize:'9.5pt', whiteSpace:'pre-wrap', textAlign:'justify'}}>{planData.evaluacion || 'Sin especificación.'}</div>
+              </div>
+              <div className="caja-footer">
+                <h4>Adecuaciones</h4>
+                <textarea className="no-print" value={planData.adecuaciones || ''} onChange={e=>setPlanData({...planData,adecuaciones:e.target.value})}/>
+                <div className="only-print-text" style={{fontSize:'9.5pt', whiteSpace:'pre-wrap', textAlign:'justify'}}>{planData.adecuaciones || 'Sin especificación.'}</div>
+              </div>
+            </div>
+
+            {/* Área de Firmas Oficiales solo visible al imprimir */}
+            <div className="print-signatures-area" style={{display: 'none', marginTop: '40px', paddingTop: '20px', pageBreakInside: 'avoid'}}>
+              <div style={{display: 'flex', justifyContent: 'space-around', textAlign: 'center'}}>
+                <div style={{width: '240px', borderTop: '1px solid black', paddingTop: '5px'}}>
+                  <div style={{fontWeight: 'bold', fontSize: '10pt', textTransform: 'uppercase'}}>{configCiclo.nombreDocente || 'DOCENTE TITULAR'}</div>
+                  <div style={{fontSize: '8.5pt', color: '#555'}}>Docente de Grupo</div>
+                </div>
+                <div style={{width: '240px', borderTop: '1px solid black', paddingTop: '5px'}}>
+                  <div style={{fontWeight: 'bold', fontSize: '10pt', textTransform: 'uppercase'}}>VO. BO. DIRECCIÓN ESCOLAR</div>
+                  <div style={{fontSize: '8.5pt', color: '#555'}}>Director(a) de la Escuela</div>
+                </div>
+              </div>
             </div> 
           </div> 
         </div> 
@@ -1100,7 +1281,7 @@ function App() {
     if(vista === 'GRUPO') {
       return (
         <div className="pantalla-dosificador">
-          <div className="header-dosificador"><h2>👥 Mi Grupo ({grupoActual?.grado}º{grupoActual?.seccion} - {grupoActual?.nombre_disciplina})</h2><button className="btn-volver" onClick={()=>setVista('MENU')}>Volver</button></div>
+          <div className="header-dosificador"><h2>👥 Mi Grupo ({grado}º Primaria)</h2><button className="btn-volver" onClick={()=>setVista('MENU')}>Volver</button></div>
           <div className="config-grid">
             <div className="columna-gestion"><h3>📋 Pegar Lista</h3><textarea value={textoPegado} onChange={e=>setTextoPegado(e.target.value)} style={{width:'95%', height:200}}/><button className="btn-guardar" onClick={procesarListaAlumnos}>{procesando?'...':'Agregar'}</button></div>
             <div className="columna-gestion"><h3>🎓 Alumnos</h3><ul>{alumnos.map(a=><li key={a.id}>{a.nombre} <button onClick={()=>borrarAlumno(a.id)}>🗑️</button></li>)}</ul></div>

@@ -18,5 +18,10 @@
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true
-  }
+  },
+  "extraResources": [
+    "nem_primaria.db",
+    "nem_universal.db",
+    "nem_elara_integration.db"
+  ]
 }
