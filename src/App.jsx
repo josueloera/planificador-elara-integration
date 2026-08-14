@@ -826,16 +826,35 @@ function App() {
             <div className="menu-header-glow"></div>
             <h1 className="titulo-principal">PLANIFICADOR DOCENTE</h1>
             <p className="menu-subtitle">Ciclo Escolar 2026 - 2027 (INTEGRACIÓN ELARA)</p>
-            {licenciaInfo && licenciaInfo.isTrialValid && !licenciaInfo.isActivated && (
+            {licenciaInfo && (
               <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px', marginTop: '10px'}}>
-                <div style={{background: '#f39c12', color: 'white', padding: '5px 15px', borderRadius: '15px', fontSize: '0.9rem', fontWeight: 'bold'}}>
-                  Prueba Gratuita: {licenciaInfo.trialDaysRemaining} días restantes
-                </div>
-                <button 
-                  onClick={() => setVista('LICENCIA')}
-                  style={{background: '#27ae60', color: 'white', padding: '5px 15px', borderRadius: '15px', border: 'none', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold', boxShadow: '0 2px 5px rgba(0,0,0,0.2)'}}>
-                  🔑 Adquirir Licencia
-                </button>
+                {licenciaInfo.isActivated ? (
+                  <div style={{background: '#27ae60', color: 'white', padding: '5px 15px', borderRadius: '15px', fontSize: '0.9rem', fontWeight: 'bold'}}>
+                    ✅ Licencia Permanente Activada
+                  </div>
+                ) : licenciaInfo.isTrialValid ? (
+                  <>
+                    <div style={{background: '#f39c12', color: 'white', padding: '5px 15px', borderRadius: '15px', fontSize: '0.9rem', fontWeight: 'bold'}}>
+                      Prueba Gratuita: {licenciaInfo.trialDaysRemaining} días restantes
+                    </div>
+                    <button 
+                      onClick={() => setVista('LICENCIA')}
+                      style={{background: '#27ae60', color: 'white', padding: '5px 15px', borderRadius: '15px', border: 'none', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold', boxShadow: '0 2px 5px rgba(0,0,0,0.2)'}}>
+                      🔑 Adquirir Licencia
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{background: '#e74c3c', color: 'white', padding: '5px 15px', borderRadius: '15px', fontSize: '0.9rem', fontWeight: 'bold'}}>
+                      ⚠️ Licencia Expirada
+                    </div>
+                    <button 
+                      onClick={() => setVista('LICENCIA')}
+                      style={{background: '#27ae60', color: 'white', padding: '5px 15px', borderRadius: '15px', border: 'none', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold', boxShadow: '0 2px 5px rgba(0,0,0,0.2)'}}>
+                      🔑 Activar Licencia
+                    </button>
+                  </>
+                )}
               </div>
             )}
 
