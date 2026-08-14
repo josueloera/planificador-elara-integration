@@ -21,8 +21,8 @@ export const getLocalResponse = (message) => {
     return "La evaluación formativa de la NEM está integrada en tus grupos. Puedo ayudarte a diseñar criterios y ponderaciones para calcular los promedios diarios.";
   }
 
-  if (lowerMsg.includes('api') || lowerMsg.includes('chatgpt') || lowerMsg.includes('key')) {
-    return "Para habilitar mi generación autónoma e inferencia avanzada de OpenAI, por favor introduce tu API Key en la pantalla de Licencia o Configuración.";
+  if (lowerMsg.includes('api') || lowerMsg.includes('gemini') || lowerMsg.includes('key')) {
+    return "Para habilitar mi generación autónoma con Gemini, configura tu API Key en el archivo .env del proyecto (VITE_GEMINI_API_KEY o GEMINI_API_KEY).";
   }
 
   return "Entendido. Procesando instrucción didáctica. Como tu Asistente Pedagógica privada, puedo redactar planeaciones semanales, organizar materiales didácticos y gestionar la evaluación formativa de tus alumnos.";
