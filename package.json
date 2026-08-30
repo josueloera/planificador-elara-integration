@@ -53,6 +53,7 @@
           ]
         }
       ],
+      "identity": null,
       "icon": "public/icon.png",
       "category": "public.app-category.education"
     }
