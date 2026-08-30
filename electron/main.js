@@ -645,20 +645,32 @@ ipcMain.handle('delete-trabajo-qr', async (e, id) => new Promise(r => {
 }));
 
 ipcMain.handle('importar-promedios-qr-a-criterio', async (e, criterio_id, fecha, campo, grupo_id) => new Promise(resolve => {
-  if (!criterio_id) return resolve(false);
+  if (!criterio_id) return resolve(0);
   db.all("SELECT alumno_id, AVG(valor) as promedio FROM trabajos_qr WHERE fecha = ? AND (grupo_id = ? OR grupo_id IS NULL) AND (campo = ? OR ? = 'TODOS') GROUP BY alumno_id",
     [fecha, grupo_id || null, campo || 'TODOS', campo || 'TODOS'], (err, rows) => {
       if (err || !rows || rows.length === 0) return resolve(0);
-      db.serialize(() => {
-        const stmt = db.prepare("INSERT OR REPLACE INTO notas (alumno_id, criterio_id, fecha, valor) VALUES (?, ?, ?, ?)");
-        let count = 0;
-        rows.forEach(r => {
-          if (r.promedio !== null && !isNaN(r.promedio)) {
-            stmt.run(r.alumno_id, criterio_id, fecha, Number(r.promedio.toFixed(1)));
-            count++;
-          }
-        });
-        stmt.finalize(() => resolve(count));
+      let count = 0;
+      let pending = rows.length;
+      rows.forEach(r => {
+        if (r.promedio !== null && !isNaN(r.promedio)) {
+          const val = Number(r.promedio.toFixed(1));
+          db.run("UPDATE notas SET valor = ? WHERE alumno_id = ? AND criterio_id = ? AND fecha = ?", [val, r.alumno_id, criterio_id, fecha], function() {
+            if (this.changes === 0) {
+              db.run("INSERT INTO notas (alumno_id, criterio_id, fecha, valor) VALUES (?, ?, ?, ?)", [r.alumno_id, criterio_id, fecha, val], () => {
+                count++;
+                pending--;
+                if (pending === 0) resolve(count);
+              });
+            } else {
+              count++;
+              pending--;
+              if (pending === 0) resolve(count);
+            }
+          });
+        } else {
+          pending--;
+          if (pending === 0) resolve(count);
+        }
       });
     });
 }));

@@ -260,6 +260,38 @@ export default function ControlQR({ grupoActual, alumnos = [], criterios = [], f
     return (suma / trabajosAlumno.length).toFixed(1);
   };
 
+  // Importar promedios diarios de trabajos al criterio seleccionado en la evaluación principal
+  const handleImportarPromedios = async () => {
+    if (!criterioSeleccionado) {
+      if (showToast) showToast('⚠️ Selecciona un criterio de evaluación primero.');
+      return;
+    }
+    if (trabajosDia.length === 0) {
+      if (showToast) showToast('⚠️ No hay trabajos registrados el día de hoy para importar.');
+      return;
+    }
+    if (ipcRenderer) {
+      try {
+        const count = await ipcRenderer.invoke(
+          'importar-promedios-qr-a-criterio',
+          Number(criterioSeleccionado),
+          fechaEval,
+          'TODOS',
+          grupoActual?.id
+        );
+        if (count > 0) {
+          if (showToast) showToast(`✅ ¡${count} promedios del día importados al Evaluador!`);
+          if (typeof onGradeSaved === 'function') onGradeSaved();
+        } else {
+          if (showToast) showToast('⚠️ No se pudieron generar promedios para importar.');
+        }
+      } catch (err) {
+        console.error(err);
+        if (showToast) showToast('❌ Error al importar promedios al evaluador.');
+      }
+    }
+  };
+
   const wsUrl = `ws://${localIp}:${wsPort}`;
 
   return (
@@ -715,6 +747,56 @@ export default function ControlQR({ grupoActual, alumnos = [], criterios = [], f
                 </table>
               </div>
             </div>
+          </div>
+
+          {/* BARRA DE IMPORTACIÓN AL EVALUADOR PRINCIPAL */}
+          <div style={{ marginTop: '20px', padding: '16px', backgroundColor: '#ebf8ff', border: '2px solid #3182ce', borderRadius: '10px' }}>
+            <h4 style={{ margin: '0 0 8px 0', color: '#2b6cb0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              📥 Importar Promedios del Día al Evaluador Principal
+            </h4>
+            <p style={{ margin: '0 0 14px 0', fontSize: '13px', color: '#4a5568' }}>
+              Los promedios calculados arriba se pueden transferir directamente al Criterio de evaluación seleccionado para la fecha de hoy (<strong>{fechaEval}</strong>).
+            </p>
+            
+            {(!criterios || criterios.length === 0) ? (
+              <div style={{ padding: '10px 14px', backgroundColor: '#fffaf0', border: '1px solid #feebc8', borderRadius: '6px', color: '#c05621', fontSize: '13px' }}>
+                ⚠️ No hay criterios de evaluación configurados en este grupo. Ve a la pestaña "Evaluación" en el menú principal para agregar o configurar tus criterios.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#2d3748' }}>Criterio Destino:</label>
+                <select
+                  value={criterioSeleccionado || ''}
+                  onChange={(e) => setCriterioSeleccionado(e.target.value)}
+                  style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '14px', minWidth: '240px', fontWeight: '500' }}
+                >
+                  <option value="">-- Selecciona Criterio --</option>
+                  {criterios.map(c => (
+                    <option key={c.id || c.frontId} value={c.id}>
+                      {c.nombre} ({c.porcentaje}%)
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleImportarPromedios}
+                  disabled={!criterioSeleccionado || trabajosDia.length === 0}
+                  style={{
+                    padding: '9px 22px',
+                    backgroundColor: criterioSeleccionado && trabajosDia.length > 0 ? '#3182ce' : '#cbd5e0',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontWeight: 'bold',
+                    fontSize: '14px',
+                    cursor: criterioSeleccionado && trabajosDia.length > 0 ? 'pointer' : 'not-allowed',
+                    boxShadow: criterioSeleccionado && trabajosDia.length > 0 ? '0 2px 4px rgba(49,130,206,0.4)' : 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  📥 Transferir Promedios al Evaluador
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
