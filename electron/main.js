@@ -1,7 +1,43 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const sqlite3 = require('sqlite3').verbose();
+const { WebSocketServer } = require('ws');
+
+function getLocalIp() {
+  const interfaces = os.networkInterfaces();
+  let fallbackIp = '127.0.0.1';
+  
+  // Priorizar adaptadores Wi-Fi y Ethernet reales
+  for (const name of Object.keys(interfaces)) {
+    if (/virtual|vbox|veth|wsl|docker|hyper-v|loopback/i.test(name)) continue;
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        if (/wi-fi|wifi|ethernet|lan|local/i.test(name)) {
+          return iface.address;
+        }
+        fallbackIp = iface.address;
+      }
+    }
+  }
+  return fallbackIp;
+}
+
+function getLocalIps() {
+  const interfaces = os.networkInterfaces();
+  const ips = [];
+  for (const name of Object.keys(interfaces)) {
+    if (/virtual|vbox|veth|wsl|docker|hyper-v|loopback/i.test(name)) continue;
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        ips.push({ name, ip: iface.address });
+      }
+    }
+  }
+  if (ips.length === 0) ips.push({ name: 'Localhost', ip: '127.0.0.1' });
+  return ips;
+}
 
 // Forzar ruta de userData aislada para evitar conflictos de caché y acceso denegado
 const customUserDataPath = path.join(app.getPath('appData'), 'planificador-elara-integration-userdata');
@@ -68,7 +104,10 @@ db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS alumnos (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, grupo_id INTEGER)`);
   db.run(`CREATE TABLE IF NOT EXISTS criterios (id INTEGER PRIMARY KEY AUTOINCREMENT, campo TEXT, nombre TEXT, porcentaje REAL, grupo_id INTEGER)`);
   db.run(`CREATE TABLE IF NOT EXISTS notas (id INTEGER PRIMARY KEY AUTOINCREMENT, alumno_id INTEGER, criterio_id INTEGER, fecha TEXT, valor REAL)`);
-  db.run(`CREATE TABLE IF NOT EXISTS perfil_alumno (alumno_id INTEGER PRIMARY KEY, curp TEXT, f_nacimiento TEXT, edad TEXT, peso TEXT, estatura TEXT, tipo_sangre TEXT, alergias TEXT, servicio_medico TEXT, direccion TEXT, nombre_mama TEXT, tel_mama TEXT, nombre_papa TEXT, tel_papa TEXT, otros_datos TEXT)`);
+  db.run(`CREATE TABLE IF NOT EXISTS asistencia (id INTEGER PRIMARY KEY AUTOINCREMENT, alumno_id INTEGER, fecha TEXT, estado TEXT DEFAULT 'PRESENTE', grupo_id INTEGER, UNIQUE(alumno_id, fecha))`);
+  db.run(`CREATE TABLE IF NOT EXISTS perfil_alumno (alumno_id INTEGER PRIMARY KEY, curp TEXT, f_nacimiento TEXT, edad TEXT, peso TEXT, estatura TEXT, tipo_sangre TEXT, alergias TEXT, servicio_medico TEXT, direccion TEXT, nombre_mama TEXT, tel_mama TEXT, nombre_papa TEXT, tel_papa TEXT, otros_datos TEXT, foto_url TEXT)`);
+  db.run(`ALTER TABLE perfil_alumno ADD COLUMN foto_url TEXT`, () => {});
+  db.run(`CREATE TABLE IF NOT EXISTS trabajos_qr (id INTEGER PRIMARY KEY AUTOINCREMENT, alumno_id INTEGER, campo TEXT, nombre_trabajo TEXT, fecha TEXT, valor REAL, grupo_id INTEGER)`);
   db.run(`CREATE TABLE IF NOT EXISTS incidencias (id INTEGER PRIMARY KEY AUTOINCREMENT, alumno_id INTEGER, fecha TEXT, situacion TEXT, medidas TEXT, grupo_id INTEGER)`);
   db.run(`CREATE TABLE IF NOT EXISTS proyectos (id INTEGER PRIMARY KEY AUTOINCREMENT, grado INTEGER, nombre TEXT, metodologia TEXT, escenario TEXT, temporalidad TEXT, problemática TEXT, pdas_seleccionados TEXT, fases_contenido TEXT, grupo_id INTEGER)`);
   
@@ -170,15 +209,74 @@ function createWindow() {
     width: 1400,
     height: 900,
     title: "Planificador Docente",
-    show: false,
+    show: true,
     backgroundColor: '#ffffff',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
       enableRemoteModule: true,
+      webSecurity: false,
       backgroundThrottling: false // Vital para que no se duerma
     }
   });
+
+  win.maximize();
+  win.show();
+  win.focus();
+
+  // Configurar servidor WebSocket para sincronización con App Móvil
+  let activeWsPort = 3000;
+  function startWsServer(portToTry = 3000) {
+    try {
+      const wss = new WebSocketServer({ port: portToTry, host: '0.0.0.0' });
+
+      wss.on('listening', () => {
+        activeWsPort = portToTry;
+        console.log(`🚀 Servidor QR Móvil escuchando en 0.0.0.0:${activeWsPort}`);
+      });
+
+      wss.on('connection', function connection(ws) {
+        console.log('📱 App Móvil conectada via WebSocket');
+        ws.isAlive = true;
+        ws.on('pong', () => { ws.isAlive = true; });
+
+        ws.on('message', function message(data) {
+          console.log('Recibido escaneo desde celular: %s', data);
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('qr-scanned', data.toString());
+          }
+        });
+
+        ws.on('error', (err) => {
+          console.error("Error en socket individual:", err.message);
+        });
+      });
+
+      wss.on('error', (err) => {
+        console.error(`Error en servidor WebSocket en puerto ${portToTry}:`, err.message);
+        if (err.code === 'EADDRINUSE' && portToTry < 3005) {
+          console.log(`Puerto ${portToTry} ocupado, intentando puerto ${portToTry + 1}...`);
+          setTimeout(() => startWsServer(portToTry + 1), 500);
+        }
+      });
+
+      // Heartbeat cada 15 segundos para mantener la conexión activa sin caídas
+      const interval = setInterval(() => {
+        wss.clients.forEach((ws) => {
+          if (ws.isAlive === false) return ws.terminate();
+          ws.isAlive = false;
+          ws.ping();
+        });
+      }, 15000);
+
+      wss.on('close', () => clearInterval(interval));
+
+    } catch (err) {
+      console.error("Excepción iniciando servidor WebSocket QR:", err);
+    }
+  }
+
+  startWsServer(3000);
 
   // Permitir acceso al micrófono para reconocimiento de voz (SpeechRecognition/getUserMedia)
   win.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
@@ -193,22 +291,21 @@ function createWindow() {
     return permission === 'media';
   });
 
+  const htmlDistPath = path.join(__dirname, '..', 'dist', 'index.html');
   if (app.isPackaged) {
-    win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    win.loadFile(htmlDistPath);
   } else {
+    // Abrir DevTools en desarrollo para facilitar diagnóstico
+    win.webContents.openDevTools();
     win.loadURL('http://localhost:5173').catch(() => {
-      win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+      if (fs.existsSync(htmlDistPath)) {
+        win.loadFile(htmlDistPath);
+      }
     });
   }
 
   win.webContents.on('console-message', (event, level, message, line, sourceId) => {
     console.log(`[RENDERER CONSOLE] ${message} (at ${sourceId}:${line})`);
-  });
-
-  win.once('ready-to-show', () => {
-    win.maximize();
-    win.show();
-    win.focus();
   });
 }
 
@@ -489,3 +586,79 @@ ipcMain.handle('clear-evaluaciones-rango', async (e, f1, f2) => new Promise(r =>
 ipcMain.handle('get-config', async () => new Promise(r => db.all("SELECT * FROM configuracion", [], (e, rows) => { const map = {}; (rows || []).forEach(x => map[x.llave] = x.valor); r(map); })));
 ipcMain.handle('save-config', async (e, llave, valor) => new Promise(r => db.run("INSERT OR REPLACE INTO configuracion (llave, valor) VALUES (?, ?)", [llave, valor], () => r(true))));
 ipcMain.handle('seed-database', async () => true);
+
+// -- CONTROL Y ASISTENCIA QR --
+ipcMain.handle('get-local-ip', async () => getLocalIp());
+ipcMain.handle('get-local-ips', async () => getLocalIps());
+ipcMain.handle('get-ws-info', async () => ({ ip: getLocalIp(), port: activeWsPort, ips: getLocalIps() }));
+ipcMain.handle('get-asistencia-fecha', async (e, fecha, grupo_id) => new Promise(r => {
+  db.all("SELECT * FROM asistencia WHERE fecha = ? AND (grupo_id = ? OR grupo_id IS NULL)", [fecha, grupo_id || null], (err, rows) => r(rows || []));
+}));
+ipcMain.handle('save-asistencia-qr', async (e, alumno_id, fecha, estado, grupo_id) => new Promise((resolve, reject) => {
+  db.run("INSERT OR REPLACE INTO asistencia (alumno_id, fecha, estado, grupo_id) VALUES (?, ?, ?, ?)",
+    [alumno_id, fecha, estado || 'PRESENTE', grupo_id || null], function(err) {
+      if (err) reject(err);
+      else resolve(true);
+    });
+}));
+ipcMain.handle('save-asistencia-bulk', async (e, asistencias, fecha, grupo_id) => new Promise(resolve => {
+  db.serialize(() => {
+    const stmt = db.prepare("INSERT OR REPLACE INTO asistencia (alumno_id, fecha, estado, grupo_id) VALUES (?, ?, ?, ?)");
+    (asistencias || []).forEach(a => {
+      stmt.run(a.alumno_id, fecha, a.estado || 'PRESENTE', grupo_id || null);
+    });
+    stmt.finalize(() => resolve(true));
+  });
+}));
+ipcMain.handle('save-nota-qr', async (e, alumno_id, criterio_id, fecha, valor) => new Promise((resolve, reject) => {
+  if (!criterio_id) return resolve(false);
+  db.run("INSERT OR REPLACE INTO notas (alumno_id, criterio_id, fecha, valor) VALUES (?, ?, ?, ?)",
+    [alumno_id, criterio_id, fecha, valor], function(err) {
+      if (err) reject(err);
+      else resolve(true);
+    });
+}));
+
+ipcMain.handle('get-todos-perfiles', async () => new Promise(r => {
+  db.all("SELECT * FROM perfil_alumno", [], (err, rows) => {
+    const map = {};
+    (rows || []).forEach(row => { map[row.alumno_id] = row; });
+    r(map);
+  });
+}));
+
+ipcMain.handle('save-trabajo-qr', async (e, alumno_id, campo, nombre_trabajo, fecha, valor, grupo_id) => new Promise((resolve, reject) => {
+  db.run("INSERT INTO trabajos_qr (alumno_id, campo, nombre_trabajo, fecha, valor, grupo_id) VALUES (?, ?, ?, ?, ?, ?)",
+    [alumno_id, campo || 'GENERAL', nombre_trabajo || 'Trabajo', fecha, valor, grupo_id || null], function(err) {
+      if (err) reject(err);
+      else resolve({ id: this.lastID, alumno_id, campo, nombre_trabajo, fecha, valor, grupo_id });
+    });
+}));
+
+ipcMain.handle('get-trabajos-qr', async (e, fecha, grupo_id) => new Promise(r => {
+  db.all("SELECT * FROM trabajos_qr WHERE fecha = ? AND (grupo_id = ? OR grupo_id IS NULL) ORDER BY id DESC",
+    [fecha, grupo_id || null], (err, rows) => r(rows || []));
+}));
+
+ipcMain.handle('delete-trabajo-qr', async (e, id) => new Promise(r => {
+  db.run("DELETE FROM trabajos_qr WHERE id = ?", [id], () => r(true));
+}));
+
+ipcMain.handle('importar-promedios-qr-a-criterio', async (e, criterio_id, fecha, campo, grupo_id) => new Promise(resolve => {
+  if (!criterio_id) return resolve(false);
+  db.all("SELECT alumno_id, AVG(valor) as promedio FROM trabajos_qr WHERE fecha = ? AND (grupo_id = ? OR grupo_id IS NULL) AND (campo = ? OR ? = 'TODOS') GROUP BY alumno_id",
+    [fecha, grupo_id || null, campo || 'TODOS', campo || 'TODOS'], (err, rows) => {
+      if (err || !rows || rows.length === 0) return resolve(0);
+      db.serialize(() => {
+        const stmt = db.prepare("INSERT OR REPLACE INTO notas (alumno_id, criterio_id, fecha, valor) VALUES (?, ?, ?, ?)");
+        let count = 0;
+        rows.forEach(r => {
+          if (r.promedio !== null && !isNaN(r.promedio)) {
+            stmt.run(r.alumno_id, criterio_id, fecha, Number(r.promedio.toFixed(1)));
+            count++;
+          }
+        });
+        stmt.finalize(() => resolve(count));
+      });
+    });
+}));

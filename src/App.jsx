@@ -7,6 +7,7 @@ import GeneradorMaterial from './components/GeneradorMaterial';
 import Licencia from './components/Licencia';
 import ConfiguracionCiclo from './components/ConfiguracionCiclo';
 import DashboardGrupos from './components/DashboardGrupos';
+import ControlQR from './components/ControlQR';
 
 const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
 
@@ -103,6 +104,8 @@ function App() {
   const [notas, setNotas] = useState({}); 
   const [fechaEval, setFechaEval] = useState(new Date().toISOString().split('T')[0]);
   const [modoConfig, setModoConfig] = useState(false);
+  const [showModalImportarQR, setShowModalImportarQR] = useState(false);
+  const [criterioImportarTarget, setCriterioImportarTarget] = useState('');
   
   // OTROS
   const [textoPegado, setTextoPegado] = useState("");
@@ -217,8 +220,12 @@ function App() {
   useEffect(() => {
     if (ipcRenderer) {
       ipcRenderer.invoke('get-license-status').then(res => {
-        setLicenciaInfo(res);
-        window.openaiApiKey = res.openaiApiKey || '';
+        setLicenciaInfo(res || { isActivated: true });
+        window.openaiApiKey = (res && res.openaiApiKey) || '';
+        setCargandoLicencia(false);
+      }).catch(err => {
+        console.error("Error al obtener licencia:", err);
+        setLicenciaInfo({ isActivated: true });
         setCargandoLicencia(false);
       });
       ipcRenderer.invoke('get-config').then(cfg => {
@@ -817,6 +824,7 @@ function App() {
         { id: 'PROYECTOS', icon: '🚀', label: 'Proyectos', desc: 'Didácticos NEM', color: '#00CEC9', action: ()=>setVista('PROYECTOS') },
         { id: 'BITACORA', icon: '📂', label: 'Bitácora', desc: 'Fichas e incidencias', color: '#636E72', action: ()=>{setVista('BITACORA'); setAlumnoBitacora(null);} },
         { id: 'MATERIALES', icon: '🧩', label: 'Materiales', desc: 'Exámenes y juegos', color: '#FF9F43', action: ()=>setVista('MATERIALES') },
+        { id: 'ASISTENCIA_QR', icon: '📱', label: 'Asistencia QR', desc: 'Escáner y Móvil', color: '#00CEC9', action: ()=>setVista('ASISTENCIA_QR') },
         { id: 'CONFIG', icon: '⚙️', label: 'Ajustes Ciclo', desc: 'Fechas y SEP', color: '#2C3E50', action: ()=>setVista('CONFIG') },
       ];
 
@@ -964,9 +972,84 @@ function App() {
               </div>
           )}
           <div className="header-dosificador">
-              <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>📝 Evaluación ({grado}º Primaria)</h2><input type="date" value={fechaEval} onChange={e=>{setFechaEval(e.target.value); cargarEval(campoActual);}} style={{fontSize:'1.1rem', padding:'5px', border:'2px solid #004aad', borderRadius:5}} /></div>
-              <div><button className="btn-volver" style={{marginRight:10, background: modoConfig ? '#7f8c8d' : '#e67e22'}} onClick={()=>setModoConfig(!modoConfig)}>{modoConfig ? '↩ Volver' : '⚙️ Configurar Criterios'}</button><button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button></div>
+              <div style={{display:'flex', gap:15, alignItems:'center'}}>
+                <h2>📝 Evaluación ({grado}º Primaria)</h2>
+                <input type="date" value={fechaEval} onChange={e=>{setFechaEval(e.target.value); cargarEval(campoActual);}} style={{fontSize:'1.1rem', padding:'5px', border:'2px solid #004aad', borderRadius:5}} />
+              </div>
+              <div style={{display:'flex', gap:10}}>
+                <button
+                  className="btn-volver"
+                  style={{background: '#27ae60', color: 'white'}}
+                  onClick={() => {
+                    if (!criterios || criterios.length === 0) {
+                      showToast("⚠️ Primero debes configurar criterios para este Campo Formativo.");
+                      return;
+                    }
+                    setCriterioImportarTarget(criterios[0]?.id || '');
+                    setShowModalImportarQR(true);
+                  }}
+                >
+                  📥 Importar desde Control QR
+                </button>
+                <button className="btn-volver" style={{background: modoConfig ? '#7f8c8d' : '#e67e22'}} onClick={()=>setModoConfig(!modoConfig)}>
+                  {modoConfig ? '↩ Volver' : '⚙️ Configurar Criterios'}
+                </button>
+                <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button>
+              </div>
           </div>
+
+          {/* MODAL IMPORTAR DESDE CONTROL QR */}
+          {showModalImportarQR && (
+            <div style={{position:'fixed', top:0, left:0, width:'100vw', height:'100vh', backgroundColor:'rgba(0,0,0,0.5)', zIndex:10000, display:'flex', justifyContent:'center', alignItems:'center'}}>
+              <div style={{backgroundColor:'white', borderRadius:'12px', padding:'24px', width:'450px', boxShadow:'0 8px 24px rgba(0,0,0,0.2)'}}>
+                <h3 style={{marginTop:0, color:'#004aad'}}>📥 Importar Promedios QR a Evaluador</h3>
+                <p style={{fontSize:'13px', color:'#555'}}>
+                  Esta acción calculará el promedio diario de los trabajos escaneados con QR el <strong>{fechaEval}</strong> e importará la calificación resultante directamente en el criterio seleccionado.
+                </p>
+                <div style={{marginBottom:'15px'}}>
+                  <label style={{display:'block', fontWeight:'bold', marginBottom:'6px', fontSize:'13px'}}>Selecciona Criterio Destino ({campoActual}):</label>
+                  <select
+                    value={criterioImportarTarget}
+                    onChange={(e) => setCriterioImportarTarget(e.target.value)}
+                    style={{width:'100%', padding:'10px', borderRadius:'6px', border:'1px solid #ccc', fontWeight:'bold'}}
+                  >
+                    {criterios.map(c => (
+                      <option key={c.id} value={c.id}>{c.nombre} ({c.porcentaje}%)</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{display:'flex', justifyContent:'flex-end', gap:'10px', marginTop:'20px'}}>
+                  <button
+                    onClick={() => setShowModalImportarQR(false)}
+                    style={{padding:'8px 16px', borderRadius:'6px', border:'1px solid #ccc', background:'#f8f9fa', cursor:'pointer'}}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!ipcRenderer || !criterioImportarTarget) return;
+                      try {
+                        const count = await ipcRenderer.invoke('importar-promedios-qr-a-criterio', criterioImportarTarget, fechaEval, campoActual, grupoActual?.id);
+                        setShowModalImportarQR(false);
+                        cargarEval(campoActual);
+                        if (count > 0) {
+                          showToast(`✅ Promedios QR importados con éxito para ${count} alumnos.`);
+                        } else {
+                          showToast(`⚠️ No hay trabajos QR registrados el ${fechaEval} para este Campo.`);
+                        }
+                      } catch (err) {
+                        console.error(err);
+                        showToast(`❌ Error al importar promedios: ${err.message}`);
+                      }
+                    }}
+                    style={{padding:'8px 20px', borderRadius:'6px', border:'none', background:'#27ae60', color:'white', fontWeight:'bold', cursor:'pointer'}}
+                  >
+                    📥 Confirmar Importación
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* BARRA DE SELECCION DE MATERIAS / CAMPOS FORMATIVOS */}
           <div className="no-print" style={{display:'flex', gap:10, padding:'10px 20px', background:'#f8f9fa', borderBottom:'1px solid #e0e0e0', overflowX:'auto'}}>
@@ -1329,6 +1412,44 @@ function App() {
             </div> 
           </div> 
         </div> 
+      );
+    }
+
+    if (vista === 'ASISTENCIA_QR') {
+      return (
+        <div style={{ backgroundColor: '#f4f6f8', minHeight: '100vh', padding: '10px 20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <button
+              onClick={() => setVista('MENU')}
+              style={{
+                padding: '10px 20px',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: '#2d3748',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              ◀ Volver al Menú Principal
+            </button>
+          </div>
+          <ControlQR
+            grupoActual={grupoActual}
+            alumnos={alumnos}
+            criterios={criterios}
+            fechaEval={fechaEval}
+            ipcRenderer={ipcRenderer}
+            showToast={showToast}
+            onAttendanceUpdated={(aid, fecha, estado) => {
+              // Actualizar datos de asistencia local si es necesario
+            }}
+            onGradeSaved={(aid, cid, val) => {
+              handleSaveNota(aid, cid, val);
+            }}
+          />
+        </div>
       );
     }
 
