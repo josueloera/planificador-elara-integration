@@ -31,6 +31,10 @@
     ],
     "extraResources": [
       {
+        "from": "nem_elara_integration.db",
+        "to": "nem_elara_integration.db"
+      },
+      {
         "from": "nem_primaria.db",
         "to": "nem_primaria.db"
       },

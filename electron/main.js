@@ -43,6 +43,16 @@ function getLocalIps() {
 const customUserDataPath = path.join(app.getPath('appData'), 'planificador-elara-integration-userdata');
 app.setPath('userData', customUserDataPath);
 
+// Asegurar que exista la carpeta userData antes de cualquier operacion de archivo
+const userDataDir = app.getPath('userData');
+if (!fs.existsSync(userDataDir)) {
+  try {
+    fs.mkdirSync(userDataDir, { recursive: true });
+  } catch (e) {
+    console.error("Error creando directorio userData:", e);
+  }
+}
+
 // --- 1. GESTIÓN DE LA BASE DE DATOS ---
 let dbPath;
 const dbName = 'nem_elara_integration.db'; 
@@ -50,15 +60,18 @@ const oldDbName = 'nem_primaria.db';
 
 if (app.isPackaged) {
   // Producción: la DB está en extraResources
-  const rutaResources = path.join(process.resourcesPath, oldDbName);
-  const rutaUserData = path.join(app.getPath('userData'), dbName);
+  const rutaResourcesNew = path.join(process.resourcesPath, dbName);
+  const rutaResourcesOld = path.join(process.resourcesPath, oldDbName);
+  const rutaUserData = path.join(userDataDir, dbName);
   // Copiar la DB a userData si no existe (primera ejecución)
   if (!fs.existsSync(rutaUserData)) {
-    if (fs.existsSync(rutaResources)) {
-      fs.copyFileSync(rutaResources, rutaUserData);
+    if (fs.existsSync(rutaResourcesNew)) {
+      try { fs.copyFileSync(rutaResourcesNew, rutaUserData); } catch (e) { console.error("Error copiando DB:", e); }
+    } else if (fs.existsSync(rutaResourcesOld)) {
+      try { fs.copyFileSync(rutaResourcesOld, rutaUserData); } catch (e) { console.error("Error copiando DB antigua:", e); }
     }
   }
-  dbPath = rutaUserData;
+  dbPath = fs.existsSync(rutaUserData) ? rutaUserData : (fs.existsSync(rutaResourcesNew) ? rutaResourcesNew : rutaResourcesOld);
 } else {
   // Desarrollo
   const rutaRaiz = path.join(__dirname, '..', dbName);
