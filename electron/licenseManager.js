@@ -10,10 +10,22 @@ const LICENSE_FILE = 'license.json';
 
 function getMacAddress() {
     const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
+    const sortedNames = Object.keys(interfaces).sort();
+    
+    // First pass: look for physical network adapters (Wi-Fi, Ethernet, LAN)
+    for (const name of sortedNames) {
+        if (/virtual|vbox|veth|wsl|docker|hyper-v|bluetooth|loopback|npcap|tap|tun|pseudo/i.test(name)) continue;
         for (const iface of interfaces[name]) {
-            // Skip internal and non-mac addresses
-            if (!iface.internal && iface.mac !== '00:00:00:00:00:00') {
+            if (!iface.internal && iface.mac && iface.mac !== '00:00:00:00:00:00') {
+                return iface.mac;
+            }
+        }
+    }
+    
+    // Fallback pass: any non-internal adapter with a valid MAC
+    for (const name of sortedNames) {
+        for (const iface of interfaces[name]) {
+            if (!iface.internal && iface.mac && iface.mac !== '00:00:00:00:00:00') {
                 return iface.mac;
             }
         }
