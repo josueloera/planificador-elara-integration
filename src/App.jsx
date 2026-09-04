@@ -149,7 +149,6 @@ function App() {
   const [mostrarConsola, setMostrarConsola] = useState(false);
   const [consolaLogs, setConsolaLogs] = useState([]);
   const [consolaCompletada, setConsolaCompletada] = useState(false);
-  const [showConfigIAModal, setShowConfigIAModal] = useState(false);
 
   const toggleVisto = (tipo, id) => {
       const isVisto = (vistos[tipo] || []).includes(String(id));
@@ -826,8 +825,7 @@ function App() {
         { id: 'BITACORA', icon: '📂', label: 'Bitácora', desc: 'Fichas e incidencias', color: '#636E72', action: ()=>{setVista('BITACORA'); setAlumnoBitacora(null);} },
         { id: 'MATERIALES', icon: '🧩', label: 'Materiales', desc: 'Exámenes y juegos', color: '#FF9F43', action: ()=>setVista('MATERIALES') },
         { id: 'ASISTENCIA_QR', icon: '📱', label: 'Asistencia QR', desc: 'Escáner y Móvil', color: '#00CEC9', action: ()=>setVista('ASISTENCIA_QR') },
-        { id: 'CONFIG', icon: '⚙️', label: 'Ajustes Ciclo', desc: 'Fechas y SEP', color: '#2C3E50', action: ()=>setVista('CONFIG') },
-        { id: 'CONFIG_IA', icon: '🤖', label: 'Motor de IA', desc: 'Ollama y personal', color: '#6C5CE7', action: ()=>setShowConfigIAModal(true) },
+        { id: 'CONFIG', icon: '⚙️', label: 'Ajustes Ciclo', desc: 'Fechas y SEP', color: '#2C3E50', action: ()=>setVista('CONFIG') }
       ];
 
       return (
