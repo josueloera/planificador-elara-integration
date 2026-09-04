@@ -97,14 +97,11 @@ function generarMaterialLocal(tipoMaterial, tema, grado, cantidadReactivos) {
   return { titulo: tema, preguntas: [] };
 }
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { generarSopaDeLetras } from '../utils/juegosLogic';
 import clg from 'crossword-layout-generator';
-
-// =====================================================================
-// ⚠️ ATENCIÓN: LA LLAVE SE LEE DESDE EL ARCHIVO OCULTO .env O CLIPPY
-// =====================================================================
-const MI_OPENAI_API_KEY = window.openaiApiKey || "";
+import { generateCompletion, getAIConfig } from '../services/aiService';
+import ConfigurarIA from './ConfigurarIA';
 
 const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
   const [tema, setTema] = useState('');
@@ -112,9 +109,47 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
   const [cantidadReactivos, setCantidadReactivos] = useState(5);
   const [generando, setGenerando] = useState(false);
   const [resultado, setResultado] = useState(null);
+  const [errorIA, setErrorIA] = useState('');
+  const [showConfigIA, setShowConfigIA] = useState(false);
+  const [aiConfig, setAiConfig] = useState(getAIConfig());
+
+  useEffect(() => {
+    const handleConfigChange = (e) => {
+      if (e.detail) setAiConfig(e.detail);
+    };
+    window.addEventListener('ai-config-changed', handleConfigChange);
+    return () => window.removeEventListener('ai-config-changed', handleConfigChange);
+  }, []);
 
   // Filtrar PDAs del grado actual (aproximado)
   const pdasSugeridos = pdasDisponibles.slice(0, 10); // Solo mostramos algunos por simplicidad
+
+  const getProviderBadge = () => {
+    if (aiConfig.provider === 'ollama') return `🦙 Ollama (${aiConfig.ollamaModel || 'llama3'})`;
+    if (aiConfig.provider === 'openai') return `🟢 OpenAI (${aiConfig.openaiModel || 'gpt-4o-mini'})`;
+    if (aiConfig.provider === 'gemini') return `🔵 Gemini (${aiConfig.geminiModel || 'gemini-1.5-flash'})`;
+    if (aiConfig.provider === 'custom') return `⚙️ Servidor Propio`;
+    return '🤖 Configurar IA';
+  };
+
+  const aplicarResultado = (tipo, parsed) => {
+    let sopaData = null;
+    let cruciData = null;
+    if (tipo === 'SOPA_LETRAS_VOCABULARIO' && parsed.palabras) {
+      sopaData = generarSopaDeLetras(parsed.palabras, 15);
+    }
+    if (tipo === 'CRUCIGRAMA' && parsed.palabras) {
+      const clgInput = parsed.palabras.map(p => ({ answer: p.palabra.toUpperCase().replace(/[^A-Z]/g,''), clue: p.pista }));
+      cruciData = clg.generateLayout(clgInput);
+    }
+    setResultado({ tipo, data: parsed, sopaData, cruciData });
+  };
+
+  const usarGeneradorLocal = () => {
+    setErrorIA('');
+    const parsedLocal = generarMaterialLocal(tipoMaterial, tema, grado, cantidadReactivos);
+    aplicarResultado(tipoMaterial, parsedLocal);
+  };
 
   const generarConIA = async () => {
     if (!tema.trim()) {
@@ -124,96 +159,43 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
     
     setGenerando(true);
     setResultado(null);
+    setErrorIA('');
 
-    let systemPrompt = "Eres un asistente experto en creación de material didáctico para la Nueva Escuela Mexicana.";
+    let systemPrompt = "Eres un asistente experto en creación de material didáctico para la Nueva Escuela Mexicana (NEM). Responde ÚNICAMENTE con el objeto JSON solicitado, sin explicaciones ni markdown.";
     let userPrompt = "";
 
     if (tipoMaterial === 'EXAMEN_OPCION_MULTIPLE') {
-      systemPrompt += " Devuelve ÚNICAMENTE un JSON con este formato: { \"titulo\": \"...\", \"preguntas\": [ { \"pregunta\": \"...\", \"icono_fontawesome\": \"clase_fa_o_vacio\", \"opciones\": [\"A) ...\", \"B) ...\", \"C) ...\"], \"respuesta_correcta\": 0 } ] }. El arreglo 'preguntas' DEBE tener la cantidad de elementos solicitados. En 'icono_fontawesome' pon una clase de FontAwesome v6 (ej. 'fa-solid fa-map', 'fa-solid fa-chart-pie', 'fa-solid fa-flask', 'fa-solid fa-seedling') SÓLO si la pregunta necesita indispensablemente un apoyo visual. Si no necesita, déjalo vacío \"\".";
-      userPrompt = `Genera un examen de opción múltiple con EXACTAMENTE ${cantidadReactivos} preguntas sobre el tema: "${tema}". Adecuado para ${grado}º grado de primaria. IMPORTANTE: Las preguntas deben estar contextualizadas en situaciones prácticas de la vida real en México. Evita preguntas puramente memorísticas.`;
+      systemPrompt += ' Devuelve ÚNICAMENTE un JSON con este formato: { "titulo": "...", "preguntas": [ { "pregunta": "...", "icono_fontawesome": "", "opciones": ["A) ...", "B) ...", "C) ..."], "respuesta_correcta": 0 } ] }. El arreglo "preguntas" DEBE tener la cantidad exacta de elementos solicitados.';
+      userPrompt = `Genera un examen de opción múltiple con EXACTAMENTE ${cantidadReactivos} preguntas sobre el tema: "${tema}". Adecuado para ${grado}º grado de primaria. IMPORTANTE: Preguntas contextualizadas en situaciones prácticas de la vida comunitaria y escolar en México.`;
     } else if (tipoMaterial === 'EXAMEN_TRIMESTRAL') {
-      systemPrompt += " Devuelve ÚNICAMENTE un JSON con este formato: { \"titulo\": \"...\", \"preguntas\": [ { \"pregunta\": \"...\", \"icono_fontawesome\": \"clase_fa_o_vacio\", \"opciones\": [\"A) ...\", \"B) ...\", \"C) ...\"], \"respuesta_correcta\": 0 } ] }. El arreglo 'preguntas' DEBE tener la cantidad de elementos solicitados. En 'icono_fontawesome' pon una clase de FontAwesome v6 SÓLO si la pregunta necesita apoyo visual. Si no, déjalo vacío \"\".";
-      userPrompt = `Genera un riguroso Examen Trimestral de opción múltiple con EXACTAMENTE ${cantidadReactivos} preguntas integradoras y complejas que abarquen aprendizajes de todo el periodo relacionados con el tema: "${tema}". Para ${grado}º grado. Presenta casos de la vida comunitaria escolar.`;
+      systemPrompt += ' Devuelve ÚNICAMENTE un JSON con este formato: { "titulo": "...", "preguntas": [ { "pregunta": "...", "icono_fontawesome": "", "opciones": ["A) ...", "B) ...", "C) ..."], "respuesta_correcta": 0 } ] }. El arreglo "preguntas" DEBE tener la cantidad solicitada.';
+      userPrompt = `Genera un Examen Trimestral integrador con EXACTAMENTE ${cantidadReactivos} preguntas sobre el tema: "${tema}". Para ${grado}º grado de primaria, con casos prácticos y formativos de la NEM.`;
     } else if (tipoMaterial === 'PREGUNTAS_ABIERTAS') {
-      systemPrompt += " Devuelve ÚNICAMENTE un JSON con este formato: { \"titulo\": \"...\", \"preguntas\": [ { \"pregunta\": \"...\", \"icono_fontawesome\": \"clase_fa_o_vacio\" } ] }. El arreglo 'preguntas' DEBE tener la cantidad exacta de preguntas solicitadas. En 'icono_fontawesome' pon una clase de FontAwesome v6 SÓLO si es indispensable. Si no, déjalo vacío \"\".";
-      userPrompt = `Genera un cuestionario con EXACTAMENTE ${cantidadReactivos} preguntas abiertas de análisis y reflexión sobre el tema: "${tema}". Adecuado para ${grado}º grado de primaria.`;
+      systemPrompt += ' Devuelve ÚNICAMENTE un JSON con este formato: { "titulo": "...", "preguntas": [ { "pregunta": "...", "icono_fontawesome": "" } ] }.';
+      userPrompt = `Genera un cuestionario de EXACTAMENTE ${cantidadReactivos} preguntas abiertas de análisis y reflexión sobre el tema: "${tema}" para ${grado}º grado de primaria.`;
     } else if (tipoMaterial === 'SOPA_LETRAS_VOCABULARIO') {
-      systemPrompt += " Devuelve ÚNICAMENTE un JSON con este formato: { \"titulo\": \"...\", \"palabras\": [ { \"palabra\": \"...\", \"pista\": \"...\" } ] }. El arreglo 'palabras' DEBE tener la cantidad solicitada.";
-      userPrompt = `Genera una lista de EXACTAMENTE ${cantidadReactivos} palabras clave y sus definiciones para armar una sopa de letras sobre el tema: "${tema}". La palabra en mayúsculas y sin espacios.`;
+      systemPrompt += ' Devuelve ÚNICAMENTE un JSON con este formato: { "titulo": "...", "palabras": [ { "palabra": "PALABRA", "pista": "Definición..." } ] }. Las palabras deben ser de una sola palabra sin espacios y en mayúsculas.';
+      userPrompt = `Genera una lista de EXACTAMENTE ${cantidadReactivos} palabras clave esenciales y sus definiciones para armar una sopa de letras sobre el tema: "${tema}".`;
     } else if (tipoMaterial === 'CRUCIGRAMA') {
-      systemPrompt += " Devuelve ÚNICAMENTE un JSON con este formato: { \"titulo\": \"...\", \"palabras\": [ { \"palabra\": \"...\", \"pista\": \"...\" } ] }. El arreglo 'palabras' DEBE tener la cantidad solicitada.";
-      userPrompt = `Genera una lista de EXACTAMENTE ${cantidadReactivos} palabras clave y sus definiciones cortas (como pistas de crucigrama) sobre el tema: "${tema}". Adecuado para ${grado}º grado. La palabra debe estar en mayúsculas y sin espacios.`;
+      systemPrompt += ' Devuelve ÚNICAMENTE un JSON con este formato: { "titulo": "...", "palabras": [ { "palabra": "PALABRA", "pista": "Pista breve..." } ] }. Las palabras deben ser de una sola palabra sin espacios y en mayúsculas.';
+      userPrompt = `Genera una lista de EXACTAMENTE ${cantidadReactivos} palabras clave y pistas cortas de crucigrama sobre el tema: "${tema}" para ${grado}º grado.`;
     } else if (tipoMaterial === 'RUBRICA_EVALUACION') {
-      systemPrompt += " Devuelve ÚNICAMENTE un JSON con este formato: { \"titulo\": \"...\", \"criterios\": [ { \"criterio\": \"...\", \"excelente\": \"...\", \"bueno\": \"...\", \"suficiente\": \"...\", \"insuficiente\": \"...\" } ] }.";
-      userPrompt = `Genera una rúbrica de evaluación formativa analítica (enfoque NEM) con 5 criterios detallados para evaluar el tema o proyecto: "${tema}". Adecuada para ${grado}º grado de primaria.`;
-    }
-
-    const apiKey = window.openaiApiKey || localStorage.getItem('openai_api_key') || localStorage.getItem('openaiApiKey') || '';
-
-    if (!apiKey) {
-      // Sin API Key -> Usar generador local de la NEM directamente sin error
-      const parsedLocal = generarMaterialLocal(tipoMaterial, tema, grado, cantidadReactivos);
-      let sopaData = null;
-      let cruciData = null;
-      if (tipoMaterial === 'SOPA_LETRAS_VOCABULARIO' && parsedLocal.palabras) {
-        sopaData = generarSopaDeLetras(parsedLocal.palabras, 15);
-      }
-      if (tipoMaterial === 'CRUCIGRAMA' && parsedLocal.palabras) {
-        const clgInput = parsedLocal.palabras.map(p => ({ answer: p.palabra.toUpperCase().replace(/[^A-Z]/g,''), clue: p.pista }));
-        cruciData = clg.generateLayout(clgInput);
-      }
-      setResultado({ tipo: tipoMaterial, data: parsedLocal, sopaData, cruciData });
-      setGenerando(false);
-      return;
+      systemPrompt += ' Devuelve ÚNICAMENTE un JSON con este formato: { "titulo": "...", "criterios": [ { "criterio": "...", "excelente": "...", "bueno": "...", "suficiente": "...", "insuficiente": "..." } ] }.';
+      userPrompt = `Genera una rúbrica formativa analítica con enfoque NEM con 5 criterios evaluativos detallados para el tema: "${tema}", adecuada para ${grado}º grado de primaria.`;
     }
 
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          temperature: 0.7
-        })
+      const parsed = await generateCompletion({
+        systemPrompt,
+        userPrompt,
+        temperature: 0.7,
+        jsonMode: true
       });
 
-      if (!response.ok) throw new Error(`API Error: ${response.status}`);
-      const data = await response.json();
-      const content = data.choices[0].message.content;
-      
-      const jsonStr = content.substring(content.indexOf('{'), content.lastIndexOf('}') + 1);
-      const parsed = JSON.parse(jsonStr);
-      let sopaData = null;
-      let cruciData = null;
-      if (tipoMaterial === 'SOPA_LETRAS_VOCABULARIO' && parsed.palabras) {
-        sopaData = generarSopaDeLetras(parsed.palabras, 15);
-      }
-      if (tipoMaterial === 'CRUCIGRAMA' && parsed.palabras) {
-        const clgInput = parsed.palabras.map(p => ({ answer: p.palabra.toUpperCase().replace(/[^A-Z]/g,''), clue: p.pista }));
-        cruciData = clg.generateLayout(clgInput);
-      }
-      setResultado({ tipo: tipoMaterial, data: parsed, sopaData, cruciData });
-
+      aplicarResultado(tipoMaterial, parsed);
     } catch (error) {
-      console.warn("Fallo de API OpenAI o red. Ejecutando motor de respaldo NEM...", error);
-      const parsedLocal = generarMaterialLocal(tipoMaterial, tema, grado, cantidadReactivos);
-      let sopaData = null;
-      let cruciData = null;
-      if (tipoMaterial === 'SOPA_LETRAS_VOCABULARIO' && parsedLocal.palabras) {
-        sopaData = generarSopaDeLetras(parsedLocal.palabras, 15);
-      }
-      if (tipoMaterial === 'CRUCIGRAMA' && parsedLocal.palabras) {
-        const clgInput = parsedLocal.palabras.map(p => ({ answer: p.palabra.toUpperCase().replace(/[^A-Z]/g,''), clue: p.pista }));
-        cruciData = clg.generateLayout(clgInput);
-      }
-      setResultado({ tipo: tipoMaterial, data: parsedLocal, sopaData, cruciData });
+      console.warn("Fallo de generación con IA:", error);
+      setErrorIA(error.message || 'Error al comunicarse con el motor de IA.');
     } finally {
       setGenerando(false);
     }
@@ -225,12 +207,87 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
 
   return (
     <div className="pantalla-dosificador" style={{ padding: '20px', overflowY: 'auto' }}>
-      <div className="header-dosificador" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2>🧩 Generador de Material Didáctico IA</h2>
+      <div className="header-dosificador" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          <h2 style={{ margin: 0 }}>🧩 Generador de Material Didáctico IA</h2>
+          <button 
+            type="button"
+            onClick={() => setShowConfigIA(true)}
+            style={{
+              background: '#f8fafc',
+              border: '1.5px solid #cbd5e1',
+              borderRadius: '20px',
+              padding: '6px 14px',
+              fontSize: '0.85rem',
+              fontWeight: '600',
+              color: '#1e293b',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}
+            title="Haz clic para cambiar o configurar el motor de IA (Ollama, OpenAI, Gemini, etc.)"
+          >
+            <span>Motor:</span>
+            <span style={{ color: '#2563eb' }}>{getProviderBadge()}</span>
+            <span>⚙️</span>
+          </button>
+        </div>
         <button className="btn-volver" onClick={onVolver} style={{ background: '#e67e22' }}>
           ↩ Volver al Menú
         </button>
       </div>
+
+      {errorIA && (
+        <div style={{
+          background: '#fee2e2',
+          border: '1px solid #fca5a5',
+          borderRadius: '10px',
+          padding: '14px 18px',
+          color: '#991b1b',
+          marginBottom: '20px',
+          fontSize: '0.9rem',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+        }}>
+          <div style={{ marginBottom: '10px', fontWeight: '500', lineHeight: 1.45 }}>
+            ⚠️ <strong>No se pudo generar con IA:</strong> {errorIA}
+          </div>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button 
+              type="button"
+              onClick={() => setShowConfigIA(true)}
+              style={{
+                background: '#2563eb',
+                color: 'white',
+                border: 'none',
+                padding: '7px 14px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: '600'
+              }}
+            >
+              🤖 Configurar mi IA
+            </button>
+            <button 
+              type="button"
+              onClick={usarGeneradorLocal}
+              style={{
+                background: '#475569',
+                color: 'white',
+                border: 'none',
+                padding: '7px 14px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.85rem'
+              }}
+            >
+              📄 Usar Plantilla Básica Offline
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: '20px', '@media print': { display: 'none' } }} className="no-print">
         {/* Panel Izquierdo: Configuración */}
@@ -502,7 +559,13 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
             </div>
           )}
         </div>
+      )}
 
+      {showConfigIA && (
+        <ConfigurarIA 
+          onCerrar={() => setShowConfigIA(false)} 
+          onGuardado={(cfg) => setAiConfig(cfg)} 
+        />
       )}
     </div>
   );
