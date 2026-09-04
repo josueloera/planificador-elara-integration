@@ -6,7 +6,6 @@ import { obtenerPlanSemanal } from './planner_logic';
 import GeneradorMaterial from './components/GeneradorMaterial';
 import Licencia from './components/Licencia';
 import ConfiguracionCiclo from './components/ConfiguracionCiclo';
-import ConfigurarIA from './components/ConfigurarIA';
 import DashboardGrupos from './components/DashboardGrupos';
 import ControlQR from './components/ControlQR';
 
@@ -1501,7 +1500,6 @@ function App() {
       {/* COMPONENTES DE INTERFAZ ELARA GLOBALES */}
       {renderConsolaMutacion()}
       {renderDudaModal()}
-      {showConfigIAModal && <ConfigurarIA onCerrar={() => setShowConfigIAModal(false)} />}
     </div>
   );
 }

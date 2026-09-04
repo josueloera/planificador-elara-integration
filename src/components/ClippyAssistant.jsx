@@ -11,10 +11,7 @@ import {
 
 const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
 
-// =====================================================================
-// ⚠️ ATENCIÓN: PEGA TU API KEY DE OPENAI AQUÍ ADENTRO DE LAS COMILLAS
-// =====================================================================
-const MI_OPENAI_API_KEY = window.openaiApiKey || ""; 
+const MI_OPENAI_API_KEY = ""; 
 
 const ChatInput = React.memo(React.forwardRef(({ onSend, isTyping }, ref) => {
   const [value, setValue] = useState('');

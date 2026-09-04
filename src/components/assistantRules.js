@@ -22,7 +22,7 @@ export const getLocalResponse = (message) => {
   }
 
   if (lowerMsg.includes('api') || lowerMsg.includes('gemini') || lowerMsg.includes('key')) {
-    return "Para habilitar mi generación autónoma con Gemini, configura tu API Key en el archivo .env del proyecto (VITE_GEMINI_API_KEY o GEMINI_API_KEY).";
+    return "Como Asistente Pedagógica ELARA, puedo apoyarte en planeaciones, evaluación formativa y materiales didácticos de la NEM.";
   }
 
   return "Entendido. Procesando instrucción didáctica. Como tu Asistente Pedagógica privada, puedo redactar planeaciones semanales, organizar materiales didácticos y gestionar la evaluación formativa de tus alumnos.";

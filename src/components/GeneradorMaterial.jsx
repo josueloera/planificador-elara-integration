@@ -97,11 +97,10 @@ function generarMaterialLocal(tipoMaterial, tema, grado, cantidadReactivos) {
   return { titulo: tema, preguntas: [] };
 }
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { generarSopaDeLetras } from '../utils/juegosLogic';
 import clg from 'crossword-layout-generator';
-import { generateCompletion, getAIConfig } from '../services/aiService';
-import ConfigurarIA from './ConfigurarIA';
+import { generateCompletion } from '../services/aiService';
 
 const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
   const [tema, setTema] = useState('');
@@ -109,30 +108,13 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
   const [cantidadReactivos, setCantidadReactivos] = useState(5);
   const [generando, setGenerando] = useState(false);
   const [resultado, setResultado] = useState(null);
-  const [errorIA, setErrorIA] = useState('');
-  const [showConfigIA, setShowConfigIA] = useState(false);
-  const [aiConfig, setAiConfig] = useState(getAIConfig());
-
-  useEffect(() => {
-    const handleConfigChange = (e) => {
-      if (e.detail) setAiConfig(e.detail);
-    };
-    window.addEventListener('ai-config-changed', handleConfigChange);
-    return () => window.removeEventListener('ai-config-changed', handleConfigChange);
-  }, []);
+  const [modoGeneracion, setModoGeneracion] = useState('NUBE'); // 'NUBE' | 'OFFLINE'
+  const [avisoFallback, setAvisoFallback] = useState('');
 
   // Filtrar PDAs del grado actual (aproximado)
   const pdasSugeridos = pdasDisponibles.slice(0, 10); // Solo mostramos algunos por simplicidad
 
-  const getProviderBadge = () => {
-    if (aiConfig.provider === 'ollama') return `🦙 Ollama (${aiConfig.ollamaModel || 'llama3'})`;
-    if (aiConfig.provider === 'openai') return `🟢 OpenAI (${aiConfig.openaiModel || 'gpt-4o-mini'})`;
-    if (aiConfig.provider === 'gemini') return `🔵 Gemini (${aiConfig.geminiModel || 'gemini-1.5-flash'})`;
-    if (aiConfig.provider === 'custom') return `⚙️ Servidor Propio`;
-    return '🤖 Configurar IA';
-  };
-
-  const aplicarResultado = (tipo, parsed) => {
+  const aplicarResultado = (tipo, parsed, origen = 'IA') => {
     let sopaData = null;
     let cruciData = null;
     if (tipo === 'SOPA_LETRAS_VOCABULARIO' && parsed.palabras) {
@@ -142,16 +124,10 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
       const clgInput = parsed.palabras.map(p => ({ answer: p.palabra.toUpperCase().replace(/[^A-Z]/g,''), clue: p.pista }));
       cruciData = clg.generateLayout(clgInput);
     }
-    setResultado({ tipo, data: parsed, sopaData, cruciData });
+    setResultado({ tipo, data: parsed, sopaData, cruciData, origen });
   };
 
-  const usarGeneradorLocal = () => {
-    setErrorIA('');
-    const parsedLocal = generarMaterialLocal(tipoMaterial, tema, grado, cantidadReactivos);
-    aplicarResultado(tipoMaterial, parsedLocal);
-  };
-
-  const generarConIA = async () => {
+  const ejecutarGeneracion = async () => {
     if (!tema.trim()) {
       alert("Por favor, ingresa un tema o selecciona un PDA.");
       return;
@@ -159,8 +135,19 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
     
     setGenerando(true);
     setResultado(null);
-    setErrorIA('');
+    setAvisoFallback('');
 
+    // MODO OFFLINE EXPLÍCITO
+    if (modoGeneracion === 'OFFLINE') {
+      setTimeout(() => {
+        const parsedLocal = generarMaterialLocal(tipoMaterial, tema, grado, cantidadReactivos);
+        aplicarResultado(tipoMaterial, parsedLocal, 'OFFLINE');
+        setGenerando(false);
+      }, 300);
+      return;
+    }
+
+    // MODO NUBE (IA AUTOMÁTICA)
     let systemPrompt = "Eres un asistente experto en creación de material didáctico para la Nueva Escuela Mexicana (NEM). Responde ÚNICAMENTE con el objeto JSON solicitado, sin explicaciones ni markdown.";
     let userPrompt = "";
 
@@ -188,14 +175,16 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
       const parsed = await generateCompletion({
         systemPrompt,
         userPrompt,
-        temperature: 0.7,
         jsonMode: true
       });
 
-      aplicarResultado(tipoMaterial, parsed);
+      aplicarResultado(tipoMaterial, parsed, 'IA');
     } catch (error) {
-      console.warn("Fallo de generación con IA:", error);
-      setErrorIA(error.message || 'Error al comunicarse con el motor de IA.');
+      console.warn("Fallo de conexión en modo Nube, aplicando respaldo Offline SEP:", error);
+      // Fallback transparente sin asustar al docente
+      const parsedLocal = generarMaterialLocal(tipoMaterial, tema, grado, cantidadReactivos);
+      aplicarResultado(tipoMaterial, parsedLocal, 'OFFLINE');
+      setAvisoFallback('ℹ️ Se utilizó el Modo Rápido Offline SEP debido a falta de conexión a internet.');
     } finally {
       setGenerando(false);
     }
@@ -208,86 +197,101 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
   return (
     <div className="pantalla-dosificador" style={{ padding: '20px', overflowY: 'auto' }}>
       <div className="header-dosificador" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-          <h2 style={{ margin: 0 }}>🧩 Generador de Material Didáctico IA</h2>
-          <button 
-            type="button"
-            onClick={() => setShowConfigIA(true)}
-            style={{
-              background: '#f8fafc',
-              border: '1.5px solid #cbd5e1',
-              borderRadius: '20px',
-              padding: '6px 14px',
-              fontSize: '0.85rem',
-              fontWeight: '600',
-              color: '#1e293b',
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-            }}
-            title="Haz clic para cambiar o configurar el motor de IA (Ollama, OpenAI, Gemini, etc.)"
-          >
-            <span>Motor:</span>
-            <span style={{ color: '#2563eb' }}>{getProviderBadge()}</span>
-            <span>⚙️</span>
-          </button>
+        <div>
+          <h2 style={{ margin: 0 }}>🧩 Generador de Material Didáctico</h2>
+          <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Nueva Escuela Mexicana ({grado || 3}º Primaria)</span>
         </div>
         <button className="btn-volver" onClick={onVolver} style={{ background: '#e67e22' }}>
           ↩ Volver al Menú
         </button>
       </div>
 
-      {errorIA && (
+      {avisoFallback && (
         <div style={{
-          background: '#fee2e2',
-          border: '1px solid #fca5a5',
+          background: '#eff6ff',
+          border: '1px solid #bfdbfe',
           borderRadius: '10px',
-          padding: '14px 18px',
-          color: '#991b1b',
+          padding: '12px 16px',
+          color: '#1e40af',
           marginBottom: '20px',
           fontSize: '0.9rem',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
         }}>
-          <div style={{ marginBottom: '10px', fontWeight: '500', lineHeight: 1.45 }}>
-            ⚠️ <strong>No se pudo generar con IA:</strong> {errorIA}
-          </div>
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button 
-              type="button"
-              onClick={() => setShowConfigIA(true)}
-              style={{
-                background: '#2563eb',
-                color: 'white',
-                border: 'none',
-                padding: '7px 14px',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-                fontWeight: '600'
-              }}
-            >
-              🤖 Configurar mi IA
-            </button>
-            <button 
-              type="button"
-              onClick={usarGeneradorLocal}
-              style={{
-                background: '#475569',
-                color: 'white',
-                border: 'none',
-                padding: '7px 14px',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.85rem'
-              }}
-            >
-              📄 Usar Plantilla Básica Offline
-            </button>
-          </div>
+          <span>{avisoFallback}</span>
         </div>
       )}
+
+      {/* SELECTOR DE LOS DOS MODOS SOLICITADOS */}
+      <div style={{ marginBottom: '22px', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+        <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#1e293b', fontSize: '0.95rem' }}>
+          🎯 Selecciona el Modo de Generación:
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+          <button
+            type="button"
+            onClick={() => { setModoGeneracion('NUBE'); setAvisoFallback(''); }}
+            style={{
+              padding: '14px 16px',
+              borderRadius: '10px',
+              border: modoGeneracion === 'NUBE' ? '2.5px solid #2563eb' : '1.5px solid #cbd5e1',
+              background: modoGeneracion === 'NUBE' ? '#ffffff' : '#f8fafc',
+              color: modoGeneracion === 'NUBE' ? '#1e40af' : '#475569',
+              cursor: 'pointer',
+              textAlign: 'left',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+              transition: 'all 0.15s ease',
+              boxShadow: modoGeneracion === 'NUBE' ? '0 4px 12px rgba(37,99,235,0.12)' : 'none'
+            }}
+          >
+            <div style={{ fontWeight: 'bold', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>🌐 Modo Inteligencia Artificial (Nube)</span>
+              {modoGeneracion === 'NUBE' && (
+                <span style={{ fontSize: '0.75rem', background: '#2563eb', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>
+                  ✓ Activo
+                </span>
+              )}
+            </div>
+            <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+              Generación pedagógica detallada con IA. No requiere configurar nada ni ingresar claves.
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setModoGeneracion('OFFLINE'); setAvisoFallback(''); }}
+            style={{
+              padding: '14px 16px',
+              borderRadius: '10px',
+              border: modoGeneracion === 'OFFLINE' ? '2.5px solid #10b981' : '1.5px solid #cbd5e1',
+              background: modoGeneracion === 'OFFLINE' ? '#ffffff' : '#f8fafc',
+              color: modoGeneracion === 'OFFLINE' ? '#065f46' : '#475569',
+              cursor: 'pointer',
+              textAlign: 'left',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+              transition: 'all 0.15s ease',
+              boxShadow: modoGeneracion === 'OFFLINE' ? '0 4px 12px rgba(16,185,129,0.12)' : 'none'
+            }}
+          >
+            <div style={{ fontWeight: 'bold', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>⚡ Modo Rápido Offline SEP (Sin Internet)</span>
+              {modoGeneracion === 'OFFLINE' && (
+                <span style={{ fontSize: '0.75rem', background: '#10b981', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>
+                  ✓ Activo
+                </span>
+              )}
+            </div>
+            <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+              Generación instantánea 100% offline desde el banco curricular de la SEP. Funciona sin internet.
+            </span>
+          </button>
+        </div>
+      </div>
 
       <div style={{ display: 'flex', gap: '20px', '@media print': { display: 'none' } }} className="no-print">
         {/* Panel Izquierdo: Configuración */}
@@ -329,15 +333,16 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
           )}
 
           <button 
-            onClick={generarConIA}  
+            onClick={ejecutarGeneracion}  
             disabled={generando}
             style={{ 
-              width: '100%', padding: '15px', background: generando ? '#95a5a6' : '#6C5CE7', 
+              width: '100%', padding: '15px', background: generando ? '#95a5a6' : (modoGeneracion === 'OFFLINE' ? '#10b981' : '#2563eb'), 
               color: 'white', border: 'none', borderRadius: '8px', fontSize: '1.1rem', cursor: generando ? 'not-allowed' : 'pointer',
-              fontWeight: 'bold'
+              fontWeight: 'bold',
+              transition: 'background 0.2s'
             }}
           >
-            {generando ? '🤖 Generando magia...' : '✨ Generar Material'}
+            {generando ? '⏳ Generando material...' : (modoGeneracion === 'OFFLINE' ? '⚡ Generar Material Offline' : '✨ Generar con Inteligencia Artificial')}
           </button>
         </div>
 
@@ -365,7 +370,20 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
       {resultado && (
         <div style={{ marginTop: '30px', background: 'white', padding: '40px', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }} className="print-area">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="no-print">
-            <h3 style={{ color: '#2ecc71' }}>✅ Material Listo</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <h3 style={{ color: '#16a34a', margin: 0 }}>✅ Material Generado</h3>
+              <span style={{
+                fontSize: '0.8rem',
+                fontWeight: '600',
+                padding: '4px 10px',
+                borderRadius: '12px',
+                background: resultado.origen === 'IA' ? '#eff6ff' : '#ecfdf5',
+                color: resultado.origen === 'IA' ? '#1d4ed8' : '#047857',
+                border: resultado.origen === 'IA' ? '1px solid #bfdbfe' : '1px solid #a7f3d0'
+              }}>
+                {resultado.origen === 'IA' ? '🌐 Inteligencia Artificial (Nube)' : '⚡ Modo Offline SEP'}
+              </span>
+            </div>
             <button onClick={imprimirMaterial} style={{ padding: '10px 20px', background: '#34495e', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>🖨️ Imprimir / Guardar PDF</button>
           </div>
           
@@ -559,13 +577,6 @@ const GeneradorMaterial = ({ onVolver, pdasDisponibles = [], grado }) => {
             </div>
           )}
         </div>
-      )}
-
-      {showConfigIA && (
-        <ConfigurarIA 
-          onCerrar={() => setShowConfigIA(false)} 
-          onGuardado={(cfg) => setAiConfig(cfg)} 
-        />
       )}
     </div>
   );
