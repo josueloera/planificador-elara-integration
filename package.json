@@ -58,7 +58,8 @@
       ],
       "identity": null,
       "icon": "public/icon.png",
-      "category": "public.app-category.education"
+      "category": "public.app-category.education",
+      "x64ArchFiles": "**/*.node"
     }
   },
   "dependencies": {
