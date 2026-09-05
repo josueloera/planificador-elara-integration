@@ -24,13 +24,6 @@ jobs:
     - name: Install Dependencies
       run: npm install
 
-    - name: Set up API Keys
-      shell: bash
-      run: |
-        echo "VITE_GEMINI_API_KEY=$(echo QVEuQWI4Uk42SmRzeFJScTFGOVNUc2Q4UlBWNlotUmkyRVlkUEFoZ1lKRzVWbVJjUkNRWnc= | base64 --decode)" >> $GITHUB_ENV
-        echo "GEMINI_API_KEY=$(echo QVEuQWI4Uk42SmRzeFJScTFGOVNUc2Q4UlBWNlotUmkyRVlkUEFoZ1lKRzVWbVJjUkNRWnc= | base64 --decode)" >> $GITHUB_ENV
-        echo "VITE_GEMINI_MODEL=gemini-2.0-flash" >> $GITHUB_ENV
-
     - name: Build macOS App
       run: npm run dist:mac
       env:
@@ -63,13 +56,6 @@ jobs:
 
     - name: Install Dependencies
       run: npm install
-
-    - name: Set up API Keys
-      shell: bash
-      run: |
-        echo "VITE_GEMINI_API_KEY=$(echo QVEuQWI4Uk42SmRzeFJScTFGOVNUc2Q4UlBWNlotUmkyRVlkUEFoZ1lKRzVWbVJjUkNRWnc= | base64 --decode)" >> $GITHUB_ENV
-        echo "GEMINI_API_KEY=$(echo QVEuQWI4Uk42SmRzeFJScTFGOVNUc2Q4UlBWNlotUmkyRVlkUEFoZ1lKRzVWbVJjUkNRWnc= | base64 --decode)" >> $GITHUB_ENV
-        echo "VITE_GEMINI_MODEL=gemini-2.0-flash" >> $GITHUB_ENV
 
     - name: Build Windows App
       run: npm run dist -- --win
