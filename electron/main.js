@@ -513,16 +513,41 @@ ipcMain.handle('get-incidencias', async (e, id) => new Promise(r => db.all("SELE
 ipcMain.handle('save-incidencia', async (e, d) => new Promise(r => db.run("INSERT INTO incidencias (alumno_id, fecha, situacion, medidas) VALUES (?,?,?,?)", [d.alumno_id, d.fecha, d.situacion, d.medidas], () => r(true))));
 
 // -- PROYECTOS --
-ipcMain.handle('get-proyectos', async (e, grupo_id) => new Promise(r => db.all("SELECT * FROM proyectos WHERE grupo_id = ?", [grupo_id], (err, rows) => r(rows || []))));
+ipcMain.handle('get-proyectos', async (e, grupo_id, grado) => new Promise(r => {
+  const g = grado ? Number(grado) : null;
+  const gid = grupo_id ? Number(grupo_id) : null;
+  let sql = "SELECT * FROM proyectos WHERE 1=1";
+  const params = [];
+  if (g && gid) {
+    sql += " AND ((grado = ? AND (grupo_id = ? OR grupo_id IS NULL)) OR grupo_id = ?)";
+    params.push(g, gid, gid);
+  } else if (g) {
+    sql += " AND (grado = ? OR grado IS NULL)";
+    params.push(g);
+  } else if (gid) {
+    sql += " AND (grupo_id = ? OR grupo_id IS NULL)";
+    params.push(gid);
+  }
+  sql += " ORDER BY id DESC";
+  db.all(sql, params, (err, rows) => r(rows || []));
+}));
+
 ipcMain.handle('save-proyecto', async (e, p) => new Promise((resolve, reject) => {
   const { id, grado, grupo_id, nombre, metodologia, escenario, temporalidad, problemática, pdas_seleccionados, fases_contenido } = p;
-  if (!grupo_id) {
-    return reject(new Error("No se ha seleccionado un grupo válido para guardar el proyecto."));
+  const g = grado ? Number(grado) : null;
+  const gid = grupo_id ? Number(grupo_id) : (g || 1);
+  const pdaStr = JSON.stringify(pdas_seleccionados || []);
+  const fasesStr = JSON.stringify(fases_contenido || {});
+
+  if (id) {
+    db.run("UPDATE proyectos SET nombre=?, metodologia=?, escenario=?, temporalidad=?, problemática=?, pdas_seleccionados=?, fases_contenido=?, grado=?, grupo_id=? WHERE id=?",
+      [nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr, g, gid, id], () => resolve(true));
+  } else {
+    db.run("INSERT INTO proyectos (grado, grupo_id, nombre, metodologia, escenario, temporalidad, problemática, pdas_seleccionados, fases_contenido) VALUES (?,?,?,?,?,?,?,?,?)",
+      [g, gid, nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr], () => resolve(true));
   }
-  const pdaStr = JSON.stringify(pdas_seleccionados); const fasesStr = JSON.stringify(fases_contenido);
-  if (id) db.run("UPDATE proyectos SET nombre=?, metodologia=?, escenario=?, temporalidad=?, problemática=?, pdas_seleccionados=?, fases_contenido=? WHERE id=?", [nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr, id], () => resolve(true));
-  else db.run("INSERT INTO proyectos (grado, grupo_id, nombre, metodologia, escenario, temporalidad, problemática, pdas_seleccionados, fases_contenido) VALUES (?,?,?,?,?,?,?,?,?)", [grado, grupo_id, nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr], () => resolve(true));
 }));
+
 ipcMain.handle('get-pdas', async () => new Promise((r, j) => {
   db.all(`
     SELECT p.id, p.grado, p.descripcion as descripcion, p.proyecto as proyecto_sugerido, 
@@ -534,14 +559,76 @@ ipcMain.handle('get-pdas', async () => new Promise((r, j) => {
 }));
 
 // -- PLANEACION --
-ipcMain.handle('get-planeacion', async (e, grupo_id, s) => new Promise(r => db.get("SELECT * FROM planeacion WHERE grupo_id=? AND semana=?", [grupo_id, s], (err, row) => r(row || {}))));
-ipcMain.handle('save-planeacion', async (e, d) => new Promise((resolve, reject) => {
-  if (!d.grupo_id) {
-    return reject(new Error("No se ha seleccionado un grupo válido para guardar la planeación."));
+ipcMain.handle('get-planeacion', async (e, grupo_id, s, grado) => new Promise(r => {
+  const sem = Number(s);
+  const g = grado ? Number(grado) : null;
+  const gid = grupo_id ? Number(grupo_id) : null;
+
+  if (g && gid) {
+    db.get("SELECT * FROM planeacion WHERE semana = ? AND grado = ? AND (grupo_id = ? OR grupo_id IS NULL)", [sem, g, gid], (err, row) => {
+      if (row && row.id) return r(row);
+      // Búsqueda por grado y semana
+      db.get("SELECT * FROM planeacion WHERE semana = ? AND grado = ?", [sem, g], (err2, row2) => r(row2 || {}));
+    });
+  } else if (g) {
+    db.get("SELECT * FROM planeacion WHERE semana = ? AND grado = ?", [sem, g], (err, row) => r(row || {}));
+  } else if (gid) {
+    db.get("SELECT * FROM planeacion WHERE semana = ? AND grupo_id = ?", [sem, gid], (err, row) => r(row || {}));
+  } else {
+    db.get("SELECT * FROM planeacion WHERE semana = ?", [sem], (err, row) => r(row || {}));
   }
-  db.run("DELETE FROM planeacion WHERE grupo_id=? AND semana=?", [d.grupo_id, d.semana], () => {
-    db.run(`INSERT INTO planeacion (grado, grupo_id, semana, lunes_inicio, lunes_desarrollo, lunes_cierre, martes_inicio, martes_desarrollo, martes_cierre, miercoles_inicio, miercoles_desarrollo, miercoles_cierre, jueves_inicio, jueves_desarrollo, jueves_cierre, viernes_inicio, viernes_desarrollo, viernes_cierre, recursos, evaluacion, adecuaciones, confidence_score) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [d.grado, d.grupo_id, d.semana, d.lunes_inicio, d.lunes_desarrollo, d.lunes_cierre, d.martes_inicio, d.martes_desarrollo, d.martes_cierre, d.miercoles_inicio, d.miercoles_desarrollo, d.miercoles_cierre, d.jueves_inicio, d.jueves_desarrollo, d.jueves_cierre, d.viernes_inicio, d.viernes_desarrollo, d.viernes_cierre, d.recursos, d.evaluacion, d.adecuaciones, d.confidence_score ?? 1.0], () => resolve(true));
+}));
+
+ipcMain.handle('save-planeacion', async (e, d) => new Promise((resolve, reject) => {
+  const g = d.grado ? Number(d.grado) : null;
+  const gid = d.grupo_id ? Number(d.grupo_id) : (g || 1);
+  const sem = Number(d.semana);
+
+  // Borrar de forma segura únicamente la planeación que coincida en semana, grado y grupo
+  let deleteSql = "DELETE FROM planeacion WHERE semana = ?";
+  let deleteParams = [sem];
+  if (g && gid) {
+    deleteSql += " AND grado = ? AND (grupo_id = ? OR grupo_id IS NULL)";
+    deleteParams.push(g, gid);
+  } else if (g) {
+    deleteSql += " AND grado = ?";
+    deleteParams.push(g);
+  } else if (gid) {
+    deleteSql += " AND grupo_id = ?";
+    deleteParams.push(gid);
+  }
+
+  db.run(deleteSql, deleteParams, (delErr) => {
+    if (delErr) console.error("Error al limpiar planeacion previa:", delErr);
+    db.run(
+      `INSERT INTO planeacion (
+        grado, grupo_id, semana,
+        lunes_inicio, lunes_desarrollo, lunes_cierre,
+        martes_inicio, martes_desarrollo, martes_cierre,
+        miercoles_inicio, miercoles_desarrollo, miercoles_cierre,
+        jueves_inicio, jueves_desarrollo, jueves_cierre,
+        viernes_inicio, viernes_desarrollo, viernes_cierre,
+        recursos, evaluacion, adecuaciones, confidence_score
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        g, gid, sem,
+        d.lunes_inicio || '', d.lunes_desarrollo || '', d.lunes_cierre || '',
+        d.martes_inicio || '', d.martes_desarrollo || '', d.martes_cierre || '',
+        d.miercoles_inicio || '', d.miercoles_desarrollo || '', d.miercoles_cierre || '',
+        d.jueves_inicio || '', d.jueves_desarrollo || '', d.jueves_cierre || '',
+        d.viernes_inicio || '', d.viernes_desarrollo || '', d.viernes_cierre || '',
+        d.recursos || '', d.evaluacion || '', d.adecuaciones || '',
+        d.confidence_score ?? 1.0
+      ],
+      function(insErr) {
+        if (insErr) {
+          console.error("Error al guardar planeacion:", insErr);
+          reject(insErr);
+        } else {
+          resolve({ success: true, id: this.lastID });
+        }
+      }
+    );
   });
 }));
 
@@ -607,6 +694,7 @@ ipcMain.handle('get-ws-info', async () => ({ ip: getLocalIp(), port: activeWsPor
 ipcMain.handle('get-asistencia-fecha', async (e, fecha, grupo_id) => new Promise(r => {
   db.all("SELECT * FROM asistencia WHERE fecha = ? AND (grupo_id = ? OR grupo_id IS NULL)", [fecha, grupo_id || null], (err, rows) => r(rows || []));
 }));
+
 ipcMain.handle('save-asistencia-qr', async (e, alumno_id, fecha, estado, grupo_id) => new Promise((resolve, reject) => {
   db.run("INSERT OR REPLACE INTO asistencia (alumno_id, fecha, estado, grupo_id) VALUES (?, ?, ?, ?)",
     [alumno_id, fecha, estado || 'PRESENTE', grupo_id || null], function(err) {
@@ -614,6 +702,7 @@ ipcMain.handle('save-asistencia-qr', async (e, alumno_id, fecha, estado, grupo_i
       else resolve(true);
     });
 }));
+
 ipcMain.handle('save-asistencia-bulk', async (e, asistencias, fecha, grupo_id) => new Promise(resolve => {
   db.serialize(() => {
     const stmt = db.prepare("INSERT OR REPLACE INTO asistencia (alumno_id, fecha, estado, grupo_id) VALUES (?, ?, ?, ?)");
@@ -623,6 +712,65 @@ ipcMain.handle('save-asistencia-bulk', async (e, asistencias, fecha, grupo_id) =
     stmt.finalize(() => resolve(true));
   });
 }));
+
+// Obtener todas las asistencias registradas dentro de un rango de fechas
+ipcMain.handle('get-asistencia-rango', async (e, grupo_id, fechaInicio, fechaFin) => new Promise(r => {
+  let sql = `
+    SELECT a.*, al.nombre as alumno_nombre
+    FROM asistencia a
+    JOIN alumnos al ON a.alumno_id = al.id
+    WHERE a.fecha >= ? AND a.fecha <= ?
+  `;
+  const params = [fechaInicio, fechaFin];
+  if (grupo_id) {
+    sql += " AND (a.grupo_id = ? OR a.grupo_id IS NULL)";
+    params.push(grupo_id);
+  }
+  sql += " ORDER BY a.fecha ASC, al.nombre ASC";
+  db.all(sql, params, (err, rows) => r(rows || []));
+}));
+
+// Obtener resumen estadístico de asistencias por alumno dentro de un rango de fechas
+ipcMain.handle('get-resumen-asistencia', async (e, grupo_id, fechaInicio, fechaFin) => new Promise(r => {
+  let sql = `
+    SELECT 
+      al.id as alumno_id,
+      al.nombre as alumno_nombre,
+      COUNT(a.id) as total_dias,
+      SUM(CASE WHEN a.estado = 'PRESENTE' THEN 1 ELSE 0 END) as presentes,
+      SUM(CASE WHEN a.estado = 'RETARDO' THEN 1 ELSE 0 END) as retardos,
+      SUM(CASE WHEN a.estado = 'FALTA' THEN 1 ELSE 0 END) as faltas,
+      SUM(CASE WHEN a.estado = 'JUSTIFICADO' THEN 1 ELSE 0 END) as justificados
+    FROM alumnos al
+    LEFT JOIN asistencia a ON al.id = a.alumno_id AND a.fecha >= ? AND a.fecha <= ?
+    WHERE (al.grupo_id = ? OR ? IS NULL)
+    GROUP BY al.id, al.nombre
+    ORDER BY al.nombre ASC
+  `;
+  db.all(sql, [fechaInicio, fechaFin, grupo_id || null, grupo_id || null], (err, rows) => {
+    if (err || !rows) return r([]);
+    const res = rows.map(row => {
+      const tot = row.total_dias || 0;
+      const pres = row.presentes || 0;
+      const ret = row.retardos || 0;
+      const fal = row.faltas || 0;
+      const just = row.justificados || 0;
+      const pct = tot > 0 ? Number((((pres + ret * 0.5 + just * 0.8) / tot) * 100).toFixed(1)) : 0;
+      return {
+        alumno_id: row.alumno_id,
+        alumno_nombre: row.alumno_nombre,
+        total_dias: tot,
+        presentes: pres,
+        retardos: ret,
+        faltas: fal,
+        justificados: just,
+        porcentaje: pct
+      };
+    });
+    r(res);
+  });
+}));
+
 ipcMain.handle('save-nota-qr', async (e, alumno_id, criterio_id, fecha, valor) => new Promise((resolve, reject) => {
   if (!criterio_id) return resolve(false);
   db.run("INSERT OR REPLACE INTO notas (alumno_id, criterio_id, fecha, valor) VALUES (?, ?, ?, ?)",
@@ -653,39 +801,158 @@ ipcMain.handle('get-trabajos-qr', async (e, fecha, grupo_id) => new Promise(r =>
     [fecha, grupo_id || null], (err, rows) => r(rows || []));
 }));
 
+// Obtener bitácora de trabajos dentro de un rango de fechas y campo formativo opcional
+ipcMain.handle('get-trabajos-rango', async (e, grupo_id, fechaInicio, fechaFin, campo) => new Promise(r => {
+  let sql = `
+    SELECT t.*, al.nombre as alumno_nombre
+    FROM trabajos_qr t
+    JOIN alumnos al ON t.alumno_id = al.id
+    WHERE t.fecha >= ? AND t.fecha <= ?
+  `;
+  const params = [fechaInicio, fechaFin];
+  if (grupo_id) {
+    sql += " AND (t.grupo_id = ? OR t.grupo_id IS NULL)";
+    params.push(grupo_id);
+  }
+  if (campo && campo !== 'TODOS') {
+    sql += " AND t.campo = ?";
+    params.push(campo);
+  }
+  sql += " ORDER BY t.fecha DESC, t.id DESC";
+  db.all(sql, params, (err, rows) => r(rows || []));
+}));
+
+// Obtener resumen y promedio de trabajos por alumno en un rango de fechas
+ipcMain.handle('get-resumen-trabajos', async (e, grupo_id, fechaInicio, fechaFin, campo) => new Promise(r => {
+  let sql = `
+    SELECT 
+      al.id as alumno_id,
+      al.nombre as alumno_nombre,
+      COUNT(t.id) as total_trabajos,
+      AVG(t.valor) as promedio
+    FROM alumnos al
+    LEFT JOIN trabajos_qr t ON al.id = t.alumno_id 
+      AND t.fecha >= ? AND t.fecha <= ?
+      ${campo && campo !== 'TODOS' ? 'AND t.campo = ?' : ''}
+    WHERE (al.grupo_id = ? OR ? IS NULL)
+    GROUP BY al.id, al.nombre
+    ORDER BY al.nombre ASC
+  `;
+  const params = [fechaInicio, fechaFin];
+  if (campo && campo !== 'TODOS') params.push(campo);
+  params.push(grupo_id || null, grupo_id || null);
+  db.all(sql, params, (err, rows) => {
+    if (err || !rows) return r([]);
+    r(rows.map(row => ({
+      alumno_id: row.alumno_id,
+      alumno_nombre: row.alumno_nombre,
+      total_trabajos: row.total_trabajos || 0,
+      promedio: row.promedio !== null && !isNaN(row.promedio) ? Number(row.promedio.toFixed(1)) : null
+    })));
+  });
+}));
+
 ipcMain.handle('delete-trabajo-qr', async (e, id) => new Promise(r => {
   db.run("DELETE FROM trabajos_qr WHERE id = ?", [id], () => r(true));
 }));
 
-ipcMain.handle('importar-promedios-qr-a-criterio', async (e, criterio_id, fecha, campo, grupo_id) => new Promise(resolve => {
+// Importar promedios de trabajos por rango de fechas (o día único) hacia un criterio de evaluación
+ipcMain.handle('importar-promedios-qr-a-criterio', async (e, criterio_id, fechaInicio, fechaFin, campo, grupo_id, fechaNota) => new Promise(resolve => {
   if (!criterio_id) return resolve(0);
-  db.all("SELECT alumno_id, AVG(valor) as promedio FROM trabajos_qr WHERE fecha = ? AND (grupo_id = ? OR grupo_id IS NULL) AND (campo = ? OR ? = 'TODOS') GROUP BY alumno_id",
-    [fecha, grupo_id || null, campo || 'TODOS', campo || 'TODOS'], (err, rows) => {
-      if (err || !rows || rows.length === 0) return resolve(0);
-      let count = 0;
-      let pending = rows.length;
-      rows.forEach(r => {
-        if (r.promedio !== null && !isNaN(r.promedio)) {
-          const val = Number(r.promedio.toFixed(1));
-          db.run("UPDATE notas SET valor = ? WHERE alumno_id = ? AND criterio_id = ? AND fecha = ?", [val, r.alumno_id, criterio_id, fecha], function() {
+  const fIni = fechaInicio;
+  const fFin = fechaFin || fechaInicio;
+  const targetFecha = fechaNota || fFin;
+
+  let sql = `
+    SELECT alumno_id, AVG(valor) as promedio 
+    FROM trabajos_qr 
+    WHERE fecha >= ? AND fecha <= ? 
+      AND (grupo_id = ? OR grupo_id IS NULL) 
+      AND (campo = ? OR ? = 'TODOS') 
+    GROUP BY alumno_id
+  `;
+  db.all(sql, [fIni, fFin, grupo_id || null, campo || 'TODOS', campo || 'TODOS'], (err, rows) => {
+    if (err || !rows || rows.length === 0) return resolve(0);
+    let count = 0;
+    let pending = rows.length;
+    rows.forEach(r => {
+      if (r.promedio !== null && !isNaN(r.promedio)) {
+        const val = Number(r.promedio.toFixed(1));
+        db.run("UPDATE notas SET valor = ? WHERE alumno_id = ? AND criterio_id = ? AND fecha = ?", 
+          [val, r.alumno_id, criterio_id, targetFecha], function() {
             if (this.changes === 0) {
-              db.run("INSERT INTO notas (alumno_id, criterio_id, fecha, valor) VALUES (?, ?, ?, ?)", [r.alumno_id, criterio_id, fecha, val], () => {
-                count++;
-                pending--;
-                if (pending === 0) resolve(count);
-              });
+              db.run("INSERT INTO notas (alumno_id, criterio_id, fecha, valor) VALUES (?, ?, ?, ?)", 
+                [r.alumno_id, criterio_id, targetFecha, val], () => {
+                  count++;
+                  pending--;
+                  if (pending === 0) resolve(count);
+                });
             } else {
               count++;
               pending--;
               if (pending === 0) resolve(count);
             }
           });
-        } else {
-          pending--;
-          if (pending === 0) resolve(count);
-        }
-      });
+      } else {
+        pending--;
+        if (pending === 0) resolve(count);
+      }
     });
+  });
+}));
+
+// Importar porcentaje de asistencia hacia un criterio de evaluación (escala 0-10 o configurable)
+ipcMain.handle('importar-asistencia-a-criterio', async (e, criterio_id, fechaInicio, fechaFin, grupo_id, escalaMax = 10, fechaNota) => new Promise(resolve => {
+  if (!criterio_id) return resolve(0);
+  const targetFecha = fechaNota || fechaFin;
+
+  let sql = `
+    SELECT 
+      al.id as alumno_id,
+      COUNT(a.id) as total_dias,
+      SUM(CASE WHEN a.estado = 'PRESENTE' THEN 1 ELSE 0 END) as presentes,
+      SUM(CASE WHEN a.estado = 'RETARDO' THEN 1 ELSE 0 END) as retardos,
+      SUM(CASE WHEN a.estado = 'JUSTIFICADO' THEN 1 ELSE 0 END) as justificados
+    FROM alumnos al
+    JOIN asistencia a ON al.id = a.alumno_id
+    WHERE a.fecha >= ? AND a.fecha <= ?
+      AND (a.grupo_id = ? OR a.grupo_id IS NULL)
+    GROUP BY al.id
+  `;
+  db.all(sql, [fechaInicio, fechaFin, grupo_id || null], (err, rows) => {
+    if (err || !rows || rows.length === 0) return resolve(0);
+    let count = 0;
+    let pending = rows.length;
+    rows.forEach(r => {
+      const tot = r.total_dias || 0;
+      if (tot > 0) {
+        const pres = r.presentes || 0;
+        const ret = r.retardos || 0;
+        const just = r.justificados || 0;
+        const pct = (pres + ret * 0.5 + just * 0.8) / tot;
+        const nota = Number((pct * escalaMax).toFixed(1));
+
+        db.run("UPDATE notas SET valor = ? WHERE alumno_id = ? AND criterio_id = ? AND fecha = ?",
+          [nota, r.alumno_id, criterio_id, targetFecha], function() {
+            if (this.changes === 0) {
+              db.run("INSERT INTO notas (alumno_id, criterio_id, fecha, valor) VALUES (?, ?, ?, ?)",
+                [r.alumno_id, criterio_id, targetFecha, nota], () => {
+                  count++;
+                  pending--;
+                  if (pending === 0) resolve(count);
+                });
+            } else {
+              count++;
+              pending--;
+              if (pending === 0) resolve(count);
+            }
+          });
+      } else {
+        pending--;
+        if (pending === 0) resolve(count);
+      }
+    });
+  });
 }));
 
 // --- 11. GENERACIÓN DE MATERIALES CON IA (CLOUD TRANSPARENTE) ---

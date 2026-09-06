@@ -339,7 +339,7 @@ function App() {
         
         if (ipcRenderer && planData.id) {
           ipcRenderer.invoke('trigger-curiosity-rewrite', planData.id, nuevoTexto).then(() => {
-            ipcRenderer.invoke('get-planeacion', grupoActual?.id, semanaPlan).then(res => {
+            ipcRenderer.invoke('get-planeacion', grupoActual?.id, semanaPlan, grado).then(res => {
               setPlanData(res && res.id ? res : { lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', confidence_score: 1.0 });
               setConsolaCompletada(true);
               showToast("✅ Planificación reescrita con éxito");
@@ -384,7 +384,7 @@ function App() {
         setPdasDisponibles(filePdas);
 
         if(vista === 'PROYECTOS') {
-          ipcRenderer.invoke('get-proyectos', grupoActual?.id).then(guardadosRes => {
+          ipcRenderer.invoke('get-proyectos', grupoActual?.id, grado).then(guardadosRes => {
             const guardados = (guardadosRes || []).map(p => ({ ...p, pdas_seleccionados: safeParse(p.pdas_seleccionados, []), fases_contenido: safeParse(p.fases_contenido, {}) }));
             // Reparado pdasDb ReferenceError redirigiéndolo a filePdas
             const sugeridos = filePdas.map((p) => ({
@@ -459,7 +459,7 @@ function App() {
     }
 
     if(ipcRenderer && vista === 'PLANNER') {
-        ipcRenderer.invoke('get-planeacion', grupoActual?.id, semanaPlan).then(res => setPlanData(res && res.id ? res : { lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', confidence_score: 1.0 }));
+        ipcRenderer.invoke('get-planeacion', grupoActual?.id, semanaPlan, grado).then(res => setPlanData(res && res.id ? res : { lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', confidence_score: 1.0 }));
     }
   }, [vista, semanaPlan, grado, grupoActual, configCiclo]);
 
