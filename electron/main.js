@@ -789,11 +789,46 @@ ipcMain.handle('get-todos-perfiles', async () => new Promise(r => {
 }));
 
 ipcMain.handle('save-trabajo-qr', async (e, alumno_id, campo, nombre_trabajo, fecha, valor, grupo_id) => new Promise((resolve, reject) => {
-  db.run("INSERT INTO trabajos_qr (alumno_id, campo, nombre_trabajo, fecha, valor, grupo_id) VALUES (?, ?, ?, ?, ?, ?)",
-    [alumno_id, campo || 'GENERAL', nombre_trabajo || 'Trabajo', fecha, valor, grupo_id || null], function(err) {
-      if (err) reject(err);
-      else resolve({ id: this.lastID, alumno_id, campo, nombre_trabajo, fecha, valor, grupo_id });
-    });
+  const c = campo || 'GENERAL';
+  const nt = nombre_trabajo || 'Trabajo';
+  const gId = grupo_id || null;
+  
+  db.get(
+    "SELECT id FROM trabajos_qr WHERE alumno_id = ? AND nombre_trabajo = ? AND fecha = ? AND (grupo_id = ? OR (grupo_id IS NULL AND ? IS NULL))",
+    [alumno_id, nt, fecha, gId, gId],
+    (err, existing) => {
+      if (err) return reject(err);
+      if (existing) {
+        db.run(
+          "UPDATE trabajos_qr SET valor = ?, campo = ? WHERE id = ?",
+          [valor, c, existing.id],
+          function(uErr) {
+            if (uErr) reject(uErr);
+            else resolve({ id: existing.id, alumno_id, campo: c, nombre_trabajo: nt, fecha, valor, grupo_id: gId, updated: true });
+          }
+        );
+      } else {
+        db.run(
+          "INSERT INTO trabajos_qr (alumno_id, campo, nombre_trabajo, fecha, valor, grupo_id) VALUES (?, ?, ?, ?, ?, ?)",
+          [alumno_id, c, nt, fecha, valor, gId],
+          function(iErr) {
+            if (iErr) reject(iErr);
+            else resolve({ id: this.lastID, alumno_id, campo: c, nombre_trabajo: nt, fecha, valor, grupo_id: gId, updated: false });
+          }
+        );
+      }
+    }
+  );
+}));
+
+ipcMain.handle('get-tareas-lista-grupo', async (e, grupo_id) => new Promise(r => {
+  db.all(
+    "SELECT DISTINCT nombre_trabajo FROM trabajos_qr WHERE (grupo_id = ? OR grupo_id IS NULL) ORDER BY id DESC",
+    [grupo_id || null],
+    (err, rows) => {
+      r((rows || []).map(row => row.nombre_trabajo).filter(Boolean));
+    }
+  );
 }));
 
 ipcMain.handle('get-trabajos-qr', async (e, fecha, grupo_id) => new Promise(r => {

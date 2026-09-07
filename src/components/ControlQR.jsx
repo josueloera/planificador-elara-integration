@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { exportarAsistenciaExcel, exportarTrabajosExcel } from '../utils/excelExporter';
 
@@ -38,11 +38,14 @@ export default function ControlQR({
   const [listaIps, setListaIps] = useState([]);
   const [subtipoAsistencia, setSubtipoAsistencia] = useState('PRESENTE'); // 'PRESENTE', 'RETARDO', 'FALTA', 'JUSTIFICADO'
   
-  // Evaluación de Trabajos Diarios
+  // Evaluación de Trabajos Diarios y Selección Ágil de Tareas
   const [campoSeleccionado, setCampoSeleccionado] = useState(CAMPOS_FORMATIVOS[0]);
   const [criterioSeleccionado, setCriterioSeleccionado] = useState(null);
   const [calificacionActual, setCalificacionActual] = useState(10);
-  const [tituloTrabajo, setTituloTrabajo] = useState('Actividad 1');
+  const [tituloTrabajo, setTituloTrabajo] = useState('Tarea 1');
+  const [tareaAnterior, setTareaAnterior] = useState(null);
+  const [listaTareasPersonalizadas, setListaTareasPersonalizadas] = useState(['Tarea 1', 'Tarea 2', 'Tarea 3', 'Tarea 4', 'Tarea 5']);
+  const [vistaModoEvaluacion, setVistaModoEvaluacion] = useState('MATRIZ'); // 'MATRIZ' o 'LISTA'
 
   // Historial en vivo y datos del día
   const [historialEscaneos, setHistorialEscaneos] = useState([]);
@@ -106,7 +109,68 @@ export default function ControlQR({
       ipcRenderer.invoke('get-todos-perfiles').then(map => {
         setPerfilesMap(map || {});
       }).catch(console.error);
+
+      ipcRenderer.invoke('get-tareas-lista-grupo', grupoActual?.id).then(lista => {
+        if (lista && lista.length > 0) {
+          setListaTareasPersonalizadas(prev => Array.from(new Set([...prev, ...lista])));
+        }
+      }).catch(console.error);
     }
+  };
+
+  // Combinar tareas base con las ya registradas en la fecha o en el grupo
+  const tareasDisponibles = useMemo(() => {
+    const set = new Set(listaTareasPersonalizadas);
+    (trabajosDia || []).forEach(t => {
+      if (t.nombre_trabajo) set.add(t.nombre_trabajo);
+    });
+    return Array.from(set);
+  }, [listaTareasPersonalizadas, trabajosDia]);
+
+  const cambiarTareaActiva = (nuevaTarea) => {
+    if (!nuevaTarea || !nuevaTarea.trim()) return;
+    const trimmed = nuevaTarea.trim();
+    if (trimmed !== tituloTrabajo) {
+      setTareaAnterior(tituloTrabajo);
+      setTituloTrabajo(trimmed);
+      if (!listaTareasPersonalizadas.includes(trimmed)) {
+        setListaTareasPersonalizadas(prev => [...prev, trimmed]);
+      }
+      if (showToast) showToast(`🎯 Tarea activa: ${trimmed}`);
+    }
+  };
+
+  const registrarTrabajoAlumnoDirecto = async (alumnoId, alumnoNombre, nombreTarea, nota) => {
+    const valNota = parseFloat(nota) || 10;
+    const nombreT = nombreTarea || tituloTrabajo;
+    
+    if (ipcRenderer) {
+      try {
+        const resTrabajo = await ipcRenderer.invoke('save-trabajo-qr', alumnoId, campoSeleccionado, nombreT, fechaActualQR, valNota, grupoActual?.id);
+        setTrabajosDia(prev => {
+          const sinEste = prev.filter(t => !(String(t.alumno_id) === String(alumnoId) && t.nombre_trabajo === nombreT));
+          return [resTrabajo, ...sinEste];
+        });
+      } catch (err) {
+        console.error("Error guardando trabajo QR en SQLite:", err);
+      }
+    }
+
+    const nuevoLog = {
+      id: Date.now(),
+      tipo: 'TRABAJO',
+      alumnoId,
+      alumno: alumnoNombre,
+      campo: campoSeleccionado,
+      actividad: nombreT,
+      nota: valNota,
+      hora: new Date().toLocaleTimeString()
+    };
+
+    setUltimoEscaneado(nuevoLog);
+    setHistorialEscaneos(prev => [nuevoLog, ...prev.slice(0, 19)]);
+    playBeep();
+    if (showToast) showToast(`🌟 Trabajo Registrado (${valNota}): ${alumnoNombre} - ${nombreT}`);
   };
 
   useEffect(() => {
@@ -287,10 +351,14 @@ export default function ControlQR({
     if (modoEscaneo === 'ASISTENCIA') {
       await registrarAsistenciaDirecta(targetAlumnoId, nombreMostrar, subtipoAsistencia);
     } else {
+      let resTrabajo = null;
       if (ipcRenderer) {
         try {
-          const nuevoTrabajo = await ipcRenderer.invoke('save-trabajo-qr', targetAlumnoId, campoSeleccionado, tituloTrabajo, fechaActualQR, gradeVal, grupoActual?.id);
-          setTrabajosDia(prev => [nuevoTrabajo, ...prev]);
+          resTrabajo = await ipcRenderer.invoke('save-trabajo-qr', targetAlumnoId, campoSeleccionado, tituloTrabajo, fechaActualQR, gradeVal, grupoActual?.id);
+          setTrabajosDia(prev => {
+            const sinEste = prev.filter(t => !(String(t.alumno_id) === String(targetAlumnoId) && t.nombre_trabajo === tituloTrabajo));
+            return [resTrabajo, ...sinEste];
+          });
         } catch (err) {
           console.error("Error guardando trabajo QR en SQLite:", err);
         }
@@ -299,6 +367,7 @@ export default function ControlQR({
       const nuevoLog = {
         id: Date.now(),
         tipo: 'TRABAJO',
+        alumnoId: targetAlumnoId,
         alumno: nombreMostrar,
         campo: campoSeleccionado,
         actividad: tituloTrabajo,
@@ -308,7 +377,7 @@ export default function ControlQR({
 
       setUltimoEscaneado(nuevoLog);
       setHistorialEscaneos(prev => [nuevoLog, ...prev.slice(0, 19)]);
-      if (showToast) showToast(`🌟 Trabajo Registrado (${gradeVal}): ${nombreMostrar}`);
+      if (showToast) showToast(`🌟 Trabajo Registrado (${gradeVal}): ${nombreMostrar} - ${tituloTrabajo}`);
     }
   };
 
@@ -629,37 +698,165 @@ export default function ControlQR({
 
             {/* OPCIONES DE EVALUACIÓN DE TRABAJO */}
             {modoEscaneo === 'TRABAJO' && (
-              <div style={{ backgroundColor: '#fffaf0', padding: '16px', borderRadius: '8px', border: '1px solid #feebc8', marginBottom: '20px' }}>
-                <div style={{ marginBottom: '10px' }}>
-                  <label style={{ fontWeight: 'bold', fontSize: '13px', display: 'block', marginBottom: '4px', color: '#744210' }}>
-                    Nombre de la Actividad / Tarea:
-                  </label>
-                  <input
-                    type="text"
-                    value={tituloTrabajo}
-                    onChange={(e) => setTituloTrabajo(e.target.value)}
-                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0', boxSizing: 'border-box' }}
-                    placeholder="Ej. Ejercicios pág. 45, Maqueta, Resumen"
-                  />
+              <div style={{ backgroundColor: '#fffaf0', padding: '16px', borderRadius: '10px', border: '1px solid #feebc8', marginBottom: '20px' }}>
+                {/* INDICADOR DE TAREA ACTIVA Y BOTÓN DE RETORNO A TAREA PREVIA */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#744210' }}>
+                      🎯 Tarea Activa al Escanear:
+                    </span>
+                    <span style={{
+                      backgroundColor: '#dd6b20',
+                      color: '#ffffff',
+                      fontWeight: 'bold',
+                      padding: '4px 12px',
+                      borderRadius: '20px',
+                      fontSize: '13px',
+                      boxShadow: '0 2px 4px rgba(221, 107, 32, 0.3)'
+                    }}>
+                      📝 {tituloTrabajo}
+                    </span>
+                  </div>
+
+                  {/* BOTÓN VOLVER A TAREA PREVIA (ALUMNO ADELANTADO -> REGRESAR AL RESTO) */}
+                  {tareaAnterior && tareaAnterior !== tituloTrabajo && (
+                    <button
+                      onClick={() => cambiarTareaActiva(tareaAnterior)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        backgroundColor: '#ebf8ff',
+                        border: '1px solid #bee3f8',
+                        borderRadius: '8px',
+                        padding: '4px 10px',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        color: '#2b6cb0',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      title={`Regresar a calificar ${tareaAnterior} para el resto de los alumnos`}
+                    >
+                      <span>◀ Regresar a:</span>
+                      <strong>{tareaAnterior}</strong>
+                    </button>
+                  )}
                 </div>
 
-                <div style={{ marginBottom: '10px' }}>
-                  <label style={{ fontWeight: 'bold', fontSize: '13px', display: 'block', marginBottom: '4px', color: '#744210' }}>
-                    Campo Formativo:
+                {/* SELECTOR RÁPIDO DE TAREAS (CHIPS / BOTONES DIRECTOS) */}
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ fontWeight: 'bold', fontSize: '12px', display: 'block', marginBottom: '6px', color: '#975a16' }}>
+                    ⚡ Seleccionar Tarea Rápida (1 clic para cambiar):
                   </label>
-                  <select
-                    value={campoSeleccionado}
-                    onChange={(e) => setCampoSeleccionado(e.target.value)}
-                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
-                  >
-                    {CAMPOS_FORMATIVOS.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                    {tareasDisponibles.map(tarea => {
+                      const isActiva = tarea === tituloTrabajo;
+                      const entregas = (trabajosDia || []).filter(t => t.nombre_trabajo === tarea).length;
+                      return (
+                        <button
+                          key={tarea}
+                          onClick={() => cambiarTareaActiva(tarea)}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            border: isActiva ? '2px solid #dd6b20' : '1px solid #cbd5e0',
+                            backgroundColor: isActiva ? '#dd6b20' : '#ffffff',
+                            color: isActiva ? '#ffffff' : '#4a5568',
+                            fontWeight: 'bold',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: isActiva ? '0 2px 5px rgba(221, 107, 32, 0.35)' : 'none',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <span>{tarea}</span>
+                          <span style={{
+                            fontSize: '10px',
+                            backgroundColor: isActiva ? 'rgba(255,255,255,0.35)' : '#edf2f7',
+                            color: isActiva ? '#ffffff' : '#718096',
+                            padding: '1px 5px',
+                            borderRadius: '10px'
+                          }}>
+                            {entregas}/{alumnos.length}
+                          </span>
+                        </button>
+                      );
+                    })}
+
+                    {/* BOTÓN PARA AÑADIR OTRA TAREA */}
+                    <button
+                      onClick={() => {
+                        const num = tareasDisponibles.length + 1;
+                        const nombreDefecto = `Tarea ${num}`;
+                        const nombre = window.prompt("Nombre de la nueva tarea o actividad:", nombreDefecto);
+                        if (nombre && nombre.trim()) {
+                          cambiarTareaActiva(nombre.trim());
+                        }
+                      }}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        border: '1px dashed #dd6b20',
+                        backgroundColor: '#fffaf0',
+                        color: '#c05621',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ➕ Nueva Tarea
+                    </button>
+                  </div>
                 </div>
 
+                {/* ENTRADA EDITABLE MANUAL PARA NOMBRE PERSONALIZADO */}
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                  <div>
+                    <label style={{ fontWeight: 'bold', fontSize: '12px', display: 'block', marginBottom: '4px', color: '#744210' }}>
+                      O escribe / edita el nombre de la actividad:
+                    </label>
+                    <input
+                      type="text"
+                      value={tituloTrabajo}
+                      onChange={(e) => {
+                        setTituloTrabajo(e.target.value);
+                        if (!listaTareasPersonalizadas.includes(e.target.value) && e.target.value.trim().length > 2) {
+                          setListaTareasPersonalizadas(prev => [...prev, e.target.value]);
+                        }
+                      }}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e0', boxSizing: 'border-box', fontSize: '13px' }}
+                      placeholder="Ej. Ejercicios pág. 45, Maqueta, Resumen"
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontWeight: 'bold', fontSize: '12px', display: 'block', marginBottom: '4px', color: '#744210' }}>
+                      Campo Formativo:
+                    </label>
+                    <select
+                      value={campoSeleccionado}
+                      onChange={(e) => setCampoSeleccionado(e.target.value)}
+                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '12px' }}
+                    >
+                      {CAMPOS_FORMATIVOS.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* SELECTOR DE CALIFICACIÓN */}
                 <div>
-                  <label style={{ fontWeight: 'bold', fontSize: '13px', display: 'block', marginBottom: '4px', color: '#744210' }}>
-                    Calificación asignada al escanear: <strong>{calificacionActual}</strong>
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label style={{ fontWeight: 'bold', fontSize: '12px', color: '#744210' }}>
+                      Calificación a asignar al escanear:
+                    </label>
+                    <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#dd6b20', backgroundColor: '#feebc8', padding: '2px 8px', borderRadius: '6px' }}>
+                      Nota: {calificacionActual}
+                    </span>
+                  </div>
                   <div style={{ display: 'flex', gap: '5px' }}>
                     {[10, 9, 8, 7, 6, 5].map(nota => (
                       <button
@@ -671,9 +868,11 @@ export default function ControlQR({
                           borderRadius: '6px',
                           cursor: 'pointer',
                           fontWeight: 'bold',
+                          fontSize: '13px',
                           backgroundColor: calificacionActual === nota ? '#dd6b20' : '#ffffff',
                           color: calificacionActual === nota ? '#ffffff' : '#744210',
-                          border: calificacionActual === nota ? '1px solid #dd6b20' : '1px solid #cbd5e0'
+                          border: calificacionActual === nota ? '1px solid #dd6b20' : '1px solid #cbd5e0',
+                          boxShadow: calificacionActual === nota ? '0 2px 4px rgba(221, 107, 32, 0.3)' : 'none'
                         }}
                       >
                         {nota}
@@ -713,22 +912,108 @@ export default function ControlQR({
           <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
             <h3 style={{ marginTop: 0, color: '#2b6cb0' }}>⚡ Estado y Lecturas Recientes</h3>
 
-            {/* ÚLTIMO ALUMNO ESCANEADO */}
-            {ultimoEscaneado ? (
-              <div style={{ backgroundColor: '#ebf8ff', padding: '16px', borderRadius: '10px', borderLeft: '6px solid #3182ce', marginBottom: '20px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#2b6cb0', textTransform: 'uppercase' }}>
-                  Última Lectura Recibida ({ultimoEscaneado.hora})
-                </span>
-                <h2 style={{ margin: '6px 0', color: '#1a202c' }}>{ultimoEscaneado.alumno}</h2>
-                <div style={{ fontSize: '14px', color: '#4a5568' }}>
-                  <span>Modo: <strong>{ultimoEscaneado.tipo}</strong></span>
-                  {ultimoEscaneado.estado && <span style={{ marginLeft: '10px' }}>Estado: <strong>{ultimoEscaneado.estado}</strong></span>}
-                  {ultimoEscaneado.nota !== undefined && <span style={{ marginLeft: '10px' }}>Calificación: <strong>{ultimoEscaneado.nota}</strong></span>}
+            {/* ÚLTIMO ALUMNO ESCANEADO Y GESTIÓN DE TAREAS */}
+            {ultimoEscaneado ? (() => {
+              const aluActual = alumnos.find(a => 
+                (ultimoEscaneado.alumnoId && String(a.id) === String(ultimoEscaneado.alumnoId)) ||
+                (ultimoEscaneado.alumno && a.nombre.toLowerCase().trim() === ultimoEscaneado.alumno.toLowerCase().trim())
+              );
+              const trabajosEsteAlumno = aluActual ? (trabajosDia || []).filter(t => String(t.alumno_id) === String(aluActual.id)) : [];
+              const tareasPendientes = aluActual ? tareasDisponibles.filter(td => !trabajosEsteAlumno.some(t => t.nombre_trabajo === td)) : [];
+
+              return (
+                <div style={{ backgroundColor: '#ebf8ff', padding: '16px', borderRadius: '10px', borderLeft: '6px solid #3182ce', marginBottom: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#2b6cb0', textTransform: 'uppercase' }}>
+                      Última Lectura Recibida ({ultimoEscaneado.hora})
+                    </span>
+                    {aluActual && perfilesMap[aluActual.id]?.foto_url && (
+                      <img src={perfilesMap[aluActual.id].foto_url} alt="Foto" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #3182ce' }} />
+                    )}
+                  </div>
+
+                  <h2 style={{ margin: '6px 0', color: '#1a202c', fontSize: '18px' }}>{ultimoEscaneado.alumno}</h2>
+                  
+                  <div style={{ fontSize: '13px', color: '#4a5568', marginBottom: '10px' }}>
+                    <span>Modo: <strong>{ultimoEscaneado.tipo}</strong></span>
+                    {ultimoEscaneado.estado && <span style={{ marginLeft: '10px' }}>Estado: <strong>{ultimoEscaneado.estado}</strong></span>}
+                    {ultimoEscaneado.nota !== undefined && <span style={{ marginLeft: '10px' }}>Calificación: <strong style={{ color: '#276749' }}>{ultimoEscaneado.nota}</strong> ({ultimoEscaneado.actividad})</span>}
+                  </div>
+
+                  {/* DESGLOSE DE TAREAS ENTREGADAS HOY POR ESTE ALUMNO */}
+                  {modoEscaneo === 'TRABAJO' && aluActual && (
+                    <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #bee3f8' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#2b6cb0', marginBottom: '6px' }}>
+                        📋 Tareas registradas hoy para este alumno ({trabajosEsteAlumno.length}):
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                        {trabajosEsteAlumno.length === 0 ? (
+                          <span style={{ fontSize: '12px', color: '#718096' }}>Sin tareas registradas hoy</span>
+                        ) : (
+                          trabajosEsteAlumno.map(t => (
+                            <span
+                              key={t.id}
+                              style={{
+                                backgroundColor: '#c6f6d5',
+                                color: '#22543d',
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                fontSize: '11px',
+                                fontWeight: 'bold',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              ✅ {t.nombre_trabajo}: <strong>{t.valor}</strong>
+                            </span>
+                          ))
+                        )}
+                      </div>
+
+                      {/* TAREAS PENDIENTES / CALIFICAR TRABAJOS ADELANTADOS EN 1 CLIC */}
+                      {tareasPendientes.length > 0 && (
+                        <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: '8px', border: '1px solid #bee3f8' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#744210', marginBottom: '6px' }}>
+                            ⭐ ¿Este alumno se adelantó con más tareas? Califica con 1 clic:
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {tareasPendientes.map(tp => (
+                              <div key={tp} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fffaf0', padding: '4px 8px', borderRadius: '6px', border: '1px solid #feebc8' }}>
+                                <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#744210' }}>📝 {tp}</span>
+                                <div style={{ display: 'flex', gap: '3px' }}>
+                                  {[10, 9, 8, 7, 6, 5].map(n => (
+                                    <button
+                                      key={n}
+                                      onClick={() => registrarTrabajoAlumnoDirecto(aluActual.id, aluActual.nombre, tp, n)}
+                                      style={{
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        border: '1px solid #dd6b20',
+                                        backgroundColor: '#ffffff',
+                                        color: '#dd6b20',
+                                        fontWeight: 'bold',
+                                        fontSize: '11px',
+                                        cursor: 'pointer'
+                                      }}
+                                      title={`Registrar ${tp} con nota ${n}`}
+                                    >
+                                      {n}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ) : (
+              );
+            })() : (
               <div style={{ padding: '20px', backgroundColor: '#f7fafc', borderRadius: '8px', textAlign: 'center', color: '#a0aec0', marginBottom: '20px' }}>
-                Esperando primer escaneo desde la App Móvil...
+                Esperando primer escaneo desde la App Móvil o PC...
               </div>
             )}
 
@@ -872,97 +1157,256 @@ export default function ControlQR({
       {/* VISTA 3: EVALUACIÓN DE TRABAJOS DEL DÍA */}
       {activeTab === 'EVALUACION' && (
         <div className="no-print" style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
             <div>
               <h3 style={{ margin: 0, color: '#276749' }}>📝 Registro y Promedio de Trabajos del Día ({fechaActualQR})</h3>
               <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#718096' }}>
-                Los trabajos se almacenan permanentemente en SQLite sin perderse. Para ver semanas pasadas o exportar a Excel, usa "Historial y Reportes".
+                Visualiza el avance de las tareas, revisa qué alumnos van adelantados y califica directamente en la matriz.
               </p>
             </div>
-            <button
-              onClick={() => setActiveTab('HISTORIAL')}
-              style={{ padding: '8px 16px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
-            >
-              📊 Ver Historial y Reportes Excel
-            </button>
+
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              {/* TOGGLE VISTA MATRIZ VS LISTA */}
+              <div style={{ display: 'flex', backgroundColor: '#edf2f7', padding: '2px', borderRadius: '8px', border: '1px solid #cbd5e0' }}>
+                <button
+                  onClick={() => setVistaModoEvaluacion('MATRIZ')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    backgroundColor: vistaModoEvaluacion === 'MATRIZ' ? '#276749' : 'transparent',
+                    color: vistaModoEvaluacion === 'MATRIZ' ? '#ffffff' : '#4a5568'
+                  }}
+                >
+                  📊 Matriz de Tareas
+                </button>
+                <button
+                  onClick={() => setVistaModoEvaluacion('LISTA')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    backgroundColor: vistaModoEvaluacion === 'LISTA' ? '#276749' : 'transparent',
+                    color: vistaModoEvaluacion === 'LISTA' ? '#ffffff' : '#4a5568'
+                  }}
+                >
+                  📄 Lista Individual
+                </button>
+              </div>
+
+              <button
+                onClick={() => setActiveTab('HISTORIAL')}
+                style={{ padding: '8px 14px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}
+              >
+                📊 Ver Historial y Reportes Excel
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            {/* TABLA DE TRABAJOS INDIVIDUALES ESCANEADOS */}
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px' }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#2b6cb0' }}>📌 Trabajos de esta Fecha ({trabajosDia.length})</h4>
-              <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
-                {trabajosDia.length === 0 ? (
-                  <div style={{ padding: '30px', textAlign: 'center', color: '#a0aec0', fontSize: '13px' }}>
-                    No hay trabajos registrados en esta fecha ({fechaActualQR}). Usa la pestaña Escáner o selecciona otra fecha en el encabezado.
-                  </div>
-                ) : (
+          {vistaModoEvaluacion === 'MATRIZ' ? (
+            /* VISTA MATRIZ COMPARATIVA DE TAREAS */
+            <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '4px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#edf2f7', borderBottom: '2px solid #cbd5e0', textAlign: 'left' }}>
+                    <th style={{ padding: '10px', width: '35px' }}>#</th>
+                    <th style={{ padding: '10px', minWidth: '180px' }}>Nombre del Alumno</th>
+                    {tareasDisponibles.map(tar => (
+                      <th key={tar} style={{ padding: '10px', textAlign: 'center', minWidth: '95px' }}>
+                        <div style={{ fontWeight: 'bold', color: tar === tituloTrabajo ? '#dd6b20' : '#2d3748' }}>
+                          {tar}
+                        </div>
+                        <small style={{ color: '#718096', fontSize: '10px' }}>
+                          {(trabajosDia || []).filter(t => t.nombre_trabajo === tar).length}/{alumnos.length}
+                        </small>
+                      </th>
+                    ))}
+                    <th style={{ padding: '10px', textAlign: 'center', minWidth: '90px' }}>Promedio</th>
+                    <th style={{ padding: '10px', textAlign: 'center', minWidth: '110px' }}>Progreso</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {alumnos.map((a, idx) => {
+                    const trabajosEsteAlu = (trabajosDia || []).filter(t => String(t.alumno_id) === String(a.id));
+                    const prom = calcularPromedioAlumno(a.id);
+                    const totalEntregas = trabajosEsteAlu.length;
+                    const esAdelantado = totalEntregas >= tareasDisponibles.length && tareasDisponibles.length > 1;
+
+                    return (
+                      <tr key={a.id} style={{ borderBottom: '1px solid #edf2f7', backgroundColor: esAdelantado ? '#f7fafc' : 'white' }}>
+                        <td style={{ padding: '10px', color: '#718096', fontWeight: 'bold' }}>{idx + 1}</td>
+                        <td style={{ padding: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {perfilesMap[a.id]?.foto_url && (
+                            <img src={perfilesMap[a.id].foto_url} alt="Foto" style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }} />
+                          )}
+                          <span>{a.nombre}</span>
+                        </td>
+
+                        {/* CELDAS POR CADA TAREA */}
+                        {tareasDisponibles.map(tar => {
+                          const reg = trabajosEsteAlu.find(t => t.nombre_trabajo === tar);
+                          return (
+                            <td key={tar} style={{ padding: '8px', textAlign: 'center' }}>
+                              {reg ? (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  <span
+                                    style={{
+                                      padding: '3px 8px',
+                                      borderRadius: '6px',
+                                      fontWeight: 'bold',
+                                      fontSize: '12px',
+                                      backgroundColor: reg.valor >= 8 ? '#c6f6d5' : '#feebc8',
+                                      color: reg.valor >= 8 ? '#22543d' : '#744210'
+                                    }}
+                                  >
+                                    {reg.valor}
+                                  </span>
+                                  <button
+                                    onClick={() => eliminarTrabajo(reg.id)}
+                                    style={{ border: 'none', background: 'transparent', color: '#e53e3e', cursor: 'pointer', fontSize: '11px', padding: '1px' }}
+                                    title="Eliminar calificación"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              ) : (
+                                <div style={{ display: 'inline-flex', gap: '2px' }}>
+                                  {[10, 8, 6].map(quickNota => (
+                                    <button
+                                      key={quickNota}
+                                      onClick={() => registrarTrabajoAlumnoDirecto(a.id, a.nombre, tar, quickNota)}
+                                      style={{
+                                        padding: '2px 5px',
+                                        borderRadius: '4px',
+                                        border: '1px solid #e2e8f0',
+                                        backgroundColor: '#edf2f7',
+                                        fontSize: '10px',
+                                        cursor: 'pointer',
+                                        color: '#4a5568'
+                                      }}
+                                      title={`Asignar ${quickNota} a ${a.nombre} en ${tar}`}
+                                    >
+                                      +{quickNota}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+
+                        {/* PROMEDIO */}
+                        <td style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold', fontSize: '13px', color: prom ? (prom >= 8 ? '#22543d' : '#744210') : '#a0aec0' }}>
+                          {prom || '-'}
+                        </td>
+
+                        {/* BADGE DE PROGRESO */}
+                        <td style={{ padding: '10px', textAlign: 'center' }}>
+                          {esAdelantado ? (
+                            <span style={{ backgroundColor: '#e9d8fd', color: '#553c9e', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>
+                              🚀 ¡Adelantado!
+                            </span>
+                          ) : totalEntregas > 0 ? (
+                            <span style={{ backgroundColor: '#feebc8', color: '#744210', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>
+                              {totalEntregas}/{tareasDisponibles.length} tareas
+                            </span>
+                          ) : (
+                            <span style={{ backgroundColor: '#edf2f7', color: '#a0aec0', padding: '2px 8px', borderRadius: '10px', fontSize: '11px' }}>
+                              Pendiente
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            /* VISTA LISTA INDIVIDUAL ORIGINAL */
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              {/* TABLA DE TRABAJOS INDIVIDUALES ESCANEADOS */}
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#2b6cb0' }}>📌 Trabajos de esta Fecha ({trabajosDia.length})</h4>
+                <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                  {trabajosDia.length === 0 ? (
+                    <div style={{ padding: '30px', textAlign: 'center', color: '#a0aec0', fontSize: '13px' }}>
+                      No hay trabajos registrados en esta fecha ({fechaActualQR}). Usa la pestaña Escáner o selecciona otra fecha en el encabezado.
+                    </div>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#edf2f7', borderBottom: '2px solid #cbd5e0', textAlign: 'left' }}>
+                          <th style={{ padding: '8px' }}>Alumno</th>
+                          <th style={{ padding: '8px' }}>Actividad</th>
+                          <th style={{ padding: '8px', textAlign: 'center' }}>Nota</th>
+                          <th style={{ padding: '8px', textAlign: 'center' }}>Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trabajosDia.map(t => {
+                          const alu = alumnos.find(a => String(a.id) === String(t.alumno_id));
+                          return (
+                            <tr key={t.id} style={{ borderBottom: '1px solid #edf2f7' }}>
+                              <td style={{ padding: '8px', fontWeight: 'bold' }}>{alu ? alu.nombre : `ID ${t.alumno_id}`}</td>
+                              <td style={{ padding: '8px', color: '#4a5568' }}>{t.nombre_trabajo} <br/><small style={{ color: '#718096' }}>{t.campo}</small></td>
+                              <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', color: '#276749' }}>{t.valor}</td>
+                              <td style={{ padding: '8px', textAlign: 'center' }}>
+                                <button
+                                  onClick={() => eliminarTrabajo(t.id)}
+                                  style={{ border: 'none', background: '#fed7d7', color: '#9b2c2c', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontWeight: 'bold' }}
+                                  title="Eliminar este trabajo"
+                                >
+                                  🗑️
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+
+              {/* TABLA RESUMEN DE PROMEDIOS DEL DÍA */}
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', backgroundColor: '#f0fff4' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#22543d' }}>📊 Promedio del Día por Alumno</h4>
+                <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                     <thead>
-                      <tr style={{ backgroundColor: '#edf2f7', borderBottom: '2px solid #cbd5e0', textAlign: 'left' }}>
+                      <tr style={{ backgroundColor: '#c6f6d5', borderBottom: '2px solid #9ae6b4', textAlign: 'left', color: '#22543d' }}>
                         <th style={{ padding: '8px' }}>Alumno</th>
-                        <th style={{ padding: '8px' }}>Actividad</th>
-                        <th style={{ padding: '8px', textAlign: 'center' }}>Nota</th>
-                        <th style={{ padding: '8px', textAlign: 'center' }}>Acción</th>
+                        <th style={{ padding: '8px', textAlign: 'center' }}>Trabajos</th>
+                        <th style={{ padding: '8px', textAlign: 'center' }}>Promedio</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {trabajosDia.map(t => {
-                        const alu = alumnos.find(a => String(a.id) === String(t.alumno_id));
+                      {alumnos.map(a => {
+                        const count = trabajosDia.filter(t => String(t.alumno_id) === String(a.id)).length;
+                        const prom = calcularPromedioAlumno(a.id);
                         return (
-                          <tr key={t.id} style={{ borderBottom: '1px solid #edf2f7' }}>
-                            <td style={{ padding: '8px', fontWeight: 'bold' }}>{alu ? alu.nombre : `ID ${t.alumno_id}`}</td>
-                            <td style={{ padding: '8px', color: '#4a5568' }}>{t.nombre_trabajo} <br/><small style={{ color: '#718096' }}>{t.campo}</small></td>
-                            <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', color: '#276749' }}>{t.valor}</td>
-                            <td style={{ padding: '8px', textAlign: 'center' }}>
-                              <button
-                                onClick={() => eliminarTrabajo(t.id)}
-                                style={{ border: 'none', background: '#fed7d7', color: '#9b2c2c', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontWeight: 'bold' }}
-                                title="Eliminar este trabajo"
-                              >
-                                🗑️
-                              </button>
+                          <tr key={a.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                            <td style={{ padding: '8px', fontWeight: 'bold' }}>{a.nombre}</td>
+                            <td style={{ padding: '8px', textAlign: 'center' }}>{count}</td>
+                            <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', fontSize: '14px', color: prom ? (prom >= 8 ? '#22543d' : '#744210') : '#a0aec0' }}>
+                              {prom || '-'}
                             </td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
-                )}
+                </div>
               </div>
             </div>
-
-            {/* TABLA RESUMEN DE PROMEDIOS DEL DÍA */}
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', backgroundColor: '#f0fff4' }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#22543d' }}>📊 Promedio del Día por Alumno</h4>
-              <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#c6f6d5', borderBottom: '2px solid #9ae6b4', textAlign: 'left', color: '#22543d' }}>
-                      <th style={{ padding: '8px' }}>Alumno</th>
-                      <th style={{ padding: '8px', textAlign: 'center' }}>Trabajos</th>
-                      <th style={{ padding: '8px', textAlign: 'center' }}>Promedio</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {alumnos.map(a => {
-                      const count = trabajosDia.filter(t => String(t.alumno_id) === String(a.id)).length;
-                      const prom = calcularPromedioAlumno(a.id);
-                      return (
-                        <tr key={a.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                          <td style={{ padding: '8px', fontWeight: 'bold' }}>{a.nombre}</td>
-                          <td style={{ padding: '8px', textAlign: 'center' }}>{count}</td>
-                          <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', fontSize: '14px', color: prom ? (prom >= 8 ? '#22543d' : '#744210') : '#a0aec0' }}>
-                            {prom || '-'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       )}
 
