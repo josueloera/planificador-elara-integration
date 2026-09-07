@@ -44,7 +44,6 @@ export default function ControlQR({
   const [calificacionActual, setCalificacionActual] = useState(10);
   const [tituloTrabajo, setTituloTrabajo] = useState('Tarea 1');
   const [tareaAnterior, setTareaAnterior] = useState(null);
-  const [tareasManualesPorFecha, setTareasManualesPorFecha] = useState({});
   const [sugerenciasGlobales, setSugerenciasGlobales] = useState([]);
   const [vistaModoEvaluacion, setVistaModoEvaluacion] = useState('MATRIZ'); // 'MATRIZ' o 'LISTA'
 
@@ -119,43 +118,40 @@ export default function ControlQR({
     }
   };
 
-  // Obtener ÚNICAMENTE las actividades registradas o agregadas para la fecha seleccionada
+  // Obtener ÚNICAMENTE las actividades que tienen registros en la base de datos para esta fecha,
+  // más la tarea activa actual si está siendo escrita o seleccionada
   const tareasDisponibles = useMemo(() => {
     const nombresDelDia = new Set();
 
-    // 1. Tareas guardadas en la base de datos para esta fecha
+    // 1. Tareas reales guardadas en la base de datos para esta fecha
     (trabajosDia || []).forEach(t => {
       if (t.nombre_trabajo && t.nombre_trabajo.trim()) {
         nombresDelDia.add(t.nombre_trabajo.trim());
       }
     });
 
-    // 2. Tareas agregadas por el docente específicamente para esta fecha
-    const agregadasEstaFecha = tareasManualesPorFecha[fechaActualQR] || [];
-    agregadasEstaFecha.forEach(t => {
-      if (t && t.trim()) nombresDelDia.add(t.trim());
-    });
-
-    // 3. Si en esta fecha aún no hay ninguna tarea, mostrar la tarea activa actual o 'Tarea 1'
+    // 2. Si no hay nada registrado aún hoy, mostrar la tarea actual o 'Tarea 1'
     if (nombresDelDia.size === 0) {
       nombresDelDia.add(tituloTrabajo && tituloTrabajo.trim() ? tituloTrabajo.trim() : 'Tarea 1');
+    } else if (tituloTrabajo && tituloTrabajo.trim() && !nombresDelDia.has(tituloTrabajo.trim())) {
+      // Si el docente escribió un nuevo nombre en el input o seleccionó nueva tarea, incluirla
+      nombresDelDia.add(tituloTrabajo.trim());
     }
 
     return Array.from(nombresDelDia);
-  }, [trabajosDia, tareasManualesPorFecha, fechaActualQR, tituloTrabajo]);
+  }, [trabajosDia, tituloTrabajo]);
 
   // Sincronizar tarea activa al cambiar de fecha
   useEffect(() => {
     const tareasGuardadasEstaFecha = Array.from(new Set((trabajosDia || []).map(t => t.nombre_trabajo?.trim()).filter(Boolean)));
-    const tareasManualesEstaFecha = (tareasManualesPorFecha[fechaActualQR] || []).map(t => t?.trim()).filter(Boolean);
-    const todasEstaFecha = Array.from(new Set([...tareasGuardadasEstaFecha, ...tareasManualesEstaFecha]));
-
-    if (todasEstaFecha.length > 0) {
-      if (!todasEstaFecha.includes(tituloTrabajo)) {
-        setTituloTrabajo(todasEstaFecha[0]);
+    if (tareasGuardadasEstaFecha.length > 0) {
+      if (!tareasGuardadasEstaFecha.includes(tituloTrabajo)) {
+        setTituloTrabajo(tareasGuardadasEstaFecha[0]);
       }
     } else {
-      setTituloTrabajo('Tarea 1');
+      if (!tituloTrabajo || !tituloTrabajo.trim()) {
+        setTituloTrabajo('Tarea 1');
+      }
       setTareaAnterior(null);
     }
   }, [fechaActualQR, trabajosDia]);
@@ -166,19 +162,13 @@ export default function ControlQR({
     if (trimmed !== tituloTrabajo) {
       setTareaAnterior(tituloTrabajo);
       setTituloTrabajo(trimmed);
-      setTareasManualesPorFecha(prev => {
-        const list = prev[fechaActualQR] || [];
-        if (!list.includes(trimmed)) {
-          return { ...prev, [fechaActualQR]: [...list, trimmed] };
-        }
-        return prev;
-      });
       if (showToast) showToast(`🎯 Tarea activa: ${trimmed}`);
     }
   };
 
   const agregarNuevaTareaDia = () => {
-    const num = tareasDisponibles.length + 1;
+    const tareasGuardadas = Array.from(new Set((trabajosDia || []).map(t => t.nombre_trabajo?.trim()).filter(Boolean)));
+    const num = tareasGuardadas.length + 1;
     const nombreDefecto = `Tarea ${num}`;
     const nombre = window.prompt(`Nombre de la nueva actividad para este día (${fechaActualQR}):`, nombreDefecto);
     if (nombre && nombre.trim()) {
@@ -188,7 +178,7 @@ export default function ControlQR({
 
   const eliminarActividadDelDia = async (nombreActividad, e) => {
     if (e) e.stopPropagation();
-    if (!window.confirm(`¿Deseas eliminar la actividad "${nombreActividad}" y sus registros de este día (${fechaActualQR})?`)) return;
+    if (!window.confirm(`¿Deseas eliminar la actividad "${nombreActividad}" de este día (${fechaActualQR})?`)) return;
 
     if (ipcRenderer) {
       try {
@@ -198,12 +188,12 @@ export default function ControlQR({
         console.error("Error eliminando actividad de la fecha:", err);
       }
     }
-    setTareasManualesPorFecha(prev => {
-      const list = prev[fechaActualQR] || [];
-      return { ...prev, [fechaActualQR]: list.filter(t => t !== nombreActividad) };
-    });
+
+    const restantes = (trabajosDia || []).filter(t => t.nombre_trabajo !== nombreActividad);
+    const tareasRestantes = Array.from(new Set(restantes.map(t => t.nombre_trabajo?.trim()).filter(Boolean)));
     if (tituloTrabajo === nombreActividad) {
-      setTituloTrabajo('Tarea 1');
+      setTituloTrabajo(tareasRestantes.length > 0 ? tareasRestantes[0] : 'Tarea 1');
+      setTareaAnterior(null);
     }
     if (showToast) showToast(`🗑️ Actividad "${nombreActividad}" eliminada de este día`);
   };
@@ -899,19 +889,7 @@ export default function ControlQR({
                       type="text"
                       list="listaSugerenciasTareas"
                       value={tituloTrabajo}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setTituloTrabajo(val);
-                        if (val.trim().length > 1) {
-                          setTareasManualesPorFecha(prev => {
-                            const list = prev[fechaActualQR] || [];
-                            if (!list.includes(val.trim())) {
-                              return { ...prev, [fechaActualQR]: [...list, val.trim()] };
-                            }
-                            return prev;
-                          });
-                        }
-                      }}
+                      onChange={(e) => setTituloTrabajo(e.target.value)}
                       style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e0', boxSizing: 'border-box', fontSize: '13px' }}
                       placeholder="Ej. Ejercicios pág. 45, Maqueta, Resumen"
                     />
