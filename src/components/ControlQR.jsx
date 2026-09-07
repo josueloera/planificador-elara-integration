@@ -44,7 +44,8 @@ export default function ControlQR({
   const [calificacionActual, setCalificacionActual] = useState(10);
   const [tituloTrabajo, setTituloTrabajo] = useState('Tarea 1');
   const [tareaAnterior, setTareaAnterior] = useState(null);
-  const [listaTareasPersonalizadas, setListaTareasPersonalizadas] = useState(['Tarea 1', 'Tarea 2', 'Tarea 3', 'Tarea 4', 'Tarea 5']);
+  const [tareasManualesPorFecha, setTareasManualesPorFecha] = useState({});
+  const [sugerenciasGlobales, setSugerenciasGlobales] = useState([]);
   const [vistaModoEvaluacion, setVistaModoEvaluacion] = useState('MATRIZ'); // 'MATRIZ' o 'LISTA'
 
   // Historial en vivo y datos del día
@@ -112,20 +113,52 @@ export default function ControlQR({
 
       ipcRenderer.invoke('get-tareas-lista-grupo', grupoActual?.id).then(lista => {
         if (lista && lista.length > 0) {
-          setListaTareasPersonalizadas(prev => Array.from(new Set([...prev, ...lista])));
+          setSugerenciasGlobales(Array.from(new Set(lista)));
         }
       }).catch(console.error);
     }
   };
 
-  // Combinar tareas base con las ya registradas en la fecha o en el grupo
+  // Obtener ÚNICAMENTE las actividades registradas o agregadas para la fecha seleccionada
   const tareasDisponibles = useMemo(() => {
-    const set = new Set(listaTareasPersonalizadas);
+    const nombresDelDia = new Set();
+
+    // 1. Tareas guardadas en la base de datos para esta fecha
     (trabajosDia || []).forEach(t => {
-      if (t.nombre_trabajo) set.add(t.nombre_trabajo);
+      if (t.nombre_trabajo && t.nombre_trabajo.trim()) {
+        nombresDelDia.add(t.nombre_trabajo.trim());
+      }
     });
-    return Array.from(set);
-  }, [listaTareasPersonalizadas, trabajosDia]);
+
+    // 2. Tareas agregadas por el docente específicamente para esta fecha
+    const agregadasEstaFecha = tareasManualesPorFecha[fechaActualQR] || [];
+    agregadasEstaFecha.forEach(t => {
+      if (t && t.trim()) nombresDelDia.add(t.trim());
+    });
+
+    // 3. Si en esta fecha aún no hay ninguna tarea, mostrar la tarea activa actual o 'Tarea 1'
+    if (nombresDelDia.size === 0) {
+      nombresDelDia.add(tituloTrabajo && tituloTrabajo.trim() ? tituloTrabajo.trim() : 'Tarea 1');
+    }
+
+    return Array.from(nombresDelDia);
+  }, [trabajosDia, tareasManualesPorFecha, fechaActualQR, tituloTrabajo]);
+
+  // Sincronizar tarea activa al cambiar de fecha
+  useEffect(() => {
+    const tareasGuardadasEstaFecha = Array.from(new Set((trabajosDia || []).map(t => t.nombre_trabajo?.trim()).filter(Boolean)));
+    const tareasManualesEstaFecha = (tareasManualesPorFecha[fechaActualQR] || []).map(t => t?.trim()).filter(Boolean);
+    const todasEstaFecha = Array.from(new Set([...tareasGuardadasEstaFecha, ...tareasManualesEstaFecha]));
+
+    if (todasEstaFecha.length > 0) {
+      if (!todasEstaFecha.includes(tituloTrabajo)) {
+        setTituloTrabajo(todasEstaFecha[0]);
+      }
+    } else {
+      setTituloTrabajo('Tarea 1');
+      setTareaAnterior(null);
+    }
+  }, [fechaActualQR, trabajosDia]);
 
   const cambiarTareaActiva = (nuevaTarea) => {
     if (!nuevaTarea || !nuevaTarea.trim()) return;
@@ -133,10 +166,23 @@ export default function ControlQR({
     if (trimmed !== tituloTrabajo) {
       setTareaAnterior(tituloTrabajo);
       setTituloTrabajo(trimmed);
-      if (!listaTareasPersonalizadas.includes(trimmed)) {
-        setListaTareasPersonalizadas(prev => [...prev, trimmed]);
-      }
+      setTareasManualesPorFecha(prev => {
+        const list = prev[fechaActualQR] || [];
+        if (!list.includes(trimmed)) {
+          return { ...prev, [fechaActualQR]: [...list, trimmed] };
+        }
+        return prev;
+      });
       if (showToast) showToast(`🎯 Tarea activa: ${trimmed}`);
+    }
+  };
+
+  const agregarNuevaTareaDia = () => {
+    const num = tareasDisponibles.length + 1;
+    const nombreDefecto = `Tarea ${num}`;
+    const nombre = window.prompt(`Nombre de la nueva actividad para este día (${fechaActualQR}):`, nombreDefecto);
+    if (nombre && nombre.trim()) {
+      cambiarTareaActiva(nombre.trim());
     }
   };
 
@@ -787,16 +833,9 @@ export default function ControlQR({
                       );
                     })}
 
-                    {/* BOTÓN PARA AÑADIR OTRA TAREA */}
+                    {/* BOTÓN PARA AÑADIR OTRA TAREA PARA ESTE DÍA */}
                     <button
-                      onClick={() => {
-                        const num = tareasDisponibles.length + 1;
-                        const nombreDefecto = `Tarea ${num}`;
-                        const nombre = window.prompt("Nombre de la nueva tarea o actividad:", nombreDefecto);
-                        if (nombre && nombre.trim()) {
-                          cambiarTareaActiva(nombre.trim());
-                        }
-                      }}
+                      onClick={agregarNuevaTareaDia}
                       style={{
                         padding: '6px 10px',
                         borderRadius: '8px',
@@ -813,24 +852,35 @@ export default function ControlQR({
                   </div>
                 </div>
 
-                {/* ENTRADA EDITABLE MANUAL PARA NOMBRE PERSONALIZADO */}
+                {/* ENTRADA EDITABLE MANUAL PARA NOMBRE PERSONALIZADO CON AUTOCOMPLETADO */}
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px', marginBottom: '12px' }}>
                   <div>
                     <label style={{ fontWeight: 'bold', fontSize: '12px', display: 'block', marginBottom: '4px', color: '#744210' }}>
-                      O escribe / edita el nombre de la actividad:
+                      O escribe / edita el nombre de la actividad para hoy:
                     </label>
                     <input
                       type="text"
+                      list="listaSugerenciasTareas"
                       value={tituloTrabajo}
                       onChange={(e) => {
-                        setTituloTrabajo(e.target.value);
-                        if (!listaTareasPersonalizadas.includes(e.target.value) && e.target.value.trim().length > 2) {
-                          setListaTareasPersonalizadas(prev => [...prev, e.target.value]);
+                        const val = e.target.value;
+                        setTituloTrabajo(val);
+                        if (val.trim().length > 1) {
+                          setTareasManualesPorFecha(prev => {
+                            const list = prev[fechaActualQR] || [];
+                            if (!list.includes(val.trim())) {
+                              return { ...prev, [fechaActualQR]: [...list, val.trim()] };
+                            }
+                            return prev;
+                          });
                         }
                       }}
                       style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e0', boxSizing: 'border-box', fontSize: '13px' }}
                       placeholder="Ej. Ejercicios pág. 45, Maqueta, Resumen"
                     />
+                    <datalist id="listaSugerenciasTareas">
+                      {sugerenciasGlobales.map(s => <option key={s} value={s} />)}
+                    </datalist>
                   </div>
 
                   <div>
