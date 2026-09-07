@@ -836,6 +836,16 @@ ipcMain.handle('get-trabajos-qr', async (e, fecha, grupo_id) => new Promise(r =>
     [fecha, grupo_id || null], (err, rows) => r(rows || []));
 }));
 
+ipcMain.handle('delete-actividad-fecha', async (e, fecha, nombreTrabajo, grupo_id) => new Promise(r => {
+  db.run(
+    "DELETE FROM trabajos_qr WHERE fecha = ? AND nombre_trabajo = ? AND (grupo_id = ? OR grupo_id IS NULL)",
+    [fecha, nombreTrabajo, grupo_id || null],
+    function(err) {
+      r({ success: !err, changes: this ? this.changes : 0 });
+    }
+  );
+}));
+
 // Obtener bitácora de trabajos dentro de un rango de fechas y campo formativo opcional
 ipcMain.handle('get-trabajos-rango', async (e, grupo_id, fechaInicio, fechaFin, campo) => new Promise(r => {
   let sql = `

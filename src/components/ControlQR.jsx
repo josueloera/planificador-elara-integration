@@ -186,6 +186,28 @@ export default function ControlQR({
     }
   };
 
+  const eliminarActividadDelDia = async (nombreActividad, e) => {
+    if (e) e.stopPropagation();
+    if (!window.confirm(`¿Deseas eliminar la actividad "${nombreActividad}" y sus registros de este día (${fechaActualQR})?`)) return;
+
+    if (ipcRenderer) {
+      try {
+        await ipcRenderer.invoke('delete-actividad-fecha', fechaActualQR, nombreActividad, grupoActual?.id);
+        setTrabajosDia(prev => prev.filter(t => t.nombre_trabajo !== nombreActividad));
+      } catch (err) {
+        console.error("Error eliminando actividad de la fecha:", err);
+      }
+    }
+    setTareasManualesPorFecha(prev => {
+      const list = prev[fechaActualQR] || [];
+      return { ...prev, [fechaActualQR]: list.filter(t => t !== nombreActividad) };
+    });
+    if (tituloTrabajo === nombreActividad) {
+      setTituloTrabajo('Tarea 1');
+    }
+    if (showToast) showToast(`🗑️ Actividad "${nombreActividad}" eliminada de este día`);
+  };
+
   const registrarTrabajoAlumnoDirecto = async (alumnoId, alumnoNombre, nombreTarea, nota) => {
     const valNota = parseFloat(nota) || 10;
     const nombreT = nombreTarea || tituloTrabajo;
@@ -828,6 +850,21 @@ export default function ControlQR({
                             borderRadius: '10px'
                           }}>
                             {entregas}/{alumnos.length}
+                          </span>
+                          <span
+                            onClick={(e) => eliminarActividadDelDia(tarea, e)}
+                            style={{
+                              marginLeft: '2px',
+                              fontSize: '11px',
+                              fontWeight: 'bold',
+                              color: isActiva ? '#ffe8d6' : '#a0aec0',
+                              cursor: 'pointer',
+                              padding: '0 3px',
+                              borderRadius: '4px'
+                            }}
+                            title={`Eliminar "${tarea}" de esta fecha`}
+                          >
+                            ✕
                           </span>
                         </button>
                       );
