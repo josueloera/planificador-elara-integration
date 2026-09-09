@@ -302,6 +302,41 @@ export default function ControlQR({
     };
   }, [ipcRenderer, modoEscaneo, subtipoAsistencia, campoSeleccionado, criterioSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo]);
 
+  // Soporte directo Plug & Play para Pistolas / Lectores USB de Códigos QR y Barras (HID)
+  useEffect(() => {
+    let buffer = '';
+    let lastKeyTime = Date.now();
+
+    const handleKeyDown = (e) => {
+      // Si el usuario está escribiendo intencionalmente en un input normal, no interferir
+      if (['INPUT', 'TEXTAREA'].includes(e.target?.tagName) && e.target?.id !== 'scannerUsbInput') {
+        return;
+      }
+
+      const currentTime = Date.now();
+      // Los lectores USB envían caracteres en ráfagas rápidas (< 100ms)
+      if (currentTime - lastKeyTime > 250) {
+        buffer = '';
+      }
+      lastKeyTime = currentTime;
+
+      if (e.key === 'Enter') {
+        if (buffer.trim().length > 0) {
+          procesarCodigoEscaneado(buffer.trim());
+          buffer = '';
+          e.preventDefault();
+        }
+      } else if (e.key.length === 1) {
+        buffer += e.key;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [modoEscaneo, subtipoAsistencia, campoSeleccionado, criterioSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo]);
+
   // Cargar criterios cuando cambia el campo formativo
   useEffect(() => {
     if (ipcRenderer && grupoActual?.id) {
@@ -1082,15 +1117,36 @@ export default function ControlQR({
               </div>
             )}
 
-            {/* SIMULADOR DE ESCANEO DESDE COMPUTADORA */}
+            {/* ESCÁNER CON LECTOR USB DE PC O SIMULADOR MANUAL */}
             <div style={{ borderTop: '1px solid #edf2f7', paddingTop: '15px', marginBottom: '20px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#718096', display: 'block', marginBottom: '6px' }}>
-                Simular o Escanear con Cámara Web / Lector USB de PC:
-              </label>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#2d3748' }}>
+                  🔌 Lector USB de Códigos de Barras / QR (PC o Laptop):
+                </label>
+                <span style={{ fontSize: '11px', color: '#22543d', backgroundColor: '#c6f6d5', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
+                  🟢 Plug & Play Listo
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <input
+                  id="scannerUsbInput"
+                  type="text"
+                  placeholder="Apunta y dispara la pistola lectora USB aquí o escanea directamente..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && e.target.value.trim()) {
+                      procesarCodigoEscaneado(e.target.value.trim());
+                      e.target.value = '';
+                      e.preventDefault();
+                    }
+                  }}
+                  style={{ flex: 1, padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '13px' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', color: '#718096' }}>O selecciona manualmente:</span>
                 <select
                   id="selectSimular"
-                  style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0' }}
+                  style={{ flex: 1, padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '12px' }}
                 >
                   <option value="">-- Seleccionar Alumno --</option>
                   {alumnos.map(a => <option key={a.id} value={`ALU-${a.id}`}>{a.nombre}</option>)}
@@ -1100,7 +1156,7 @@ export default function ControlQR({
                     const el = document.getElementById('selectSimular');
                     if (el && el.value) procesarCodigoEscaneado(el.value);
                   }}
-                  style={{ padding: '8px 16px', backgroundColor: '#3182ce', color: '#ffffff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
+                  style={{ padding: '6px 14px', backgroundColor: '#3182ce', color: '#ffffff', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}
                 >
                   Registrar
                 </button>
