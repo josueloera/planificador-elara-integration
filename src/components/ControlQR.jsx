@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { exportarAsistenciaExcel, exportarTrabajosExcel } from '../utils/excelExporter';
+import { exportarAsistenciaExcel, exportarTrabajosExcel, calcularSemanaEscolar } from '../utils/excelExporter';
 
 const CAMPOS_FORMATIVOS = [
   'LENGUAJES',
@@ -69,6 +69,7 @@ export default function ControlQR({
   const [subTabHistorial, setSubTabHistorial] = useState('ASISTENCIA'); // 'ASISTENCIA' o 'TRABAJOS'
   const [campoFiltroHistorial, setCampoFiltroHistorial] = useState('TODOS');
   const [vistaModoAsistencia, setVistaModoAsistencia] = useState('RESUMEN'); // 'RESUMEN' o 'MATRIZ'
+  const [vistaModoTrabajos, setVistaModoTrabajos] = useState('MATRIZ'); // 'MATRIZ' o 'BITACORA'
   const [resumenAsistenciaHist, setResumenAsistenciaHist] = useState([]);
   const [asistenciaRangoDetalle, setAsistenciaRangoDetalle] = useState([]);
   const [resumenTrabajosHist, setResumenTrabajosHist] = useState([]);
@@ -1926,92 +1927,305 @@ export default function ControlQR({
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                {/* TABLA 1: RESUMEN DE PROMEDIOS POR ALUMNO */}
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', backgroundColor: '#ffffff' }}>
-                  <h4 style={{ margin: '0 0 12px 0', color: '#276749' }}>📊 Promedio Consolidado por Alumno</h4>
-                  <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                      <thead>
-                        <tr style={{ backgroundColor: '#edf2f7', borderBottom: '2px solid #cbd5e0', textAlign: 'left' }}>
-                          <th style={{ padding: '10px' }}>#</th>
-                          <th style={{ padding: '10px' }}>Alumno</th>
-                          <th style={{ padding: '10px', textAlign: 'center' }}>Total Trabajos</th>
-                          <th style={{ padding: '10px', textAlign: 'center' }}>Promedio</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {resumenTrabajosHist.length === 0 ? (
-                          <tr><td colSpan={4} style={{ padding: '30px', textAlign: 'center', color: '#a0aec0' }}>Sin trabajos registrados en el periodo.</td></tr>
-                        ) : (
-                          resumenTrabajosHist.map((alu, idx) => {
-                            const prom = alu.promedio;
-                            const bg = prom !== null ? (prom >= 8.5 ? '#c6f6d5' : prom >= 6.0 ? '#fefcbf' : '#fed7d7') : '#edf2f7';
-                            const color = prom !== null ? (prom >= 8.5 ? '#22543d' : prom >= 6.0 ? '#744210' : '#742a2a') : '#a0aec0';
+              {/* SELECTOR ENTRE SÁBANA / MATRIZ Y BITÁCORA DETALLADA */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => setVistaModoTrabajos('MATRIZ')}
+                    style={{
+                      padding: '7px 16px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e0',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      backgroundColor: vistaModoTrabajos === 'MATRIZ' ? '#276749' : '#ffffff',
+                      color: vistaModoTrabajos === 'MATRIZ' ? '#ffffff' : '#4a5568',
+                      boxShadow: vistaModoTrabajos === 'MATRIZ' ? '0 2px 4px rgba(39,103,73,0.2)' : 'none'
+                    }}
+                  >
+                    📊 Sábana / Matriz de Trabajos
+                  </button>
+                  <button
+                    onClick={() => setVistaModoTrabajos('BITACORA')}
+                    style={{
+                      padding: '7px 16px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e0',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      backgroundColor: vistaModoTrabajos === 'BITACORA' ? '#276749' : '#ffffff',
+                      color: vistaModoTrabajos === 'BITACORA' ? '#ffffff' : '#4a5568',
+                      boxShadow: vistaModoTrabajos === 'BITACORA' ? '0 2px 4px rgba(39,103,73,0.2)' : 'none'
+                    }}
+                  >
+                    📋 Resumen y Bitácora Individual
+                  </button>
+                </div>
+                <span style={{ fontSize: '12px', color: '#718096' }}>
+                  {resumenTrabajosHist.length} alumnos registrados en este periodo
+                </span>
+              </div>
+
+              {/* VISTA 1: SÁBANA DE TRABAJOS Y EVALUACIÓN CONTINUA (MATRIZ) */}
+              {vistaModoTrabajos === 'MATRIZ' && (
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflowX: 'auto', backgroundColor: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                  {(() => {
+                    const mapaTareas = new Map();
+                    const tareasUnicas = [];
+                    const matriz = {};
+                    const sumasTarea = {};
+                    const cuentasTarea = {};
+
+                    (trabajosRangoDetalle || []).forEach(t => {
+                      const nombre = (t.nombre_trabajo || 'Actividad').trim();
+                      const f = t.fecha || '';
+                      const cpo = t.campo || 'GENERAL';
+                      const key = `${nombre}___${f}___${cpo}`;
+
+                      if (!mapaTareas.has(key)) {
+                        const sem = calcularSemanaEscolar(f);
+                        const item = { key, nombre, fecha: f, campo: cpo, semana: sem };
+                        mapaTareas.set(key, item);
+                        tareasUnicas.push(item);
+                      }
+
+                      if (!matriz[t.alumno_id]) matriz[t.alumno_id] = {};
+                      const valNum = Number(t.valor);
+                      matriz[t.alumno_id][key] = !isNaN(valNum) ? valNum : t.valor;
+                    });
+
+                    tareasUnicas.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+
+                    if (tareasUnicas.length === 0) {
+                      return (
+                        <div style={{ padding: '40px', textAlign: 'center', color: '#a0aec0' }}>
+                          <div style={{ fontSize: '36px', marginBottom: '8px' }}>📝</div>
+                          <div style={{ fontSize: '15px', fontWeight: 'bold' }}>No hay trabajos registrados en el rango seleccionado.</div>
+                          <div style={{ fontSize: '13px' }}>Escanea o califica trabajos para que aparezcan en esta sábana de calificaciones.</div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                        <thead>
+                          {/* Fila 1: Metadatos (Semana y Campo) */}
+                          <tr style={{ backgroundColor: '#edf2f7', borderBottom: '1px solid #cbd5e0' }}>
+                            <th style={{ padding: '6px 10px', position: 'sticky', left: 0, background: '#edf2f7', zIndex: 3, textAlign: 'left', width: '35px' }}>#</th>
+                            <th style={{ padding: '6px 10px', position: 'sticky', left: 35, background: '#edf2f7', zIndex: 3, textAlign: 'left', minWidth: '200px' }}>DATOS DE LA ACTIVIDAD ➔</th>
+                            {tareasUnicas.map(t => (
+                              <th key={t.key} style={{ padding: '6px 8px', textAlign: 'center', minWidth: '130px', fontSize: '11px', color: '#2b6cb0', fontWeight: '700' }}>
+                                <span style={{ backgroundColor: '#ebf8ff', padding: '2px 8px', borderRadius: '4px', border: '1px solid #bee3f8' }}>
+                                  {t.semana}
+                                </span>
+                                <div style={{ fontSize: '10px', color: '#718096', marginTop: '3px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '140px' }}>
+                                  {t.campo}
+                                </div>
+                              </th>
+                            ))}
+                            <th style={{ padding: '6px 10px', textAlign: 'center', background: '#e2e8f0', minWidth: '80px', fontWeight: 'bold' }}>Entregas</th>
+                            <th style={{ padding: '6px 10px', textAlign: 'center', background: '#c6f6d5', color: '#22543d', minWidth: '85px', fontWeight: 'bold' }}>Promedio</th>
+                          </tr>
+                          {/* Fila 2: Tarea y Fecha */}
+                          <tr style={{ backgroundColor: '#f7fafc', borderBottom: '2px solid #cbd5e0' }}>
+                            <th style={{ padding: '8px 10px', position: 'sticky', left: 0, background: '#f7fafc', zIndex: 3, textAlign: 'left' }}>Nº</th>
+                            <th style={{ padding: '8px 10px', position: 'sticky', left: 35, background: '#f7fafc', zIndex: 3, textAlign: 'left' }}>Nombre Completo del Alumno</th>
+                            {tareasUnicas.map(t => (
+                              <th key={t.key} style={{ padding: '8px 8px', textAlign: 'center', minWidth: '130px' }}>
+                                <div style={{ fontWeight: 'bold', color: '#2d3748', fontSize: '12px' }}>{t.nombre}</div>
+                                <div style={{ fontSize: '10px', color: '#718096', marginTop: '2px' }}>📅 {t.fecha}</div>
+                              </th>
+                            ))}
+                            <th style={{ padding: '8px 10px', textAlign: 'center', background: '#edf2f7' }}>Total</th>
+                            <th style={{ padding: '8px 10px', textAlign: 'center', background: '#9ae6b4', color: '#22543d' }}>Final</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {resumenTrabajosHist.map((alu, idx) => {
+                            const notas = matriz[alu.alumno_id] || {};
+                            let entregas = 0;
+                            let sumaNotas = 0;
+
                             return (
                               <tr key={alu.alumno_id} style={{ borderBottom: '1px solid #edf2f7' }}>
-                                <td style={{ padding: '10px', fontWeight: 'bold', color: '#718096' }}>{idx + 1}</td>
-                                <td style={{ padding: '10px', fontWeight: 'bold' }}>{alu.alumno_nombre}</td>
-                                <td style={{ padding: '10px', textAlign: 'center' }}>{alu.total_trabajos}</td>
-                                <td style={{ padding: '10px', textAlign: 'center' }}>
-                                  <span style={{ padding: '4px 10px', borderRadius: '12px', fontWeight: '800', backgroundColor: bg, color: color }}>
-                                    {prom !== null ? prom.toFixed(1) : '-'}
-                                  </span>
+                                <td style={{ padding: '8px 10px', position: 'sticky', left: 0, background: '#ffffff', zIndex: 2, color: '#718096', fontWeight: 'bold' }}>
+                                  {idx + 1}
+                                </td>
+                                <td style={{ padding: '8px 10px', position: 'sticky', left: 35, background: '#ffffff', zIndex: 2, fontWeight: 'bold', whiteSpace: 'nowrap', borderRight: '1px solid #edf2f7' }}>
+                                  {alu.alumno_nombre}
+                                </td>
+                                {tareasUnicas.map(t => {
+                                  const val = notas[t.key];
+                                  if (val !== undefined && val !== null && val !== '') {
+                                    const nVal = Number(val);
+                                    if (!isNaN(nVal)) {
+                                      entregas++;
+                                      sumaNotas += nVal;
+                                      sumasTarea[t.key] = (sumasTarea[t.key] || 0) + nVal;
+                                      cuentasTarea[t.key] = (cuentasTarea[t.key] || 0) + 1;
+
+                                      let bg = '#edf2f7';
+                                      let clr = '#2d3748';
+                                      if (nVal >= 8.5) { bg = '#c6f6d5'; clr = '#22543d'; }
+                                      else if (nVal >= 6.0) { bg = '#fefcbf'; clr = '#744210'; }
+                                      else { bg = '#fed7d7'; clr = '#742a2a'; }
+
+                                      return (
+                                        <td key={t.key} style={{ padding: '6px', textAlign: 'center' }}>
+                                          <span style={{ display: 'inline-block', minWidth: '34px', padding: '3px 6px', borderRadius: '6px', fontWeight: '700', backgroundColor: bg, color: clr, fontSize: '11px' }}>
+                                            {nVal}
+                                          </span>
+                                        </td>
+                                      );
+                                    }
+                                    return <td key={t.key} style={{ padding: '6px', textAlign: 'center', color: '#4a5568' }}>{val}</td>;
+                                  }
+                                  return <td key={t.key} style={{ padding: '6px', textAlign: 'center', color: '#cbd5e0' }}>-</td>;
+                                })}
+                                <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 'bold', color: '#4a5568', background: '#f7fafc' }}>
+                                  {entregas}
+                                </td>
+                                <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 'bold', background: '#f0fff4' }}>
+                                  {entregas > 0 ? (
+                                    <span style={{
+                                      padding: '3px 8px',
+                                      borderRadius: '12px',
+                                      fontWeight: '800',
+                                      backgroundColor: (sumaNotas / entregas) >= 8.5 ? '#c6f6d5' : (sumaNotas / entregas) >= 6.0 ? '#fefcbf' : '#fed7d7',
+                                      color: (sumaNotas / entregas) >= 8.5 ? '#22543d' : (sumaNotas / entregas) >= 6.0 ? '#744210' : '#742a2a'
+                                    }}>
+                                      {(sumaNotas / entregas).toFixed(1)}
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: '#a0aec0' }}>-</span>
+                                  )}
                                 </td>
                               </tr>
                             );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                          })}
+                        </tbody>
+                        <tfoot>
+                          {/* FILA FINAL: PROMEDIOS GRUPALES */}
+                          <tr style={{ backgroundColor: '#edf2f7', borderTop: '2px solid #a0aec0', fontWeight: 'bold' }}>
+                            <td style={{ padding: '10px', position: 'sticky', left: 0, background: '#edf2f7', zIndex: 2 }}>Σ</td>
+                            <td style={{ padding: '10px', position: 'sticky', left: 35, background: '#edf2f7', zIndex: 2, color: '#1a202c', borderRight: '1px solid #cbd5e0' }}>
+                              PROMEDIO GRUPAL
+                            </td>
+                            {tareasUnicas.map(t => {
+                              const sum = sumasTarea[t.key] || 0;
+                              const cnt = cuentasTarea[t.key] || 0;
+                              const prom = cnt > 0 ? (sum / cnt).toFixed(1) : '-';
+                              return (
+                                <td key={t.key} style={{ padding: '10px', textAlign: 'center', color: prom !== '-' ? '#22543d' : '#a0aec0' }}>
+                                  {prom}
+                                </td>
+                              );
+                            })}
+                            <td style={{ padding: '10px', textAlign: 'center', color: '#4a5568' }}>
+                              {tareasUnicas.length} Act.
+                            </td>
+                            <td style={{ padding: '10px', textAlign: 'center', color: '#22543d', background: '#c6f6d5', fontSize: '13px' }}>
+                              {promedioTrabajosGlobal}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    );
+                  })()}
                 </div>
+              )}
 
-                {/* TABLA 2: BITÁCORA DETALLADA DE TRABAJOS */}
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', backgroundColor: '#ffffff' }}>
-                  <h4 style={{ margin: '0 0 12px 0', color: '#2b6cb0' }}>📌 Bitácora de Trabajos Realizados ({trabajosRangoDetalle.length})</h4>
-                  <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                      <thead>
-                        <tr style={{ backgroundColor: '#edf2f7', borderBottom: '2px solid #cbd5e0', textAlign: 'left' }}>
-                          <th style={{ padding: '8px' }}>Fecha</th>
-                          <th style={{ padding: '8px' }}>Alumno</th>
-                          <th style={{ padding: '8px' }}>Actividad</th>
-                          <th style={{ padding: '8px', textAlign: 'center' }}>Nota</th>
-                          <th style={{ padding: '8px', textAlign: 'center' }}>Borrar</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {trabajosRangoDetalle.length === 0 ? (
-                          <tr><td colSpan={5} style={{ padding: '30px', textAlign: 'center', color: '#a0aec0' }}>Sin trabajos registrados.</td></tr>
-                        ) : (
-                          trabajosRangoDetalle.map(t => (
-                            <tr key={t.id} style={{ borderBottom: '1px solid #edf2f7' }}>
-                              <td style={{ padding: '8px', color: '#718096', whiteSpace: 'nowrap' }}>{t.fecha}</td>
-                              <td style={{ padding: '8px', fontWeight: 'bold' }}>{t.alumno_nombre}</td>
-                              <td style={{ padding: '8px' }}>
-                                {t.nombre_trabajo}
-                                <br/>
-                                <small style={{ color: '#718096' }}>{t.campo}</small>
-                              </td>
-                              <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', color: '#276749' }}>{t.valor}</td>
-                              <td style={{ padding: '8px', textAlign: 'center' }}>
-                                <button
-                                  onClick={() => eliminarTrabajo(t.id)}
-                                  style={{ border: 'none', background: '#fed7d7', color: '#9b2c2c', borderRadius: '4px', padding: '2px 6px', cursor: 'pointer', fontWeight: 'bold' }}
-                                  title="Eliminar este trabajo"
-                                >
-                                  🗑️
-                                </button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+              {/* VISTA 2: RESUMEN Y BITÁCORA INDIVIDUAL */}
+              {vistaModoTrabajos === 'BITACORA' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                  {/* TABLA 1: RESUMEN DE PROMEDIOS POR ALUMNO */}
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', backgroundColor: '#ffffff' }}>
+                    <h4 style={{ margin: '0 0 12px 0', color: '#276749' }}>📊 Promedio Consolidado por Alumno</h4>
+                    <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                        <thead>
+                          <tr style={{ backgroundColor: '#edf2f7', borderBottom: '2px solid #cbd5e0', textAlign: 'left' }}>
+                            <th style={{ padding: '10px' }}>#</th>
+                            <th style={{ padding: '10px' }}>Alumno</th>
+                            <th style={{ padding: '10px', textAlign: 'center' }}>Total Trabajos</th>
+                            <th style={{ padding: '10px', textAlign: 'center' }}>Promedio</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {resumenTrabajosHist.length === 0 ? (
+                            <tr><td colSpan={4} style={{ padding: '30px', textAlign: 'center', color: '#a0aec0' }}>Sin trabajos registrados en el periodo.</td></tr>
+                          ) : (
+                            resumenTrabajosHist.map((alu, idx) => {
+                              const prom = alu.promedio;
+                              const bg = prom !== null ? (prom >= 8.5 ? '#c6f6d5' : prom >= 6.0 ? '#fefcbf' : '#fed7d7') : '#edf2f7';
+                              const color = prom !== null ? (prom >= 8.5 ? '#22543d' : prom >= 6.0 ? '#744210' : '#742a2a') : '#a0aec0';
+                              return (
+                                <tr key={alu.alumno_id} style={{ borderBottom: '1px solid #edf2f7' }}>
+                                  <td style={{ padding: '10px', fontWeight: 'bold', color: '#718096' }}>{idx + 1}</td>
+                                  <td style={{ padding: '10px', fontWeight: 'bold' }}>{alu.alumno_nombre}</td>
+                                  <td style={{ padding: '10px', textAlign: 'center' }}>{alu.total_trabajos}</td>
+                                  <td style={{ padding: '10px', textAlign: 'center' }}>
+                                    <span style={{ padding: '4px 10px', borderRadius: '12px', fontWeight: '800', backgroundColor: bg, color: color }}>
+                                      {prom !== null ? prom.toFixed(1) : '-'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* TABLA 2: BITÁCORA DETALLADA DE TRABAJOS */}
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', backgroundColor: '#ffffff' }}>
+                    <h4 style={{ margin: '0 0 12px 0', color: '#2b6cb0' }}>📌 Bitácora de Trabajos Realizados ({trabajosRangoDetalle.length})</h4>
+                    <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                        <thead>
+                          <tr style={{ backgroundColor: '#edf2f7', borderBottom: '2px solid #cbd5e0', textAlign: 'left' }}>
+                            <th style={{ padding: '8px' }}>Fecha</th>
+                            <th style={{ padding: '8px' }}>Alumno</th>
+                            <th style={{ padding: '8px' }}>Actividad</th>
+                            <th style={{ padding: '8px', textAlign: 'center' }}>Nota</th>
+                            <th style={{ padding: '8px', textAlign: 'center' }}>Borrar</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {trabajosRangoDetalle.length === 0 ? (
+                            <tr><td colSpan={5} style={{ padding: '30px', textAlign: 'center', color: '#a0aec0' }}>Sin trabajos registrados.</td></tr>
+                          ) : (
+                            trabajosRangoDetalle.map(t => (
+                              <tr key={t.id} style={{ borderBottom: '1px solid #edf2f7' }}>
+                                <td style={{ padding: '8px', color: '#718096', whiteSpace: 'nowrap' }}>{t.fecha}</td>
+                                <td style={{ padding: '8px', fontWeight: 'bold' }}>{t.alumno_nombre}</td>
+                                <td style={{ padding: '8px' }}>
+                                  {t.nombre_trabajo}
+                                  <br/>
+                                  <small style={{ color: '#718096' }}>{t.campo}</small>
+                                </td>
+                                <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', color: '#276749' }}>{t.valor}</td>
+                                <td style={{ padding: '8px', textAlign: 'center' }}>
+                                  <button
+                                    onClick={() => eliminarTrabajo(t.id)}
+                                    style={{ border: 'none', background: '#fed7d7', color: '#9b2c2c', borderRadius: '4px', padding: '2px 6px', cursor: 'pointer', fontWeight: 'bold' }}
+                                    title="Eliminar este trabajo"
+                                  >
+                                    🗑️
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
