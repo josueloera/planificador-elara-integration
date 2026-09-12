@@ -251,33 +251,36 @@
     border-radius: 12px;
     box-shadow: 0 4px 15px rgba(0,0,0,0.05);
     flex-grow: 1;
+    min-height: 0;
   }
   
   table { width: 100%; border-collapse: collapse; }
-  th {
-    background: #2c3e50;
-    color: white;
-    padding: 15px;
+  .tabla-eval th {
+    background: #1e293b;
+    color: #ffffff;
+    padding: 12px 15px;
     position: sticky;
     top: 0;
     z-index: 10;
-    font-weight: 500;
+    font-weight: 700;
     text-transform: uppercase;
     font-size: 0.85rem;
     letter-spacing: 0.5px;
+    border-bottom: 2px solid #334155;
   }
   td {
     padding: 8px;
-    border-bottom: 1px solid #f0f0f0;
-    color: #444;
+    border-bottom: 1px solid #f1f5f9;
+    color: #0f172a;
   }
   .celda-nombre {
-    background: #fff;
-    font-weight: 600;
+    background: #ffffff;
+    font-weight: 700;
     position: sticky;
     left: 0;
     z-index: 5;
-    border-right: 2px solid #eee;
+    border-right: 2px solid #cbd5e1;
+    color: #0f172a;
   }
   .input-nota {
     border: 1px solid transparent;

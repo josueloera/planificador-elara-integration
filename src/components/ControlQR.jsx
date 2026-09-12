@@ -1215,11 +1215,11 @@ export default function ControlQR({
 
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
-              <tr style={{ backgroundColor: '#edf2f7', borderBottom: '2px solid #cbd5e0' }}>
-                <th style={{ padding: '12px' }}>#</th>
-                <th style={{ padding: '12px' }}>Nombre del Alumno</th>
-                <th style={{ padding: '12px' }}>Estado Asistencia</th>
-                <th style={{ padding: '12px' }}>Acciones Rápidas</th>
+              <tr style={{ backgroundColor: '#1e293b', borderBottom: '2px solid #334155' }}>
+                <th style={{ padding: '12px', background: '#1e293b', color: '#ffffff' }}>#</th>
+                <th style={{ padding: '12px', background: '#1e293b', color: '#ffffff' }}>Nombre del Alumno</th>
+                <th style={{ padding: '12px', background: '#1e293b', color: '#ffffff' }}>Estado Asistencia</th>
+                <th style={{ padding: '12px', background: '#1e293b', color: '#ffffff' }}>Acciones Rápidas</th>
               </tr>
             </thead>
             <tbody>
@@ -1227,8 +1227,8 @@ export default function ControlQR({
                 const est = asistenciaDia[a.id] || 'SIN REGISTRO';
                 return (
                   <tr key={a.id} style={{ borderBottom: '1px solid #edf2f7' }}>
-                    <td style={{ padding: '12px', fontWeight: 'bold', color: '#718096' }}>{idx + 1}</td>
-                    <td style={{ padding: '12px', fontWeight: 'bold' }}>{a.nombre}</td>
+                    <td style={{ padding: '12px', fontWeight: 'bold', color: '#64748b' }}>{idx + 1}</td>
+                    <td style={{ padding: '12px', fontWeight: 'bold', color: '#0f172a' }}>{a.nombre}</td>
                     <td style={{ padding: '12px' }}>
                       <span style={{
                         padding: '4px 10px',
@@ -1333,24 +1333,24 @@ export default function ControlQR({
 
           {vistaModoEvaluacion === 'MATRIZ' ? (
             /* VISTA MATRIZ COMPARATIVA DE TAREAS */
-            <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '4px' }}>
+            <div style={{ overflow: 'auto', maxHeight: '520px', border: '1px solid #cbd5e1', borderRadius: '10px', backgroundColor: '#ffffff', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                 <thead>
-                  <tr style={{ backgroundColor: '#edf2f7', borderBottom: '2px solid #cbd5e0', textAlign: 'left' }}>
-                    <th style={{ padding: '10px', width: '35px' }}>#</th>
-                    <th style={{ padding: '10px', minWidth: '180px' }}>Nombre del Alumno</th>
+                  <tr style={{ backgroundColor: '#1e293b', borderBottom: '2px solid #334155', textAlign: 'left' }}>
+                    <th style={{ padding: '10px', width: '35px', background: '#1e293b', color: '#cbd5e1', position: 'sticky', top: 0, zIndex: 10, textAlign: 'center' }}>#</th>
+                    <th style={{ padding: '10px 14px', minWidth: '220px', background: '#1e293b', color: '#ffffff', position: 'sticky', top: 0, left: 0, zIndex: 12, fontWeight: '800', borderRight: '2px solid #475569' }}>👤 Nombre del Alumno</th>
                     {tareasDisponibles.map(tar => (
-                      <th key={tar} style={{ padding: '10px', textAlign: 'center', minWidth: '95px' }}>
-                        <div style={{ fontWeight: 'bold', color: tar === tituloTrabajo ? '#dd6b20' : '#2d3748' }}>
+                      <th key={tar} style={{ padding: '10px', textAlign: 'center', minWidth: '110px', background: '#1e293b', color: '#ffffff', position: 'sticky', top: 0, zIndex: 10, borderLeft: '1px solid #334155' }}>
+                        <div style={{ fontWeight: '800', color: tar === tituloTrabajo ? '#fbd38d' : '#ffffff', fontSize: '12px', textTransform: 'uppercase' }}>
                           {tar}
                         </div>
-                        <small style={{ color: '#718096', fontSize: '10px' }}>
-                          {(trabajosDia || []).filter(t => t.nombre_trabajo === tar).length}/{alumnos.length}
+                        <small style={{ color: '#38bdf8', fontSize: '10px', fontWeight: 'bold' }}>
+                          {(trabajosDia || []).filter(t => t.nombre_trabajo === tar).length}/{alumnos.length} entregas
                         </small>
                       </th>
                     ))}
-                    <th style={{ padding: '10px', textAlign: 'center', minWidth: '90px' }}>Promedio</th>
-                    <th style={{ padding: '10px', textAlign: 'center', minWidth: '110px' }}>Progreso</th>
+                    <th style={{ padding: '10px', textAlign: 'center', minWidth: '90px', background: '#1e293b', color: '#ffffff', position: 'sticky', top: 0, zIndex: 10 }}>Promedio</th>
+                    <th style={{ padding: '10px', textAlign: 'center', minWidth: '110px', background: '#1e293b', color: '#ffffff', position: 'sticky', top: 0, zIndex: 10 }}>Progreso</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1359,15 +1359,16 @@ export default function ControlQR({
                     const prom = calcularPromedioAlumno(a.id);
                     const totalEntregas = trabajosEsteAlu.length;
                     const esAdelantado = totalEntregas >= tareasDisponibles.length && tareasDisponibles.length > 1;
+                    const filaBg = esAdelantado ? '#f0fff4' : (idx % 2 === 0 ? '#ffffff' : '#f8fafc');
 
                     return (
-                      <tr key={a.id} style={{ borderBottom: '1px solid #edf2f7', backgroundColor: esAdelantado ? '#f7fafc' : 'white' }}>
-                        <td style={{ padding: '10px', color: '#718096', fontWeight: 'bold' }}>{idx + 1}</td>
-                        <td style={{ padding: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <tr key={a.id} style={{ borderBottom: '1px solid #edf2f7', backgroundColor: filaBg }}>
+                        <td style={{ padding: '10px 6px', color: '#64748b', fontWeight: 'bold', textAlign: 'center' }}>{idx + 1}</td>
+                        <td style={{ padding: '10px 14px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px', position: 'sticky', left: 0, background: filaBg, zIndex: 4, borderRight: '2px solid #cbd5e1' }}>
                           {perfilesMap[a.id]?.foto_url && (
                             <img src={perfilesMap[a.id].foto_url} alt="Foto" style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }} />
                           )}
-                          <span>{a.nombre}</span>
+                          <span style={{ color: '#0f172a', fontSize: '13px', textTransform: 'uppercase' }}>{a.nombre}</span>
                         </td>
 
                         {/* CELDAS POR CADA TAREA */}
@@ -1464,11 +1465,11 @@ export default function ControlQR({
                   ) : (
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                       <thead>
-                        <tr style={{ backgroundColor: '#edf2f7', borderBottom: '2px solid #cbd5e0', textAlign: 'left' }}>
-                          <th style={{ padding: '8px' }}>Alumno</th>
-                          <th style={{ padding: '8px' }}>Actividad</th>
-                          <th style={{ padding: '8px', textAlign: 'center' }}>Nota</th>
-                          <th style={{ padding: '8px', textAlign: 'center' }}>Acción</th>
+                        <tr style={{ backgroundColor: '#1e293b', borderBottom: '2px solid #334155', textAlign: 'left' }}>
+                          <th style={{ padding: '8px', background: '#1e293b', color: '#ffffff' }}>Alumno</th>
+                          <th style={{ padding: '8px', background: '#1e293b', color: '#ffffff' }}>Actividad</th>
+                          <th style={{ padding: '8px', textAlign: 'center', background: '#1e293b', color: '#ffffff' }}>Nota</th>
+                          <th style={{ padding: '8px', textAlign: 'center', background: '#1e293b', color: '#ffffff' }}>Acción</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1476,7 +1477,7 @@ export default function ControlQR({
                           const alu = alumnos.find(a => String(a.id) === String(t.alumno_id));
                           return (
                             <tr key={t.id} style={{ borderBottom: '1px solid #edf2f7' }}>
-                              <td style={{ padding: '8px', fontWeight: 'bold' }}>{alu ? alu.nombre : `ID ${t.alumno_id}`}</td>
+                              <td style={{ padding: '8px', fontWeight: 'bold', color: '#0f172a' }}>{alu ? alu.nombre : `ID ${t.alumno_id}`}</td>
                               <td style={{ padding: '8px', color: '#4a5568' }}>{t.nombre_trabajo} <br/><small style={{ color: '#718096' }}>{t.campo}</small></td>
                               <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', color: '#276749' }}>{t.valor}</td>
                               <td style={{ padding: '8px', textAlign: 'center' }}>
@@ -1503,10 +1504,10 @@ export default function ControlQR({
                 <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                     <thead>
-                      <tr style={{ backgroundColor: '#c6f6d5', borderBottom: '2px solid #9ae6b4', textAlign: 'left', color: '#22543d' }}>
-                        <th style={{ padding: '8px' }}>Alumno</th>
-                        <th style={{ padding: '8px', textAlign: 'center' }}>Trabajos</th>
-                        <th style={{ padding: '8px', textAlign: 'center' }}>Promedio</th>
+                      <tr style={{ backgroundColor: '#1e293b', borderBottom: '2px solid #334155', textAlign: 'left' }}>
+                        <th style={{ padding: '8px', background: '#1e293b', color: '#ffffff' }}>Alumno</th>
+                        <th style={{ padding: '8px', textAlign: 'center', background: '#1e293b', color: '#ffffff' }}>Trabajos</th>
+                        <th style={{ padding: '8px', textAlign: 'center', background: '#1e293b', color: '#ffffff' }}>Promedio</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1515,7 +1516,7 @@ export default function ControlQR({
                         const prom = calcularPromedioAlumno(a.id);
                         return (
                           <tr key={a.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                            <td style={{ padding: '8px', fontWeight: 'bold' }}>{a.nombre}</td>
+                            <td style={{ padding: '8px', fontWeight: 'bold', color: '#0f172a' }}>{a.nombre}</td>
                             <td style={{ padding: '8px', textAlign: 'center' }}>{count}</td>
                             <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', fontSize: '14px', color: prom ? (prom >= 8 ? '#22543d' : '#744210') : '#a0aec0' }}>
                               {prom || '-'}
@@ -1787,15 +1788,15 @@ export default function ControlQR({
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
                     <thead>
-                      <tr style={{ backgroundColor: '#edf2f7', borderBottom: '2px solid #cbd5e0' }}>
-                        <th style={{ padding: '12px', width: '40px' }}>#</th>
-                        <th style={{ padding: '12px' }}>Nombre del Alumno</th>
-                        <th style={{ padding: '12px', textAlign: 'center' }}>Días Registrados</th>
-                        <th style={{ padding: '12px', textAlign: 'center', color: '#22543d' }}>Presentes</th>
-                        <th style={{ padding: '12px', textAlign: 'center', color: '#744210' }}>Retardos</th>
-                        <th style={{ padding: '12px', textAlign: 'center', color: '#742a2a' }}>Faltas</th>
-                        <th style={{ padding: '12px', textAlign: 'center', color: '#2a4365' }}>Justificados</th>
-                        <th style={{ padding: '12px', textAlign: 'center' }}>% Asistencia</th>
+                      <tr style={{ backgroundColor: '#1e293b', borderBottom: '2px solid #334155' }}>
+                        <th style={{ padding: '12px', width: '40px', background: '#1e293b', color: '#ffffff' }}>#</th>
+                        <th style={{ padding: '12px', background: '#1e293b', color: '#ffffff' }}>Nombre del Alumno</th>
+                        <th style={{ padding: '12px', textAlign: 'center', background: '#1e293b', color: '#ffffff' }}>Días Registrados</th>
+                        <th style={{ padding: '12px', textAlign: 'center', background: '#14532d', color: '#86efac' }}>Presentes</th>
+                        <th style={{ padding: '12px', textAlign: 'center', background: '#713f12', color: '#fef08a' }}>Retardos</th>
+                        <th style={{ padding: '12px', textAlign: 'center', background: '#7f1d1d', color: '#fca5a5' }}>Faltas</th>
+                        <th style={{ padding: '12px', textAlign: 'center', background: '#1e3a8a', color: '#bfdbfe' }}>Justificados</th>
+                        <th style={{ padding: '12px', textAlign: 'center', background: '#1e293b', color: '#ffffff' }}>% Asistencia</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1810,8 +1811,8 @@ export default function ControlQR({
                           const colorBadge = pct >= 85 ? '#22543d' : pct >= 70 ? '#744210' : '#742a2a';
                           return (
                             <tr key={alu.alumno_id} style={{ borderBottom: '1px solid #edf2f7' }}>
-                              <td style={{ padding: '10px', fontWeight: 'bold', color: '#718096' }}>{idx + 1}</td>
-                              <td style={{ padding: '10px', fontWeight: 'bold' }}>{alu.alumno_nombre}</td>
+                              <td style={{ padding: '10px', fontWeight: 'bold', color: '#64748b' }}>{idx + 1}</td>
+                              <td style={{ padding: '10px', fontWeight: 'bold', color: '#0f172a' }}>{alu.alumno_nombre}</td>
                               <td style={{ padding: '10px', textAlign: 'center' }}>{alu.total_dias}</td>
                               <td style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold', color: '#22543d' }}>{alu.presentes}</td>
                               <td style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold', color: '#744210' }}>{alu.retardos}</td>
@@ -1858,14 +1859,14 @@ export default function ControlQR({
                     return (
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                         <thead>
-                          <tr style={{ backgroundColor: '#edf2f7', borderBottom: '2px solid #cbd5e0' }}>
-                            <th style={{ padding: '8px', position: 'sticky', left: 0, background: '#edf2f7', zIndex: 2 }}>Alumno</th>
+                          <tr style={{ backgroundColor: '#1e293b', borderBottom: '2px solid #334155' }}>
+                            <th style={{ padding: '8px', position: 'sticky', left: 0, background: '#1e293b', color: '#ffffff', zIndex: 3 }}>Alumno</th>
                             {fechasArr.map(f => (
-                              <th key={f} style={{ padding: '8px', textAlign: 'center', minWidth: '70px', fontSize: '11px' }}>
-                                {f.substring(5)}
+                              <th key={f} style={{ padding: '8px', textAlign: 'center', minWidth: '70px', fontSize: '11px', background: '#1e293b', color: '#ffffff' }}>
+                                <div style={{ color: '#ffffff', fontWeight: 'bold' }}>{f.substring(5)}</div>
                               </th>
                             ))}
-                            <th style={{ padding: '8px', textAlign: 'center', background: '#e2e8f0' }}>% Asis</th>
+                            <th style={{ padding: '8px', textAlign: 'center', background: '#1e293b', color: '#ffffff' }}>% Asis</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1873,7 +1874,7 @@ export default function ControlQR({
                             const pct = alu.porcentaje || 0;
                             return (
                               <tr key={alu.alumno_id} style={{ borderBottom: '1px solid #edf2f7' }}>
-                                <td style={{ padding: '8px', fontWeight: 'bold', position: 'sticky', left: 0, background: '#ffffff', zIndex: 1, whiteSpace: 'nowrap' }}>
+                                <td style={{ padding: '8px', fontWeight: 'bold', position: 'sticky', left: 0, background: '#ffffff', color: '#0f172a', zIndex: 1, whiteSpace: 'nowrap' }}>
                                   {alu.alumno_nombre}
                                 </td>
                                 {fechasArr.map(f => {
@@ -1970,7 +1971,7 @@ export default function ControlQR({
 
               {/* VISTA 1: SÁBANA DE TRABAJOS Y EVALUACIÓN CONTINUA (MATRIZ) */}
               {vistaModoTrabajos === 'MATRIZ' && (
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflowX: 'auto', backgroundColor: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                <div style={{ border: '1px solid #cbd5e1', borderRadius: '10px', overflow: 'auto', maxHeight: 'calc(100vh - 280px)', backgroundColor: '#ffffff', boxShadow: '0 2px 6px rgba(0,0,0,0.08)' }}>
                   {(() => {
                     const mapaTareas = new Map();
                     const tareasUnicas = [];
@@ -2011,35 +2012,37 @@ export default function ControlQR({
                     return (
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                         <thead>
-                          {/* Fila 1: Metadatos (Semana y Campo) */}
-                          <tr style={{ backgroundColor: '#edf2f7', borderBottom: '1px solid #cbd5e0' }}>
-                            <th style={{ padding: '6px 10px', position: 'sticky', left: 0, background: '#edf2f7', zIndex: 3, textAlign: 'left', width: '35px' }}>#</th>
-                            <th style={{ padding: '6px 10px', position: 'sticky', left: 35, background: '#edf2f7', zIndex: 3, textAlign: 'left', minWidth: '200px' }}>DATOS DE LA ACTIVIDAD ➔</th>
+                          <tr style={{ backgroundColor: '#1e293b', borderBottom: '2px solid #334155' }}>
+                            <th style={{ padding: '12px 6px', position: 'sticky', left: 0, top: 0, background: '#1e293b', color: '#cbd5e1', zIndex: 12, textAlign: 'center', width: '45px', minWidth: '45px', maxWidth: '45px', fontWeight: 'bold' }}>
+                              #
+                            </th>
+                            <th style={{ padding: '12px 14px', position: 'sticky', left: 45, top: 0, background: '#1e293b', color: '#ffffff', zIndex: 12, textAlign: 'left', minWidth: '240px', fontWeight: '800', fontSize: '12px', letterSpacing: '0.5px', borderRight: '2px solid #475569' }}>
+                              👤 NOMBRE COMPLETO DEL ALUMNO
+                            </th>
                             {tareasUnicas.map(t => (
-                              <th key={t.key} style={{ padding: '6px 8px', textAlign: 'center', minWidth: '130px', fontSize: '11px', color: '#2b6cb0', fontWeight: '700' }}>
-                                <span style={{ backgroundColor: '#ebf8ff', padding: '2px 8px', borderRadius: '4px', border: '1px solid #bee3f8' }}>
-                                  {t.semana}
-                                </span>
-                                <div style={{ fontSize: '10px', color: '#718096', marginTop: '3px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '140px' }}>
-                                  {t.campo}
+                              <th key={t.key} style={{ padding: '10px 8px', textAlign: 'center', minWidth: '150px', background: '#1e293b', color: '#ffffff', borderLeft: '1px solid #334155', position: 'sticky', top: 0, zIndex: 10 }}>
+                                <div style={{ display: 'flex', justifyContent: 'center', gap: '5px', alignItems: 'center', marginBottom: '5px' }}>
+                                  <span style={{ backgroundColor: '#2563eb', color: '#ffffff', padding: '2px 8px', borderRadius: '4px', fontWeight: '800', fontSize: '10px' }}>
+                                    {t.semana}
+                                  </span>
+                                  <span style={{ fontSize: '10px', color: '#93c5fd', fontWeight: '700', textTransform: 'uppercase' }}>
+                                    {t.campo}
+                                  </span>
+                                </div>
+                                <div style={{ fontWeight: '800', color: '#ffffff', fontSize: '12px', textTransform: 'uppercase', lineHeight: '1.2', textShadow: '0 1px 2px rgba(0,0,0,0.5)', wordBreak: 'break-word' }}>
+                                  {t.nombre}
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '4px', fontWeight: '600' }}>
+                                  📅 {t.fecha}
                                 </div>
                               </th>
                             ))}
-                            <th style={{ padding: '6px 10px', textAlign: 'center', background: '#e2e8f0', minWidth: '80px', fontWeight: 'bold' }}>Entregas</th>
-                            <th style={{ padding: '6px 10px', textAlign: 'center', background: '#c6f6d5', color: '#22543d', minWidth: '85px', fontWeight: 'bold' }}>Promedio</th>
-                          </tr>
-                          {/* Fila 2: Tarea y Fecha */}
-                          <tr style={{ backgroundColor: '#f7fafc', borderBottom: '2px solid #cbd5e0' }}>
-                            <th style={{ padding: '8px 10px', position: 'sticky', left: 0, background: '#f7fafc', zIndex: 3, textAlign: 'left' }}>Nº</th>
-                            <th style={{ padding: '8px 10px', position: 'sticky', left: 35, background: '#f7fafc', zIndex: 3, textAlign: 'left' }}>Nombre Completo del Alumno</th>
-                            {tareasUnicas.map(t => (
-                              <th key={t.key} style={{ padding: '8px 8px', textAlign: 'center', minWidth: '130px' }}>
-                                <div style={{ fontWeight: 'bold', color: '#2d3748', fontSize: '12px' }}>{t.nombre}</div>
-                                <div style={{ fontSize: '10px', color: '#718096', marginTop: '2px' }}>📅 {t.fecha}</div>
-                              </th>
-                            ))}
-                            <th style={{ padding: '8px 10px', textAlign: 'center', background: '#edf2f7' }}>Total</th>
-                            <th style={{ padding: '8px 10px', textAlign: 'center', background: '#9ae6b4', color: '#22543d' }}>Final</th>
+                            <th style={{ padding: '12px 10px', textAlign: 'center', background: '#334155', color: '#ffffff', minWidth: '80px', fontWeight: '800', position: 'sticky', top: 0, zIndex: 10 }}>
+                              Entregas
+                            </th>
+                            <th style={{ padding: '12px 10px', textAlign: 'center', background: '#15803d', color: '#ffffff', minWidth: '85px', fontWeight: '800', position: 'sticky', top: 0, zIndex: 10 }}>
+                              Promedio
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2047,13 +2050,14 @@ export default function ControlQR({
                             const notas = matriz[alu.alumno_id] || {};
                             let entregas = 0;
                             let sumaNotas = 0;
+                            const filaBg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
 
                             return (
-                              <tr key={alu.alumno_id} style={{ borderBottom: '1px solid #edf2f7' }}>
-                                <td style={{ padding: '8px 10px', position: 'sticky', left: 0, background: '#ffffff', zIndex: 2, color: '#718096', fontWeight: 'bold' }}>
+                              <tr key={alu.alumno_id} style={{ borderBottom: '1px solid #e2e8f0', backgroundColor: filaBg }}>
+                                <td style={{ padding: '10px 6px', position: 'sticky', left: 0, background: filaBg, zIndex: 4, color: '#64748b', fontWeight: 'bold', textAlign: 'center', width: '45px', minWidth: '45px', maxWidth: '45px', borderRight: '1px solid #e2e8f0' }}>
                                   {idx + 1}
                                 </td>
-                                <td style={{ padding: '8px 10px', position: 'sticky', left: 35, background: '#ffffff', zIndex: 2, fontWeight: 'bold', whiteSpace: 'nowrap', borderRight: '1px solid #edf2f7' }}>
+                                <td style={{ padding: '10px 14px', position: 'sticky', left: 45, background: filaBg, zIndex: 4, fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', borderRight: '2px solid #cbd5e1', fontSize: '13px', minWidth: '240px', textTransform: 'uppercase' }}>
                                   {alu.alumno_nombre}
                                 </td>
                                 {tareasUnicas.map(t => {
@@ -2082,10 +2086,14 @@ export default function ControlQR({
                                     }
                                     return <td key={t.key} style={{ padding: '6px', textAlign: 'center', color: '#4a5568' }}>{val}</td>;
                                   }
-                                  return <td key={t.key} style={{ padding: '6px', textAlign: 'center', color: '#cbd5e0' }}>-</td>;
+                                  return (
+                                    <td key={t.key} style={{ padding: '6px', textAlign: 'center', color: '#cbd5e1' }}>
+                                      -
+                                    </td>
+                                  );
                                 })}
-                                <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 'bold', color: '#4a5568', background: '#f7fafc' }}>
-                                  {entregas}
+                                <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 'bold', color: '#4a5568', background: '#f8fafc' }}>
+                                  {entregas}/{tareasUnicas.length}
                                 </td>
                                 <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 'bold', background: '#f0fff4' }}>
                                   {entregas > 0 ? (
@@ -2108,9 +2116,9 @@ export default function ControlQR({
                         </tbody>
                         <tfoot>
                           {/* FILA FINAL: PROMEDIOS GRUPALES */}
-                          <tr style={{ backgroundColor: '#edf2f7', borderTop: '2px solid #a0aec0', fontWeight: 'bold' }}>
-                            <td style={{ padding: '10px', position: 'sticky', left: 0, background: '#edf2f7', zIndex: 2 }}>Σ</td>
-                            <td style={{ padding: '10px', position: 'sticky', left: 35, background: '#edf2f7', zIndex: 2, color: '#1a202c', borderRight: '1px solid #cbd5e0' }}>
+                          <tr style={{ backgroundColor: '#f1f5f9', borderTop: '2px solid #94a3b8', fontWeight: 'bold' }}>
+                            <td style={{ padding: '10px 6px', position: 'sticky', left: 0, background: '#f1f5f9', zIndex: 4, textAlign: 'center', width: '45px', minWidth: '45px', maxWidth: '45px', borderRight: '1px solid #cbd5e0', color: '#475569' }}>Σ</td>
+                            <td style={{ padding: '10px 14px', position: 'sticky', left: 45, background: '#f1f5f9', zIndex: 4, color: '#0f172a', fontWeight: '800', minWidth: '240px', borderRight: '2px solid #cbd5e1' }}>
                               PROMEDIO GRUPAL
                             </td>
                             {tareasUnicas.map(t => {
@@ -2146,11 +2154,11 @@ export default function ControlQR({
                     <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                         <thead>
-                          <tr style={{ backgroundColor: '#edf2f7', borderBottom: '2px solid #cbd5e0', textAlign: 'left' }}>
-                            <th style={{ padding: '10px' }}>#</th>
-                            <th style={{ padding: '10px' }}>Alumno</th>
-                            <th style={{ padding: '10px', textAlign: 'center' }}>Total Trabajos</th>
-                            <th style={{ padding: '10px', textAlign: 'center' }}>Promedio</th>
+                          <tr style={{ backgroundColor: '#1e293b', borderBottom: '2px solid #334155', textAlign: 'left' }}>
+                            <th style={{ padding: '10px', background: '#1e293b', color: '#ffffff' }}>#</th>
+                            <th style={{ padding: '10px', background: '#1e293b', color: '#ffffff' }}>Alumno</th>
+                            <th style={{ padding: '10px', textAlign: 'center', background: '#1e293b', color: '#ffffff' }}>Total Trabajos</th>
+                            <th style={{ padding: '10px', textAlign: 'center', background: '#1e293b', color: '#ffffff' }}>Promedio</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2163,8 +2171,8 @@ export default function ControlQR({
                               const color = prom !== null ? (prom >= 8.5 ? '#22543d' : prom >= 6.0 ? '#744210' : '#742a2a') : '#a0aec0';
                               return (
                                 <tr key={alu.alumno_id} style={{ borderBottom: '1px solid #edf2f7' }}>
-                                  <td style={{ padding: '10px', fontWeight: 'bold', color: '#718096' }}>{idx + 1}</td>
-                                  <td style={{ padding: '10px', fontWeight: 'bold' }}>{alu.alumno_nombre}</td>
+                                  <td style={{ padding: '10px', fontWeight: 'bold', color: '#64748b', textAlign: 'center' }}>{idx + 1}</td>
+                                  <td style={{ padding: '10px', fontWeight: 'bold', color: '#0f172a', textTransform: 'uppercase' }}>{alu.alumno_nombre}</td>
                                   <td style={{ padding: '10px', textAlign: 'center' }}>{alu.total_trabajos}</td>
                                   <td style={{ padding: '10px', textAlign: 'center' }}>
                                     <span style={{ padding: '4px 10px', borderRadius: '12px', fontWeight: '800', backgroundColor: bg, color: color }}>
@@ -2186,12 +2194,12 @@ export default function ControlQR({
                     <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                         <thead>
-                          <tr style={{ backgroundColor: '#edf2f7', borderBottom: '2px solid #cbd5e0', textAlign: 'left' }}>
-                            <th style={{ padding: '8px' }}>Fecha</th>
-                            <th style={{ padding: '8px' }}>Alumno</th>
-                            <th style={{ padding: '8px' }}>Actividad</th>
-                            <th style={{ padding: '8px', textAlign: 'center' }}>Nota</th>
-                            <th style={{ padding: '8px', textAlign: 'center' }}>Borrar</th>
+                          <tr style={{ backgroundColor: '#1e293b', borderBottom: '2px solid #334155', textAlign: 'left' }}>
+                            <th style={{ padding: '8px', background: '#1e293b', color: '#ffffff' }}>Fecha</th>
+                            <th style={{ padding: '8px', background: '#1e293b', color: '#ffffff' }}>Alumno</th>
+                            <th style={{ padding: '8px', background: '#1e293b', color: '#ffffff' }}>Actividad</th>
+                            <th style={{ padding: '8px', textAlign: 'center', background: '#1e293b', color: '#ffffff' }}>Nota</th>
+                            <th style={{ padding: '8px', textAlign: 'center', background: '#1e293b', color: '#ffffff' }}>Borrar</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2200,8 +2208,8 @@ export default function ControlQR({
                           ) : (
                             trabajosRangoDetalle.map(t => (
                               <tr key={t.id} style={{ borderBottom: '1px solid #edf2f7' }}>
-                                <td style={{ padding: '8px', color: '#718096', whiteSpace: 'nowrap' }}>{t.fecha}</td>
-                                <td style={{ padding: '8px', fontWeight: 'bold' }}>{t.alumno_nombre}</td>
+                                <td style={{ padding: '8px', color: '#64748b', whiteSpace: 'nowrap' }}>{t.fecha}</td>
+                                <td style={{ padding: '8px', fontWeight: 'bold', color: '#0f172a' }}>{t.alumno_nombre}</td>
                                 <td style={{ padding: '8px' }}>
                                   {t.nombre_trabajo}
                                   <br/>

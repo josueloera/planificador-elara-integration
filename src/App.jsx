@@ -965,13 +965,13 @@ function App() {
       const sumaPorcentajes = (criterios || []).reduce((acc, c) => acc + (parseFloat(c.porcentaje) || 0), 0); 
       
       return (
-      <div className="pantalla-dosificador">
+      <div className="pantalla-dosificador" style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {toast && (
               <div style={{position:'fixed', top:20, left:'50%', transform:'translateX(-50%)', background:'#34495e', color:'white', padding:'10px 20px', borderRadius:20, zIndex:9999, fontWeight:'bold', boxShadow:'0 4px 10px rgba(0,0,0,0.2)'}}>
                   {toast}
               </div>
           )}
-          <div className="header-dosificador">
+          <div className="header-dosificador" style={{ flexShrink: 0, marginBottom: '12px' }}>
               <div style={{display:'flex', gap:15, alignItems:'center'}}>
                 <h2>📝 Evaluación ({grado}º Primaria)</h2>
                 <input type="date" value={fechaEval} onChange={e=>{setFechaEval(e.target.value); cargarEval(campoActual);}} style={{fontSize:'1.1rem', padding:'5px', border:'2px solid #004aad', borderRadius:5}} />
@@ -1052,17 +1052,102 @@ function App() {
           )}
 
           {/* BARRA DE SELECCION DE MATERIAS / CAMPOS FORMATIVOS */}
-          <div className="no-print" style={{display:'flex', gap:10, padding:'10px 20px', background:'#f8f9fa', borderBottom:'1px solid #e0e0e0', overflowX:'auto'}}>
-            <button onClick={()=>cambiarCampo('LENGUAJES')} style={{padding:'8px 16px', borderRadius:20, border:'none', cursor:'pointer', fontWeight:'bold', background: campoActual==='LENGUAJES' ? '#8E24AA' : '#e0e0e0', color: campoActual==='LENGUAJES' ? 'white' : '#333', transition:'all 0.3s'}}>🟣 Lenguajes</button>
-            <button onClick={()=>cambiarCampo('SABERES')} style={{padding:'8px 16px', borderRadius:20, border:'none', cursor:'pointer', fontWeight:'bold', background: campoActual==='SABERES' ? '#00897B' : '#e0e0e0', color: campoActual==='SABERES' ? 'white' : '#333', transition:'all 0.3s'}}>🟢 Saberes y Pensamiento C.</button>
-            <button onClick={()=>cambiarCampo('ETICA')} style={{padding:'8px 16px', borderRadius:20, border:'none', cursor:'pointer', fontWeight:'bold', background: campoActual==='ETICA' ? '#1E88E5' : '#e0e0e0', color: campoActual==='ETICA' ? 'white' : '#333', transition:'all 0.3s'}}>🔵 Ética, Naturaleza y Soc.</button>
-            <button onClick={()=>cambiarCampo('HUMANO')} style={{padding:'8px 16px', borderRadius:20, border:'none', cursor:'pointer', fontWeight:'bold', background: campoActual==='HUMANO' ? '#E53935' : '#e0e0e0', color: campoActual==='HUMANO' ? 'white' : '#333', transition:'all 0.3s'}}>🔴 De lo Humano y lo Com.</button>
+          <div className="no-print" style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '12px 20px',
+            background: '#ffffff',
+            borderRadius: '12px',
+            marginBottom: '15px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+            border: '1px solid #e2e8f0',
+            flexShrink: 0,
+            zIndex: 30,
+            position: 'relative',
+            overflowX: 'auto'
+          }}>
+            <span style={{ fontWeight: 'bold', fontSize: '13px', color: '#2d3748', whiteSpace: 'nowrap', marginRight: '6px' }}>
+              📚 Materias / Campos:
+            </span>
+            <button 
+              onClick={()=>cambiarCampo('LENGUAJES')} 
+              style={{
+                padding: '9px 18px', 
+                borderRadius: 20, 
+                border: campoActual==='LENGUAJES' ? '2px solid #6b1784' : '1px solid #cbd5e0', 
+                cursor: 'pointer', 
+                fontWeight: 'bold', 
+                fontSize: '13px', 
+                background: campoActual==='LENGUAJES' ? '#8E24AA' : '#ffffff', 
+                color: campoActual==='LENGUAJES' ? '#ffffff' : '#2d3748', 
+                boxShadow: campoActual==='LENGUAJES' ? '0 3px 8px rgba(142,36,170,0.35)' : 'none', 
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s'
+              }}
+            >
+              🟣 Lenguajes
+            </button>
+            <button 
+              onClick={()=>cambiarCampo('SABERES')} 
+              style={{
+                padding: '9px 18px', 
+                borderRadius: 20, 
+                border: campoActual==='SABERES' ? '2px solid #005b52' : '1px solid #cbd5e0', 
+                cursor: 'pointer', 
+                fontWeight: 'bold', 
+                fontSize: '13px', 
+                background: campoActual==='SABERES' ? '#00897B' : '#ffffff', 
+                color: campoActual==='SABERES' ? '#ffffff' : '#2d3748', 
+                boxShadow: campoActual==='SABERES' ? '0 3px 8px rgba(0,137,123,0.35)' : 'none', 
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s'
+              }}
+            >
+              🟢 Saberes y Pensamiento C.
+            </button>
+            <button 
+              onClick={()=>cambiarCampo('ETICA')} 
+              style={{
+                padding: '9px 18px', 
+                borderRadius: 20, 
+                border: campoActual==='ETICA' ? '2px solid #1565c0' : '1px solid #cbd5e0', 
+                cursor: 'pointer', 
+                fontWeight: 'bold', 
+                fontSize: '13px', 
+                background: campoActual==='ETICA' ? '#1E88E5' : '#ffffff', 
+                color: campoActual==='ETICA' ? '#ffffff' : '#2d3748', 
+                boxShadow: campoActual==='ETICA' ? '0 3px 8px rgba(30,136,229,0.35)' : 'none', 
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s'
+              }}
+            >
+              🔵 Ética, Naturaleza y Soc.
+            </button>
+            <button 
+              onClick={()=>cambiarCampo('HUMANO')} 
+              style={{
+                padding: '9px 18px', 
+                borderRadius: 20, 
+                border: campoActual==='HUMANO' ? '2px solid #b71c1c' : '1px solid #cbd5e0', 
+                cursor: 'pointer', 
+                fontWeight: 'bold', 
+                fontSize: '13px', 
+                background: campoActual==='HUMANO' ? '#E53935' : '#ffffff', 
+                color: campoActual==='HUMANO' ? '#ffffff' : '#2d3748', 
+                boxShadow: campoActual==='HUMANO' ? '0 3px 8px rgba(229,57,53,0.35)' : 'none', 
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s'
+              }}
+            >
+              🔴 De lo Humano y lo Com.
+            </button>
           </div>
 
-          <div style={{flexGrow:1, display:'flex', flexDirection:'column', padding:15}}>
+          <div style={{flexGrow:1, display:'flex', flexDirection:'column', minHeight: 0, padding: 0, overflow: 'hidden'}}>
             
             {modoConfig ? (
-                <div className="columna-gestion" style={{maxWidth:700, margin:'10px auto', padding:25, borderRadius:15, boxShadow:'0 4px 15px rgba(0,0,0,0.1)', background:'white'}}>
+                <div className="columna-gestion" style={{maxWidth:700, margin:'10px auto', padding:25, borderRadius:15, boxShadow:'0 4px 15px rgba(0,0,0,0.1)', background:'white', overflowY: 'auto'}}>
                     <h3 style={{textAlign:'center', color:'#004aad'}}>⚙️ Configurar Criterios para {campoActual}</h3>
                     <div style={{background:'#eee', height:25, borderRadius:15, margin:'15px 0', position:'relative', overflow:'hidden'}}><div style={{width:`${Math.min(sumaPorcentajes, 100)}%`, background:sumaPorcentajes===100?'#2ecc71':'#e74c3c', height:'100%', transition:'width 0.5s'}}></div><span style={{position:'absolute', width:'100%', textAlign:'center', top:3, fontWeight:'bold', fontSize:'0.9rem', color:'#333'}}>Suma: {sumaPorcentajes}%</span></div>
                     <div style={{background:'#fafafa', padding:15, borderRadius:10, border:'1px solid #ddd'}}>
@@ -1093,7 +1178,43 @@ function App() {
                     </div>
                 </div>
             ) : (
-                <div className="tabla-container"><table className="tabla-eval"><thead><tr><th style={{width:50, textAlign:'center'}}>Nº</th><th style={{width:250}}>ALUMNO</th>{(criterios || []).map((c,i)=><th key={i}>{c.nombre}<br/><small style={{opacity:0.8}}>{c.porcentaje}%</small></th>)}<th style={{background:'#2c3e50', color:'white', width:'80px', textAlign:'center'}}>PROMEDIO</th></tr></thead><tbody>{(alumnos || []).map((al, index)=>{const prom = calcularPromedioDiario(al.id); return (<tr key={al.id} style={{backgroundColor: getColorSemaforo(prom)}}><td style={{textAlign:'center', fontWeight:'bold', color:'#555'}}>{index + 1}</td><td className="celda-nombre">{al.nombre}</td>{(criterios || []).map(c=>( <td key={c.frontId}><CeldaNota idAlumno={al.id} idCriterio={c.id} valorInicial={notas[`${al.id}-${c.id}`]} onGuardar={handleSaveNota} /></td> ))}<td style={{textAlign:'center', fontWeight:'bold', fontSize:'1.2rem'}}>{prom || '-'}</td></tr>);})}</tbody></table></div>
+                <div className="tabla-container" style={{ flexGrow: 1, overflow: 'auto', minHeight: 0 }}>
+                  <table className="tabla-eval">
+                    <thead>
+                      <tr>
+                        <th style={{width:50, textAlign:'center', position: 'sticky', top: 0, zIndex: 10, background: '#1e293b', color: '#ffffff'}}>Nº</th>
+                        <th style={{width:250, textAlign: 'left', position: 'sticky', top: 0, zIndex: 10, background: '#1e293b', color: '#ffffff'}}>ALUMNO</th>
+                        {(criterios || []).map((c,i)=>(
+                          <th key={i} style={{ position: 'sticky', top: 0, zIndex: 10, background: '#1e293b', color: '#ffffff', textAlign: 'center' }}>
+                            <span style={{ fontWeight: '800', fontSize: '13px' }}>{c.nombre}</span>
+                            <br/>
+                            <small style={{ color: '#93c5fd', fontWeight: 'bold' }}>{c.porcentaje}%</small>
+                          </th>
+                        ))}
+                        <th style={{background:'#0f172a', color:'#38bdf8', width:'90px', textAlign:'center', position: 'sticky', top: 0, zIndex: 10, fontWeight: '800'}}>PROMEDIO</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(alumnos || []).map((al, index)=>{
+                        const prom = calcularPromedioDiario(al.id); 
+                        return (
+                          <tr key={al.id} style={{backgroundColor: getColorSemaforo(prom), borderBottom: '1px solid #f1f5f9'}}>
+                            <td style={{textAlign:'center', fontWeight:'bold', color:'#64748b'}}>{index + 1}</td>
+                            <td className="celda-nombre" style={{ color: '#0f172a', fontWeight: '800', textTransform: 'uppercase', fontSize: '13px', background: '#ffffff', borderRight: '2px solid #cbd5e1' }}>
+                              {al.nombre}
+                            </td>
+                            {(criterios || []).map(c=>( 
+                              <td key={c.frontId} style={{ textAlign: 'center' }}>
+                                <CeldaNota idAlumno={al.id} idCriterio={c.id} valorInicial={notas[`${al.id}-${c.id}`]} onGuardar={handleSaveNota} />
+                              </td> 
+                            ))}
+                            <td style={{textAlign:'center', fontWeight:'800', fontSize:'1.2rem', color: '#0f172a'}}>{prom || '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
             )}
           </div>
       </div>
