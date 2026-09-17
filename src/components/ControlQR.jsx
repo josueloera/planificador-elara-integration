@@ -9,6 +9,53 @@ const CAMPOS_FORMATIVOS = [
   'DE LO HUMANO Y LO COMUNITARIO'
 ];
 
+const INFO_CAMPOS = {
+  'LENGUAJES': {
+    id: 'LENGUAJES',
+    nombreCorto: 'Lenguajes',
+    icono: '🟣',
+    colorBg: '#f3e8ff',
+    colorTexto: '#6b21a8',
+    colorBorde: '#c084fc'
+  },
+  'SABERES Y PENSAMIENTO CIENTÍFICO': {
+    id: 'SABERES Y PENSAMIENTO CIENTÍFICO',
+    nombreCorto: 'Saberes y P.C.',
+    icono: '🟢',
+    colorBg: '#ccfbf1',
+    colorTexto: '#0f766e',
+    colorBorde: '#5eead4'
+  },
+  'ÉTICA, NATURALEZA Y SOCIEDADES': {
+    id: 'ÉTICA, NATURALEZA Y SOCIEDADES',
+    nombreCorto: 'Ética, Nat. y Soc.',
+    icono: '🔵',
+    colorBg: '#e0f2fe',
+    colorTexto: '#0369a1',
+    colorBorde: '#7dd3fc'
+  },
+  'DE LO HUMANO Y LO COMUNITARIO': {
+    id: 'DE LO HUMANO Y LO COMUNITARIO',
+    nombreCorto: 'De lo Humano',
+    icono: '🟠',
+    colorBg: '#ffedd5',
+    colorTexto: '#c2410c',
+    colorBorde: '#fdba74'
+  }
+};
+
+const getInfoCampo = (campo) => {
+  if (!campo) return INFO_CAMPOS['LENGUAJES'];
+  return INFO_CAMPOS[campo] || {
+    id: campo,
+    nombreCorto: campo,
+    icono: '📚',
+    colorBg: '#f1f5f9',
+    colorTexto: '#334155',
+    colorBorde: '#94a3b8'
+  };
+};
+
 export default function ControlQR({
   grupoActual,
   alumnos = [],
@@ -46,6 +93,12 @@ export default function ControlQR({
   const [tareaAnterior, setTareaAnterior] = useState(null);
   const [sugerenciasGlobales, setSugerenciasGlobales] = useState([]);
   const [vistaModoEvaluacion, setVistaModoEvaluacion] = useState('MATRIZ'); // 'MATRIZ' o 'LISTA'
+
+  // Estados dedicados para creación y edición amigable de actividades
+  const [creandoNuevaActividad, setCreandoNuevaActividad] = useState(false);
+  const [nuevoNombreActividad, setNuevoNombreActividad] = useState('');
+  const [nuevoCampoActividad, setNuevoCampoActividad] = useState(CAMPOS_FORMATIVOS[0]);
+  const [editandoActividad, setEditandoActividad] = useState(null); // { nombreOriginal, nombre, campo }
 
   // Historial en vivo y datos del día
   const [historialEscaneos, setHistorialEscaneos] = useState([]);
@@ -119,67 +172,245 @@ export default function ControlQR({
     }
   };
 
-  // Obtener ÚNICAMENTE las actividades que tienen registros en la base de datos para esta fecha,
-  // más la tarea activa actual si está siendo escrita o seleccionada
-  const tareasDisponibles = useMemo(() => {
-    const nombresDelDia = new Set();
+  // Clave de almacenamiento local para persistir actividades creadas del día por grupo
+  const storageKeyActividades = useMemo(() => {
+    return `actividades_creadas_${grupoActual?.id || 'default'}_${fechaActualQR}`;
+  }, [grupoActual?.id, fechaActualQR]);
 
-    // 1. Tareas reales guardadas en la base de datos para esta fecha
+  const [actividadesCreadas, setActividadesCreadas] = useState(() => {
+    try {
+      const initKey = `actividades_creadas_${grupoActual?.id || 'default'}_${fechaActualQR}`;
+      const saved = localStorage.getItem(initKey);
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  // Recargar actividades creadas al cambiar de grupo o fecha
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKeyActividades);
+      setActividadesCreadas(saved ? JSON.parse(saved) : {});
+    } catch (e) {
+      setActividadesCreadas({});
+    }
+  }, [storageKeyActividades]);
+
+  const guardarActividadCreada = (nombre, campo) => {
+    const nomTrim = (nombre || '').trim();
+    if (!nomTrim) return;
+    setActividadesCreadas(prev => {
+      const updated = { ...prev, [nomTrim]: campo || CAMPOS_FORMATIVOS[0] };
+      try {
+        localStorage.setItem(storageKeyActividades, JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+      return updated;
+    });
+  };
+
+  const removerActividadCreada = (nombre) => {
+    setActividadesCreadas(prev => {
+      const updated = { ...prev };
+      delete updated[nombre];
+      try {
+        localStorage.setItem(storageKeyActividades, JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+      return updated;
+    });
+  };
+
+  // Listado consolidado de actividades del día (con su respectiva materia / campo formativo y conteo de entregas)
+  const actividadesDelDia = useMemo(() => {
+    const map = new Map();
+
+    // 1. Tareas reales guardadas en SQLite para esta fecha
     (trabajosDia || []).forEach(t => {
-      if (t.nombre_trabajo && t.nombre_trabajo.trim()) {
-        nombresDelDia.add(t.nombre_trabajo.trim());
+      const nombre = t.nombre_trabajo?.trim();
+      if (nombre) {
+        if (!map.has(nombre)) {
+          map.set(nombre, {
+            nombre,
+            campo: t.campo || CAMPOS_FORMATIVOS[0],
+            entregas: 0
+          });
+        }
+        map.get(nombre).entregas += 1;
       }
     });
 
-    // 2. Si no hay nada registrado aún hoy, mostrar la tarea actual o 'Tarea 1'
-    if (nombresDelDia.size === 0) {
-      nombresDelDia.add(tituloTrabajo && tituloTrabajo.trim() ? tituloTrabajo.trim() : 'Tarea 1');
-    } else if (tituloTrabajo && tituloTrabajo.trim() && !nombresDelDia.has(tituloTrabajo.trim())) {
-      // Si el docente escribió un nuevo nombre en el input o seleccionó nueva tarea, incluirla
-      nombresDelDia.add(tituloTrabajo.trim());
+    // 2. Actividades agregadas manualmente para este día (incluso si tienen 0 entregas aún)
+    Object.entries(actividadesCreadas || {}).forEach(([nom, cmp]) => {
+      const nomTrim = nom?.trim();
+      if (nomTrim) {
+        if (!map.has(nomTrim)) {
+          map.set(nomTrim, {
+            nombre: nomTrim,
+            campo: cmp || CAMPOS_FORMATIVOS[0],
+            entregas: 0
+          });
+        } else if (cmp && (!map.get(nomTrim).campo || map.get(nomTrim).campo === 'GENERAL')) {
+          map.get(nomTrim).campo = cmp;
+        }
+      }
+    });
+
+    // 3. Si no hay nada registrado aún hoy, asegurar la tarea activa actual o 'Tarea 1'
+    if (map.size === 0) {
+      const nomDefecto = (tituloTrabajo && tituloTrabajo.trim()) ? tituloTrabajo.trim() : 'Tarea 1';
+      map.set(nomDefecto, {
+        nombre: nomDefecto,
+        campo: campoSeleccionado || CAMPOS_FORMATIVOS[0],
+        entregas: 0
+      });
     }
 
-    return Array.from(nombresDelDia);
-  }, [trabajosDia, tituloTrabajo]);
+    return Array.from(map.values());
+  }, [trabajosDia, actividadesCreadas, tituloTrabajo, campoSeleccionado]);
 
-  // Sincronizar tarea activa al cambiar de fecha
+  // Nombres de tareas disponibles (mantiene compatibilidad total con Matriz y componentes existentes)
+  const tareasDisponibles = useMemo(() => {
+    return actividadesDelDia.map(a => a.nombre);
+  }, [actividadesDelDia]);
+
+  // Sincronizar tarea activa y su materia al cambiar de fecha o actividades
   useEffect(() => {
-    const tareasGuardadasEstaFecha = Array.from(new Set((trabajosDia || []).map(t => t.nombre_trabajo?.trim()).filter(Boolean)));
-    if (tareasGuardadasEstaFecha.length > 0) {
-      if (!tareasGuardadasEstaFecha.includes(tituloTrabajo)) {
-        setTituloTrabajo(tareasGuardadasEstaFecha[0]);
+    if (actividadesDelDia.length > 0) {
+      const existe = actividadesDelDia.find(a => a.nombre === tituloTrabajo);
+      if (!existe) {
+        setTituloTrabajo(actividadesDelDia[0].nombre);
+        setCampoSeleccionado(actividadesDelDia[0].campo || CAMPOS_FORMATIVOS[0]);
+      } else {
+        if (existe.campo && existe.campo !== campoSeleccionado) {
+          setCampoSeleccionado(existe.campo);
+        }
       }
-    } else {
-      if (!tituloTrabajo || !tituloTrabajo.trim()) {
-        setTituloTrabajo('Tarea 1');
-      }
-      setTareaAnterior(null);
     }
-  }, [fechaActualQR, trabajosDia]);
+  }, [fechaActualQR, trabajosDia, actividadesCreadas]);
+
+  // Cambiar de actividad activa con 1 clic (sincronizando nombre y su materia correspondiente)
+  const seleccionarActividad = (act) => {
+    if (!act || !act.nombre) return;
+    const nombre = act.nombre.trim();
+    if (nombre !== tituloTrabajo) {
+      setTareaAnterior(tituloTrabajo);
+      setTituloTrabajo(nombre);
+      if (act.campo) {
+        setCampoSeleccionado(act.campo);
+      }
+      if (showToast) {
+        const info = getInfoCampo(act.campo);
+        showToast(`🎯 Tarea activa: ${nombre} (${info.nombreCorto})`);
+      }
+    }
+  };
 
   const cambiarTareaActiva = (nuevaTarea) => {
     if (!nuevaTarea || !nuevaTarea.trim()) return;
     const trimmed = nuevaTarea.trim();
-    if (trimmed !== tituloTrabajo) {
+    const act = actividadesDelDia.find(a => a.nombre === trimmed);
+    if (act) {
+      seleccionarActividad(act);
+    } else {
+      if (trimmed !== tituloTrabajo) {
+        setTareaAnterior(tituloTrabajo);
+        setTituloTrabajo(trimmed);
+        if (showToast) showToast(`🎯 Tarea activa: ${trimmed}`);
+      }
+    }
+  };
+
+  // Abrir formulario para crear una nueva actividad con nombre y materia
+  const abrirCreadorActividad = () => {
+    const num = actividadesDelDia.length + 1;
+    setNuevoNombreActividad(`Tarea ${num}`);
+    setNuevoCampoActividad(campoSeleccionado || CAMPOS_FORMATIVOS[0]);
+    setCreandoNuevaActividad(true);
+    setEditandoActividad(null);
+  };
+
+  // Confirmar creación de nueva actividad
+  const handleConfirmarNuevaActividad = () => {
+    const nomTrim = (nuevoNombreActividad || '').trim();
+    if (!nomTrim) {
+      if (showToast) showToast('⚠️ Escribe un nombre para la actividad');
+      return;
+    }
+    guardarActividadCreada(nomTrim, nuevoCampoActividad);
+    if (nomTrim !== tituloTrabajo) {
       setTareaAnterior(tituloTrabajo);
-      setTituloTrabajo(trimmed);
-      if (showToast) showToast(`🎯 Tarea activa: ${trimmed}`);
+    }
+    setTituloTrabajo(nomTrim);
+    setCampoSeleccionado(nuevoCampoActividad);
+    setCreandoNuevaActividad(false);
+    setNuevoNombreActividad('');
+    if (showToast) {
+      const info = getInfoCampo(nuevoCampoActividad);
+      showToast(`🎉 Actividad creada: "${nomTrim}" (${info.nombreCorto})`);
     }
   };
 
-  const agregarNuevaTareaDia = () => {
-    const tareasGuardadas = Array.from(new Set((trabajosDia || []).map(t => t.nombre_trabajo?.trim()).filter(Boolean)));
-    const num = tareasGuardadas.length + 1;
-    const nombreDefecto = `Tarea ${num}`;
-    const nombre = window.prompt(`Nombre de la nueva actividad para este día (${fechaActualQR}):`, nombreDefecto);
-    if (nombre && nombre.trim()) {
-      cambiarTareaActiva(nombre.trim());
-    }
+  // Iniciar edición controlada de nombre y materia de una actividad
+  const iniciarEdicionActividad = (act, e) => {
+    if (e) e.stopPropagation();
+    setEditandoActividad({
+      nombreOriginal: act.nombre,
+      nombre: act.nombre,
+      campo: act.campo || CAMPOS_FORMATIVOS[0]
+    });
+    setCreandoNuevaActividad(false);
   };
 
+  // Guardar edición de nombre y materia
+  const handleGuardarEdicionActividad = async () => {
+    if (!editandoActividad) return;
+    const nombreOrig = editandoActividad.nombreOriginal;
+    const nuevoNom = (editandoActividad.nombre || '').trim();
+    const nuevoCmp = editandoActividad.campo || CAMPOS_FORMATIVOS[0];
+
+    if (!nuevoNom) {
+      if (showToast) showToast('⚠️ El nombre de la actividad no puede estar vacío');
+      return;
+    }
+
+    if (ipcRenderer) {
+      try {
+        await ipcRenderer.invoke('update-actividad-fecha', fechaActualQR, nombreOrig, nuevoNom, nuevoCmp, grupoActual?.id);
+      } catch (err) {
+        console.error("Error actualizando actividad en SQLite:", err);
+      }
+    }
+
+    setTrabajosDia(prev => (prev || []).map(t => {
+      if (t.nombre_trabajo === nombreOrig) {
+        return { ...t, nombre_trabajo: nuevoNom, campo: nuevoCmp };
+      }
+      return t;
+    }));
+
+    removerActividadCreada(nombreOrig);
+    guardarActividadCreada(nuevoNom, nuevoCmp);
+
+    if (tituloTrabajo === nombreOrig) {
+      setTituloTrabajo(nuevoNom);
+      setCampoSeleccionado(nuevoCmp);
+    }
+    if (tareaAnterior === nombreOrig) {
+      setTareaAnterior(nuevoNom);
+    }
+
+    setEditandoActividad(null);
+    if (showToast) showToast(`✏️ Actividad "${nuevoNom}" actualizada con éxito`);
+  };
+
+  // Eliminar actividad del día
   const eliminarActividadDelDia = async (nombreActividad, e) => {
     if (e) e.stopPropagation();
-    if (!window.confirm(`¿Deseas eliminar la actividad "${nombreActividad}" de este día (${fechaActualQR})?`)) return;
+    if (!window.confirm(`¿Deseas eliminar la actividad "${nombreActividad}" de este día (${fechaActualQR})? Se borrarán sus calificaciones registradas.`)) return;
 
     if (ipcRenderer) {
       try {
@@ -190,10 +421,17 @@ export default function ControlQR({
       }
     }
 
-    const restantes = (trabajosDia || []).filter(t => t.nombre_trabajo !== nombreActividad);
-    const tareasRestantes = Array.from(new Set(restantes.map(t => t.nombre_trabajo?.trim()).filter(Boolean)));
+    removerActividadCreada(nombreActividad);
+
+    const restantes = actividadesDelDia.filter(a => a.nombre !== nombreActividad);
     if (tituloTrabajo === nombreActividad) {
-      setTituloTrabajo(tareasRestantes.length > 0 ? tareasRestantes[0] : 'Tarea 1');
+      if (restantes.length > 0) {
+        setTituloTrabajo(restantes[0].nombre);
+        setCampoSeleccionado(restantes[0].campo || CAMPOS_FORMATIVOS[0]);
+      } else {
+        setTituloTrabajo('Tarea 1');
+        setCampoSeleccionado(CAMPOS_FORMATIVOS[0]);
+      }
       setTareaAnterior(null);
     }
     if (showToast) showToast(`🗑️ Actividad "${nombreActividad}" eliminada de este día`);
@@ -202,10 +440,12 @@ export default function ControlQR({
   const registrarTrabajoAlumnoDirecto = async (alumnoId, alumnoNombre, nombreTarea, nota) => {
     const valNota = parseFloat(nota) || 10;
     const nombreT = nombreTarea || tituloTrabajo;
+    const actObj = actividadesDelDia.find(a => a.nombre === nombreT);
+    const campoFinal = actObj?.campo || campoSeleccionado;
     
     if (ipcRenderer) {
       try {
-        const resTrabajo = await ipcRenderer.invoke('save-trabajo-qr', alumnoId, campoSeleccionado, nombreT, fechaActualQR, valNota, grupoActual?.id);
+        const resTrabajo = await ipcRenderer.invoke('save-trabajo-qr', alumnoId, campoFinal, nombreT, fechaActualQR, valNota, grupoActual?.id);
         setTrabajosDia(prev => {
           const sinEste = prev.filter(t => !(String(t.alumno_id) === String(alumnoId) && t.nombre_trabajo === nombreT));
           return [resTrabajo, ...sinEste];
@@ -220,7 +460,7 @@ export default function ControlQR({
       tipo: 'TRABAJO',
       alumnoId,
       alumno: alumnoNombre,
-      campo: campoSeleccionado,
+      campo: campoFinal,
       actividad: nombreT,
       nota: valNota,
       hora: new Date().toLocaleTimeString()
@@ -791,162 +1031,476 @@ export default function ControlQR({
             )}
 
             {/* OPCIONES DE EVALUACIÓN DE TRABAJO */}
-            {modoEscaneo === 'TRABAJO' && (
-              <div style={{ backgroundColor: '#fffaf0', padding: '16px', borderRadius: '10px', border: '1px solid #feebc8', marginBottom: '20px' }}>
-                {/* INDICADOR DE TAREA ACTIVA Y BOTÓN DE RETORNO A TAREA PREVIA */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#744210' }}>
-                      🎯 Tarea Activa al Escanear:
-                    </span>
-                    <span style={{
-                      backgroundColor: '#dd6b20',
-                      color: '#ffffff',
-                      fontWeight: 'bold',
-                      padding: '4px 12px',
-                      borderRadius: '20px',
-                      fontSize: '13px',
-                      boxShadow: '0 2px 4px rgba(221, 107, 32, 0.3)'
-                    }}>
-                      📝 {tituloTrabajo}
-                    </span>
-                  </div>
+            {modoEscaneo === 'TRABAJO' && (() => {
+              const actActivaObj = actividadesDelDia.find(a => a.nombre === tituloTrabajo);
+              const campoActivoInfo = getInfoCampo(actActivaObj?.campo || campoSeleccionado);
+              const entregasActivas = (trabajosDia || []).filter(t => t.nombre_trabajo === tituloTrabajo).length;
 
-                  {/* BOTÓN VOLVER A TAREA PREVIA (ALUMNO ADELANTADO -> REGRESAR AL RESTO) */}
-                  {tareaAnterior && tareaAnterior !== tituloTrabajo && (
-                    <button
-                      onClick={() => cambiarTareaActiva(tareaAnterior)}
-                      style={{
-                        display: 'flex',
+              return (
+                <div style={{ backgroundColor: '#fffaf0', padding: '16px', borderRadius: '12px', border: '1px solid #feebc8', marginBottom: '20px', boxShadow: '0 2px 6px rgba(221, 107, 32, 0.08)' }}>
+                  
+                  {/* BARRA SUPERIOR: RESUMEN DE ACTIVIDAD ACTIVA Y ACCIONES */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                    
+                    {/* Indicador de Tarea Activa */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#744210' }}>
+                        🎯 Tarea Activa al Escanear:
+                      </span>
+                      <div style={{
+                        display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '6px',
-                        backgroundColor: '#ebf8ff',
-                        border: '1px solid #bee3f8',
-                        borderRadius: '8px',
-                        padding: '4px 10px',
-                        fontSize: '12px',
+                        gap: '8px',
+                        backgroundColor: '#dd6b20',
+                        color: '#ffffff',
                         fontWeight: 'bold',
-                        color: '#2b6cb0',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease'
-                      }}
-                      title={`Regresar a calificar ${tareaAnterior} para el resto de los alumnos`}
-                    >
-                      <span>◀ Regresar a:</span>
-                      <strong>{tareaAnterior}</strong>
-                    </button>
-                  )}
-                </div>
+                        padding: '5px 14px',
+                        borderRadius: '20px',
+                        fontSize: '13px',
+                        boxShadow: '0 2px 4px rgba(221, 107, 32, 0.3)'
+                      }}>
+                        <span>📝 {tituloTrabajo}</span>
+                        <span style={{
+                          backgroundColor: 'rgba(255, 255, 255, 0.25)',
+                          color: '#ffffff',
+                          fontSize: '11px',
+                          padding: '1px 8px',
+                          borderRadius: '10px'
+                        }}>
+                          {campoActivoInfo.icono} {campoActivoInfo.nombreCorto}
+                        </span>
+                        <span style={{
+                          backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                          color: '#fef08a',
+                          fontSize: '11px',
+                          padding: '1px 6px',
+                          borderRadius: '10px'
+                        }}>
+                          {entregasActivas}/{alumnos.length}
+                        </span>
+                      </div>
+                    </div>
 
-                {/* SELECTOR RÁPIDO DE TAREAS (CHIPS / BOTONES DIRECTOS) */}
-                <div style={{ marginBottom: '14px' }}>
-                  <label style={{ fontWeight: 'bold', fontSize: '12px', display: 'block', marginBottom: '6px', color: '#975a16' }}>
-                    ⚡ Seleccionar Tarea Rápida (1 clic para cambiar):
-                  </label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                    {tareasDisponibles.map(tarea => {
-                      const isActiva = tarea === tituloTrabajo;
-                      const entregas = (trabajosDia || []).filter(t => t.nombre_trabajo === tarea).length;
-                      return (
+                    {/* Acciones de cabecera: Regresar a previa + Botón Nueva Actividad */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      {tareaAnterior && tareaAnterior !== tituloTrabajo && (
                         <button
-                          key={tarea}
-                          onClick={() => cambiarTareaActiva(tarea)}
+                          onClick={() => {
+                            const actPrev = actividadesDelDia.find(a => a.nombre === tareaAnterior);
+                            if (actPrev) seleccionarActividad(actPrev);
+                            else cambiarTareaActiva(tareaAnterior);
+                          }}
                           style={{
-                            padding: '6px 12px',
-                            borderRadius: '8px',
-                            border: isActiva ? '2px solid #dd6b20' : '1px solid #cbd5e0',
-                            backgroundColor: isActiva ? '#dd6b20' : '#ffffff',
-                            color: isActiva ? '#ffffff' : '#4a5568',
-                            fontWeight: 'bold',
-                            fontSize: '12px',
-                            cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '6px',
-                            boxShadow: isActiva ? '0 2px 5px rgba(221, 107, 32, 0.35)' : 'none',
+                            backgroundColor: '#ebf8ff',
+                            border: '1px solid #bee3f8',
+                            borderRadius: '8px',
+                            padding: '6px 12px',
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            color: '#2b6cb0',
+                            cursor: 'pointer',
                             transition: 'all 0.15s ease'
                           }}
+                          title={`Regresar a calificar ${tareaAnterior} para el resto de los alumnos`}
                         >
-                          <span>{tarea}</span>
-                          <span style={{
-                            fontSize: '10px',
-                            backgroundColor: isActiva ? 'rgba(255,255,255,0.35)' : '#edf2f7',
-                            color: isActiva ? '#ffffff' : '#718096',
-                            padding: '1px 5px',
-                            borderRadius: '10px'
-                          }}>
-                            {entregas}/{alumnos.length}
-                          </span>
-                          <span
-                            onClick={(e) => eliminarActividadDelDia(tarea, e)}
-                            style={{
-                              marginLeft: '2px',
-                              fontSize: '11px',
-                              fontWeight: 'bold',
-                              color: isActiva ? '#ffe8d6' : '#a0aec0',
-                              cursor: 'pointer',
-                              padding: '0 3px',
-                              borderRadius: '4px'
-                            }}
-                            title={`Eliminar "${tarea}" de esta fecha`}
-                          >
-                            ✕
-                          </span>
+                          <span>◀ Regresar a:</span>
+                          <strong>{tareaAnterior}</strong>
                         </button>
-                      );
-                    })}
+                      )}
 
-                    {/* BOTÓN PARA AÑADIR OTRA TAREA PARA ESTE DÍA */}
-                    <button
-                      onClick={agregarNuevaTareaDia}
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: '8px',
-                        border: '1px dashed #dd6b20',
-                        backgroundColor: '#fffaf0',
-                        color: '#c05621',
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      ➕ Nueva Tarea
-                    </button>
-                  </div>
-                </div>
-
-                {/* ENTRADA EDITABLE MANUAL PARA NOMBRE PERSONALIZADO CON AUTOCOMPLETADO */}
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px', marginBottom: '12px' }}>
-                  <div>
-                    <label style={{ fontWeight: 'bold', fontSize: '12px', display: 'block', marginBottom: '4px', color: '#744210' }}>
-                      O escribe / edita el nombre de la actividad para hoy:
-                    </label>
-                    <input
-                      type="text"
-                      list="listaSugerenciasTareas"
-                      value={tituloTrabajo}
-                      onChange={(e) => setTituloTrabajo(e.target.value)}
-                      style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e0', boxSizing: 'border-box', fontSize: '13px' }}
-                      placeholder="Ej. Ejercicios pág. 45, Maqueta, Resumen"
-                    />
-                    <datalist id="listaSugerenciasTareas">
-                      {sugerenciasGlobales.map(s => <option key={s} value={s} />)}
-                    </datalist>
+                      <button
+                        onClick={abrirCreadorActividad}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          backgroundColor: '#dd6b20',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '7px 14px',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 4px rgba(221, 107, 32, 0.25)',
+                          transition: 'all 0.15s ease'
+                        }}
+                        title="Crear una nueva actividad con su materia"
+                      >
+                        <span style={{ fontSize: '14px' }}>➕</span>
+                        <span>Nueva Tarea</span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div>
-                    <label style={{ fontWeight: 'bold', fontSize: '12px', display: 'block', marginBottom: '4px', color: '#744210' }}>
-                      Campo Formativo:
-                    </label>
-                    <select
-                      value={campoSeleccionado}
-                      onChange={(e) => setCampoSeleccionado(e.target.value)}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '12px' }}
-                    >
-                      {CAMPOS_FORMATIVOS.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                  {/* FORMULARIO INLINE: CREAR NUEVA ACTIVIDAD */}
+                  {creandoNuevaActividad && (
+                    <div style={{
+                      backgroundColor: '#ffffff',
+                      border: '2px solid #dd6b20',
+                      borderRadius: '10px',
+                      padding: '14px',
+                      marginBottom: '14px',
+                      boxShadow: '0 4px 12px rgba(221, 107, 32, 0.12)'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <span style={{ fontWeight: 'bold', fontSize: '13px', color: '#9a3412', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>✨</span>
+                          <span>Crear Nueva Actividad para este día ({fechaActualQR}):</span>
+                        </span>
+                        <button
+                          onClick={() => setCreandoNuevaActividad(false)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', color: '#94a3b8', padding: '2px 6px' }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr auto', gap: '10px', alignItems: 'flex-end' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#744210', marginBottom: '4px' }}>
+                            Nombre de la Actividad / Tarea:
+                          </label>
+                          <input
+                            type="text"
+                            list="listaSugerenciasTareas"
+                            value={nuevoNombreActividad}
+                            onChange={(e) => setNuevoNombreActividad(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmarNuevaActividad(); }}
+                            placeholder="Ej. Resumen de lectura, Desafíos matemáticos..."
+                            autoFocus
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e0',
+                              fontSize: '13px',
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                          <datalist id="listaSugerenciasTareas">
+                            {sugerenciasGlobales.map(s => <option key={s} value={s} />)}
+                          </datalist>
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#744210', marginBottom: '4px' }}>
+                            Materia / Campo Formativo:
+                          </label>
+                          <select
+                            value={nuevoCampoActividad}
+                            onChange={(e) => setNuevoCampoActividad(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e0',
+                              fontSize: '12px',
+                              boxSizing: 'border-box'
+                            }}
+                          >
+                            {CAMPOS_FORMATIVOS.map(c => {
+                              const info = getInfoCampo(c);
+                              return (
+                                <option key={c} value={c}>
+                                  {info.icono} {info.nombreCorto} ({c})
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            onClick={handleConfirmarNuevaActividad}
+                            style={{
+                              padding: '8px 14px',
+                              backgroundColor: '#dd6b20',
+                              color: '#ffffff',
+                              fontWeight: 'bold',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                              whiteSpace: 'nowrap',
+                              boxShadow: '0 2px 4px rgba(221, 107, 32, 0.3)'
+                            }}
+                          >
+                            ✓ Crear y Activar
+                          </button>
+                          <button
+                            onClick={() => setCreandoNuevaActividad(false)}
+                            style={{
+                              padding: '8px 12px',
+                              backgroundColor: '#edf2f7',
+                              color: '#4a5568',
+                              fontWeight: 'bold',
+                              border: '1px solid #cbd5e0',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              fontSize: '12px'
+                            }}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* FORMULARIO INLINE: EDITAR ACTIVIDAD EXISTENTE */}
+                  {editandoActividad && (
+                    <div style={{
+                      backgroundColor: '#ffffff',
+                      border: '2px solid #3182ce',
+                      borderRadius: '10px',
+                      padding: '14px',
+                      marginBottom: '14px',
+                      boxShadow: '0 4px 12px rgba(49, 130, 206, 0.15)'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <span style={{ fontWeight: 'bold', fontSize: '13px', color: '#2b6cb0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>✏️</span>
+                          <span>Editar Actividad: <strong>"{editandoActividad.nombreOriginal}"</strong></span>
+                        </span>
+                        <button
+                          onClick={() => setEditandoActividad(null)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', color: '#94a3b8', padding: '2px 6px' }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr auto', gap: '10px', alignItems: 'flex-end' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#2b6cb0', marginBottom: '4px' }}>
+                            Nombre de la Actividad:
+                          </label>
+                          <input
+                            type="text"
+                            value={editandoActividad.nombre}
+                            onChange={(e) => setEditandoActividad({ ...editandoActividad, nombre: e.target.value })}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleGuardarEdicionActividad(); }}
+                            autoFocus
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e0',
+                              fontSize: '13px',
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#2b6cb0', marginBottom: '4px' }}>
+                            Materia / Campo Formativo:
+                          </label>
+                          <select
+                            value={editandoActividad.campo}
+                            onChange={(e) => setEditandoActividad({ ...editandoActividad, campo: e.target.value })}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e0',
+                              fontSize: '12px',
+                              boxSizing: 'border-box'
+                            }}
+                          >
+                            {CAMPOS_FORMATIVOS.map(c => {
+                              const info = getInfoCampo(c);
+                              return (
+                                <option key={c} value={c}>
+                                  {info.icono} {info.nombreCorto} ({c})
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            onClick={handleGuardarEdicionActividad}
+                            style={{
+                              padding: '8px 14px',
+                              backgroundColor: '#3182ce',
+                              color: '#ffffff',
+                              fontWeight: 'bold',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                              whiteSpace: 'nowrap',
+                              boxShadow: '0 2px 4px rgba(49, 130, 206, 0.3)'
+                            }}
+                          >
+                            ✓ Guardar
+                          </button>
+                          <button
+                            onClick={() => setEditandoActividad(null)}
+                            style={{
+                              padding: '8px 12px',
+                              backgroundColor: '#edf2f7',
+                              color: '#4a5568',
+                              fontWeight: 'bold',
+                              border: '1px solid #cbd5e0',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              fontSize: '12px'
+                            }}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SELECTOR RÁPIDO DE ACTIVIDADES (BOTONES / TARJETAS POR TAREA Y MATERIA) */}
+                  <div style={{ marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <label style={{ fontWeight: 'bold', fontSize: '12px', color: '#975a16', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>⚡ Actividades de Hoy (1 clic para cambiar de tarea y materia):</span>
+                      </label>
+                      <span style={{ fontSize: '11px', color: '#78350f', fontWeight: 'bold' }}>
+                        {actividadesDelDia.length} {actividadesDelDia.length === 1 ? 'actividad' : 'actividades'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'stretch' }}>
+                      {actividadesDelDia.map(act => {
+                        const isActiva = act.nombre === tituloTrabajo;
+                        const campoInfo = getInfoCampo(act.campo);
+                        const entregas = (trabajosDia || []).filter(t => t.nombre_trabajo === act.nombre).length;
+
+                        return (
+                          <div
+                            key={act.nombre}
+                            onClick={() => seleccionarActividad(act)}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '6px 12px',
+                              borderRadius: '10px',
+                              border: isActiva ? `2px solid #dd6b20` : '1px solid #cbd5e1',
+                              backgroundColor: isActiva ? '#fff7ed' : '#ffffff',
+                              color: isActiva ? '#9a3412' : '#334155',
+                              boxShadow: isActiva ? '0 3px 8px rgba(221, 107, 32, 0.25)' : '0 1px 2px rgba(0,0,0,0.04)',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                              userSelect: 'none'
+                            }}
+                            title={`Clic para activar "${act.nombre}" (${campoInfo.nombreCorto})`}
+                          >
+                            {/* Indicador de activo */}
+                            <span style={{ fontSize: isActiva ? '14px' : '13px' }}>
+                              {isActiva ? '🎯' : campoInfo.icono}
+                            </span>
+
+                            {/* Nombre y Badge de Materia */}
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                              <span style={{
+                                fontWeight: isActiva ? '800' : '600',
+                                fontSize: '12px',
+                                color: isActiva ? '#7c2d12' : '#1e293b',
+                                lineHeight: '1.2'
+                              }}>
+                                {act.nombre}
+                              </span>
+                              <span style={{
+                                fontSize: '10px',
+                                fontWeight: '700',
+                                color: campoInfo.colorTexto,
+                                backgroundColor: campoInfo.colorBg,
+                                border: `1px solid ${campoInfo.colorBorde}`,
+                                padding: '0px 5px',
+                                borderRadius: '4px',
+                                marginTop: '2px',
+                                lineHeight: '1.2'
+                              }}>
+                                {campoInfo.icono} {campoInfo.nombreCorto}
+                              </span>
+                            </div>
+
+                            {/* Badge de Entregas */}
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: 'bold',
+                              backgroundColor: isActiva ? '#ea580c' : '#f1f5f9',
+                              color: isActiva ? '#ffffff' : '#475569',
+                              padding: '2px 6px',
+                              borderRadius: '10px',
+                              marginLeft: '2px'
+                            }}>
+                              {entregas}/{alumnos.length}
+                            </span>
+
+                            {/* Botón Editar Actividad */}
+                            <button
+                              onClick={(e) => iniciarEdicionActividad(act, e)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                                color: isActiva ? '#ea580c' : '#94a3b8',
+                                padding: '1px 3px',
+                                borderRadius: '4px'
+                              }}
+                              title={`Editar nombre o materia de "${act.nombre}"`}
+                            >
+                              ✏️
+                            </button>
+
+                            {/* Botón Eliminar Actividad */}
+                            <button
+                              onClick={(e) => eliminarActividadDelDia(act.nombre, e)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                                color: isActiva ? '#f87171' : '#cbd5e1',
+                                padding: '1px 3px',
+                                borderRadius: '4px'
+                              }}
+                              title={`Eliminar "${act.nombre}" de esta fecha`}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        );
+                      })}
+
+                      {/* Botón Añadir Otra Tarea */}
+                      <button
+                        onClick={abrirCreadorActividad}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '10px',
+                          border: '1px dashed #dd6b20',
+                          backgroundColor: '#fffaf0',
+                          color: '#c05621',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <span>➕</span>
+                        <span>Nueva Tarea</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
 
                 {/* SELECTOR DE CALIFICACIÓN */}
                 <div>
@@ -982,7 +1536,8 @@ export default function ControlQR({
                   </div>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* VINCULACIÓN CON LA APP MÓVIL APK */}
             <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '15px', textAlign: 'center' }}>
