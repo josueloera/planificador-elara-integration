@@ -149,6 +149,21 @@ function App() {
   const [mostrarConsola, setMostrarConsola] = useState(false);
   const [consolaLogs, setConsolaLogs] = useState([]);
   const [consolaCompletada, setConsolaCompletada] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState(null); // null | { tipo: 'available'|'downloaded', version: '' }
+
+  // ── LISTENER ACTUALIZACIONES AUTOMÁTICAS ──────────────────────────────
+  useEffect(() => {
+    if (!ipcRenderer) return;
+    const onAvailable = (_, version) => setUpdateStatus({ tipo: 'available', version });
+    const onDownloaded = (_, version) => setUpdateStatus({ tipo: 'downloaded', version });
+    ipcRenderer.on('update-available', onAvailable);
+    ipcRenderer.on('update-downloaded', onDownloaded);
+    return () => {
+      ipcRenderer.removeListener('update-available', onAvailable);
+      ipcRenderer.removeListener('update-downloaded', onDownloaded);
+    };
+  }, []);
+  // ─────────────────────────────────────────────────────────────────────
 
   const toggleVisto = (tipo, id) => {
       const isVisto = (vistos[tipo] || []).includes(String(id));
@@ -1619,6 +1634,47 @@ function App() {
       {/* COMPONENTES DE INTERFAZ ELARA GLOBALES */}
       {renderConsolaMutacion()}
       {renderDudaModal()}
+
+      {/* BANNER DE ACTUALIZACIÓN AUTOMÁTICA */}
+      {updateStatus && (
+        <div style={{
+          position: 'fixed', bottom: '20px', right: '20px', zIndex: 9999,
+          background: updateStatus.tipo === 'downloaded' ? 'linear-gradient(135deg,#1a237e,#283593)' : 'linear-gradient(135deg,#1b5e20,#2e7d32)',
+          color: '#fff', borderRadius: '12px', padding: '14px 18px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)', maxWidth: '320px',
+          display: 'flex', flexDirection: 'column', gap: '8px',
+          fontFamily: 'system-ui,sans-serif', fontSize: '13px',
+          animation: 'fadeInUp 0.4s ease'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '14px' }}>
+            <span>{updateStatus.tipo === 'downloaded' ? '✅' : '🔄'}</span>
+            <span>{updateStatus.tipo === 'downloaded' ? 'Actualización lista' : 'Actualización disponible'}</span>
+          </div>
+          <div style={{ opacity: 0.85 }}>
+            {updateStatus.tipo === 'downloaded'
+              ? `v${updateStatus.version} lista. Se instalará cuando cierres la app.`
+              : `v${updateStatus.version} descargándose en segundo plano...`}
+          </div>
+          {updateStatus.tipo === 'downloaded' && (
+            <button
+              onClick={() => ipcRenderer && ipcRenderer.send('install-update-now')}
+              style={{
+                marginTop: '4px', background: '#fff', color: '#1a237e',
+                border: 'none', borderRadius: '8px', padding: '6px 14px',
+                fontWeight: 700, cursor: 'pointer', fontSize: '12px', alignSelf: 'flex-start'
+              }}
+            >Instalar ahora</button>
+          )}
+          <button
+            onClick={() => setUpdateStatus(null)}
+            style={{
+              position: 'absolute', top: '8px', right: '10px',
+              background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.7)',
+              cursor: 'pointer', fontSize: '16px', lineHeight: 1
+            }}
+          >×</button>
+        </div>
+      )}
     </div>
   );
 }

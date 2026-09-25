@@ -40,6 +40,8 @@ jobs:
         overwrite: true
         files: |
           release/*.dmg
+          release/*.zip
+          release/latest-mac.yml
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -72,5 +74,7 @@ jobs:
         overwrite: true
         files: |
           release/*.exe
+          release/*.blockmap
+          release/latest.yml
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

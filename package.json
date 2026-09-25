@@ -60,10 +60,18 @@
       "icon": "public/icon.png",
       "category": "public.app-category.education",
       "x64ArchFiles": "**/*.node"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "josueloera",
+        "repo": "planificador-elara-integration"
+      }
+    ]
   },
   "dependencies": {
     "crossword-layout-generator": "^0.1.1",
+    "electron-updater": "^6.8.9",
     "lucide-react": "^1.35.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
