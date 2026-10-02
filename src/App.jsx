@@ -1578,11 +1578,16 @@ function App() {
             fechaEval={fechaEval}
             ipcRenderer={ipcRenderer}
             showToast={showToast}
-            onAttendanceUpdated={(aid, fecha, estado) => {
-              // Actualizar datos de asistencia local si es necesario
+            onAttendanceUpdated={() => {
+              if (typeof cargarEval === 'function') cargarEval(campoActual);
             }}
             onGradeSaved={(aid, cid, val) => {
-              handleSaveNota(aid, cid, val);
+              if (aid && cid) {
+                handleSaveNota(aid, cid, val);
+              }
+              if (typeof cargarEval === 'function') {
+                cargarEval(campoActual);
+              }
             }}
           />
         </div>

@@ -145,7 +145,9 @@ export default function ControlQR({
   const [showModalExportTrab, setShowModalExportTrab] = useState(false);
   const [criterioDestinoAsis, setCriterioDestinoAsis] = useState('');
   const [criterioDestinoTrab, setCriterioDestinoTrab] = useState('');
+  const [campoDestinoAsis, setCampoDestinoAsis] = useState('TODOS');
   const [escalaDestinoAsis, setEscalaDestinoAsis] = useState(10);
+  const [criteriosGrupo, setCriteriosGrupo] = useState([]);
 
   // Cargar IP local, Asistencias, Trabajos y Perfiles guardados en SQLite para la fecha actual
   const cargarDatosDia = () => {
@@ -589,6 +591,19 @@ export default function ControlQR({
     };
   }, [modoEscaneo, subtipoAsistencia, campoSeleccionado, criterioSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo]);
 
+  // Cargar criterios completos del grupo y por campo formativo
+  const recargarCriteriosGrupo = useCallback(() => {
+    if (ipcRenderer && grupoActual?.id) {
+      ipcRenderer.invoke('get-criterios', grupoActual.id).then(list => {
+        setCriteriosGrupo(list || []);
+      }).catch(console.error);
+    }
+  }, [ipcRenderer, grupoActual?.id]);
+
+  useEffect(() => {
+    recargarCriteriosGrupo();
+  }, [recargarCriteriosGrupo]);
+
   // Cargar criterios cuando cambia el campo formativo
   useEffect(() => {
     if (ipcRenderer && grupoActual?.id) {
@@ -601,6 +616,58 @@ export default function ControlQR({
       }).catch(console.error);
     }
   }, [ipcRenderer, grupoActual, campoSeleccionado]);
+
+  // Filtrado de criterios para el modal de Trabajos
+  const criteriosFiltradosTrab = useMemo(() => {
+    const list = (criteriosGrupo && criteriosGrupo.length > 0) ? criteriosGrupo : (criterios || []);
+    if (!campoFiltroHistorial || campoFiltroHistorial === 'TODOS') {
+      return list;
+    }
+    return list.filter(c => {
+      const cCampo = (c.campo || 'LENGUAJES').trim().toUpperCase();
+      return cCampo === String(campoFiltroHistorial).trim().toUpperCase();
+    });
+  }, [criteriosGrupo, criterios, campoFiltroHistorial]);
+
+  useEffect(() => {
+    if (showModalExportTrab) {
+      recargarCriteriosGrupo();
+      if (criteriosFiltradosTrab.length > 0) {
+        const match = criteriosFiltradosTrab.some(c => String(c.id) === String(criterioDestinoTrab));
+        if (!match) {
+          setCriterioDestinoTrab(String(criteriosFiltradosTrab[0].id));
+        }
+      } else {
+        setCriterioDestinoTrab('');
+      }
+    }
+  }, [showModalExportTrab, campoFiltroHistorial, criteriosFiltradosTrab, recargarCriteriosGrupo]);
+
+  // Filtrado de criterios para el modal de Asistencia
+  const criteriosFiltradosAsis = useMemo(() => {
+    const list = (criteriosGrupo && criteriosGrupo.length > 0) ? criteriosGrupo : (criterios || []);
+    if (!campoDestinoAsis || campoDestinoAsis === 'TODOS') {
+      return list;
+    }
+    return list.filter(c => {
+      const cCampo = (c.campo || 'LENGUAJES').trim().toUpperCase();
+      return cCampo === String(campoDestinoAsis).trim().toUpperCase();
+    });
+  }, [criteriosGrupo, criterios, campoDestinoAsis]);
+
+  useEffect(() => {
+    if (showModalExportAsis) {
+      recargarCriteriosGrupo();
+      if (criteriosFiltradosAsis.length > 0) {
+        const match = criteriosFiltradosAsis.some(c => String(c.id) === String(criterioDestinoAsis));
+        if (!match) {
+          setCriterioDestinoAsis(String(criteriosFiltradosAsis[0].id));
+        }
+      } else {
+        setCriterioDestinoAsis('');
+      }
+    }
+  }, [showModalExportAsis, campoDestinoAsis, criteriosFiltradosAsis, recargarCriteriosGrupo]);
 
   // ─── CÁMARA WEB ────────────────────────────────────────────────────────────
   const iniciarCamara = useCallback(async (deviceId) => {
@@ -3062,6 +3129,20 @@ export default function ControlQR({
 
             <div style={{ marginBottom: '14px' }}>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#2d3748', marginBottom: '6px' }}>
+                Campo Formativo de Destino:
+              </label>
+              <select
+                value={campoDestinoAsis}
+                onChange={e => setCampoDestinoAsis(e.target.value)}
+                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '14px' }}
+              >
+                <option value="TODOS">Todos los Criterios del Grupo</option>
+                {CAMPOS_FORMATIVOS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#2d3748', marginBottom: '6px' }}>
                 Selecciona el Criterio de Destino:
               </label>
               <select
@@ -3070,12 +3151,17 @@ export default function ControlQR({
                 style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '14px' }}
               >
                 <option value="">-- Elige un Criterio (ej. Asistencia 10%) --</option>
-                {criterios.map(c => (
+                {criteriosFiltradosAsis.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.nombre} ({c.porcentaje}%) {c.campo ? `[${c.campo}]` : ''}
+                    {c.nombre} ({c.porcentaje}%) [{c.campo || 'LENGUAJES'}]
                   </option>
                 ))}
               </select>
+              {criteriosFiltradosAsis.length === 0 && (
+                <div style={{ marginTop: '8px', padding: '8px 12px', backgroundColor: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '6px', fontSize: '12px', color: '#c53030' }}>
+                  ⚠️ No hay criterios configurados para <strong>{campoDestinoAsis}</strong>. Puedes configurarlos en el módulo de Evaluación.
+                </div>
+              )}
             </div>
 
             <div style={{ marginBottom: '16px' }}>
@@ -3147,12 +3233,17 @@ export default function ControlQR({
                 style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '14px' }}
               >
                 <option value="">-- Elige un Criterio (ej. Trabajos en clase 30%) --</option>
-                {criterios.map(c => (
+                {criteriosFiltradosTrab.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.nombre} ({c.porcentaje}%) {c.campo ? `[${c.campo}]` : ''}
+                    {c.nombre} ({c.porcentaje}%) [{c.campo || 'LENGUAJES'}]
                   </option>
                 ))}
               </select>
+              {criteriosFiltradosTrab.length === 0 && (
+                <div style={{ marginTop: '8px', padding: '8px 12px', backgroundColor: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '6px', fontSize: '12px', color: '#c53030' }}>
+                  ⚠️ No hay criterios configurados para <strong>{campoFiltroHistorial}</strong>. Puedes configurarlos en el módulo de Evaluación.
+                </div>
+              )}
             </div>
 
             <div style={{ backgroundColor: '#f0fff4', padding: '10px 14px', borderRadius: '8px', fontSize: '12px', color: '#22543d', marginBottom: '16px' }}>

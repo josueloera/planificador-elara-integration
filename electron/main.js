@@ -477,11 +477,11 @@ ipcMain.handle('get-criterios', async (e, grupo_id, campo) => {
   return new Promise(r => {
     let query = "SELECT * FROM criterios WHERE grupo_id = ?";
     let params = [grupo_id];
-    if (campo) {
+    if (campo && campo !== 'TODOS') {
       query += " AND (campo = ? OR ((campo IS NULL OR campo = '') AND ? = 'LENGUAJES'))";
       params.push(campo, campo);
     }
-    db.all(query, params, (err, rows) => r(err ? [] : rows));
+    db.all(query, params, (err, rows) => r(err ? [] : (rows || [])));
   });
 });
 
@@ -493,22 +493,37 @@ ipcMain.handle('save-criterios', async (e, listaCriterios, grupo_id, campo) => {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       try {
-        db.run("DELETE FROM criterios WHERE grupo_id = ? AND (campo = ? OR ((campo IS NULL OR campo = '') AND ? = 'LENGUAJES'))", [grupo_id, targetCampo, targetCampo], (err) => {
+        const validos = (listaCriterios || []).filter(c => c.nombre && c.nombre.trim() !== '');
+        const keptIds = validos.filter(c => c.id && typeof c.id === 'number').map(c => c.id);
+
+        let deleteSql = "DELETE FROM criterios WHERE grupo_id = ? AND (campo = ? OR ((campo IS NULL OR campo = '') AND ? = 'LENGUAJES'))";
+        let deleteParams = [grupo_id, targetCampo, targetCampo];
+        if (keptIds.length > 0) {
+          const placeholders = keptIds.map(() => '?').join(',');
+          deleteSql += ` AND id NOT IN (${placeholders})`;
+          deleteParams.push(...keptIds);
+        }
+
+        db.run(deleteSql, deleteParams, (err) => {
           if (err) return reject(err);
-          
-          if (!listaCriterios || listaCriterios.length === 0) {
-            return resolve(true);
-          }
-          
-          const stmtInsert = db.prepare("INSERT INTO criterios (grupo_id, campo, nombre, porcentaje) VALUES (?, ?, ?, ?)");
-          listaCriterios.forEach(c => {
-            if (c.nombre && c.nombre.trim() !== '') {
-              stmtInsert.run(grupo_id, targetCampo, c.nombre.trim(), parseFloat(c.porcentaje) || 0);
+
+          if (validos.length === 0) return resolve(true);
+
+          let pending = validos.length;
+          validos.forEach(c => {
+            const nom = c.nombre.trim();
+            const pct = parseFloat(c.porcentaje) || 0;
+            if (c.id && typeof c.id === 'number') {
+              db.run("UPDATE criterios SET nombre = ?, porcentaje = ?, campo = ? WHERE id = ? AND grupo_id = ?", [nom, pct, targetCampo, c.id, grupo_id], () => {
+                pending--;
+                if (pending === 0) resolve(true);
+              });
+            } else {
+              db.run("INSERT INTO criterios (grupo_id, campo, nombre, porcentaje) VALUES (?, ?, ?, ?)", [grupo_id, targetCampo, nom, pct], () => {
+                pending--;
+                if (pending === 0) resolve(true);
+              });
             }
-          });
-          stmtInsert.finalize(err => {
-            if (err) reject(err);
-            else resolve(true);
           });
         });
       } catch (err) {
