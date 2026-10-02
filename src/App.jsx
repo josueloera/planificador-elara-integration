@@ -1044,7 +1044,7 @@ function App() {
                     onClick={async () => {
                       if (!ipcRenderer || !criterioImportarTarget) return;
                       try {
-                        const count = await ipcRenderer.invoke('importar-promedios-qr-a-criterio', criterioImportarTarget, fechaEval, campoActual, grupoActual?.id);
+                        const count = await ipcRenderer.invoke('importar-promedios-qr-a-criterio', Number(criterioImportarTarget), fechaEval, fechaEval, campoActual, grupoActual?.id, fechaEval);
                         setShowModalImportarQR(false);
                         cargarEval(campoActual);
                         if (count > 0) {

@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { exportarAsistenciaExcel, exportarTrabajosExcel, calcularSemanaEscolar } from '../utils/excelExporter';
+import jsQR from 'jsqr';
 
 const CAMPOS_FORMATIVOS = [
   'LENGUAJES',
@@ -111,6 +112,16 @@ export default function ControlQR({
 
   // Referencia para evitar escaneos duplicados por mantener la cámara sobre el QR
   const lastScanRef = useRef({ code: '', studentId: null, timestamp: 0 });
+
+  // Cámara Web
+  const [camaraActiva, setCamaraActiva] = useState(false);
+  const [camaraError, setCamaraError] = useState('');
+  const [camaraDispositivos, setCamaraDispositivos] = useState([]);
+  const [camaraSeleccionada, setCamaraSeleccionada] = useState('');
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const animFrameRef = useRef(null);
 
   // Estados para la pestaña: HISTORIAL Y REPORTES
   const [fechaInicioHistorial, setFechaInicioHistorial] = useState(() => {
@@ -590,6 +601,80 @@ export default function ControlQR({
       }).catch(console.error);
     }
   }, [ipcRenderer, grupoActual, campoSeleccionado]);
+
+  // ─── CÁMARA WEB ────────────────────────────────────────────────────────────
+  const iniciarCamara = useCallback(async (deviceId) => {
+    setCamaraError('');
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+      const constraints = {
+        video: deviceId ? { deviceId: { exact: deviceId }, facingMode: 'environment' } : { facingMode: 'environment' }
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      // Listar dispositivos de vídeo disponibles
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === 'videoinput');
+      setCamaraDispositivos(videoDevices);
+      setCamaraActiva(true);
+    } catch (err) {
+      setCamaraError(`No se pudo acceder a la cámara: ${err.message}`);
+      setCamaraActiva(false);
+    }
+  }, []);
+
+  const detenerCamara = useCallback(() => {
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCamaraActiva(false);
+    setCamaraError('');
+  }, []);
+
+  // Leer fotogramas de la cámara y decodificar QR con jsQR
+  useEffect(() => {
+    if (!camaraActiva) return;
+    let activo = true;
+
+    const tick = () => {
+      if (!activo) return;
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+        if (code && code.data) {
+          procesarCodigoEscaneado(code.data);
+        }
+      }
+      animFrameRef.current = requestAnimationFrame(tick);
+    };
+
+    animFrameRef.current = requestAnimationFrame(tick);
+    return () => {
+      activo = false;
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, [camaraActiva, modoEscaneo, subtipoAsistencia, campoSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo]);
+
+  // Detener cámara al desmontar el componente
+  useEffect(() => () => detenerCamara(), []);
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   // Reproducir sonido de confirmación al escanear
   const playBeep = () => {
@@ -1717,6 +1802,71 @@ export default function ControlQR({
                   Registrar
                 </button>
               </div>
+            </div>
+
+            {/* CÁMARA WEB */}
+            <div style={{ borderTop: '1px solid #edf2f7', paddingTop: '15px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#2d3748' }}>
+                  📷 Cámara Web de la PC / Laptop
+                </label>
+                <button
+                  onClick={() => camaraActiva ? detenerCamara() : iniciarCamara(camaraSeleccionada)}
+                  style={{
+                    padding: '5px 14px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    backgroundColor: camaraActiva ? '#e53e3e' : '#38a169',
+                    color: '#ffffff'
+                  }}
+                >
+                  {camaraActiva ? '⏹ Detener Cámara' : '▶ Activar Cámara'}
+                </button>
+              </div>
+
+              {camaraError && (
+                <div style={{ backgroundColor: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', color: '#c53030', marginBottom: '8px' }}>
+                  ⚠️ {camaraError}
+                </div>
+              )}
+
+              {camaraDispositivos.length > 1 && (
+                <div style={{ marginBottom: '8px' }}>
+                  <select
+                    value={camaraSeleccionada}
+                    onChange={e => { setCamaraSeleccionada(e.target.value); if (camaraActiva) iniciarCamara(e.target.value); }}
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '12px' }}
+                  >
+                    {camaraDispositivos.map((d, i) => (
+                      <option key={d.deviceId} value={d.deviceId}>
+                        {d.label || `Cámara ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#000', display: camaraActiva ? 'block' : 'none' }}>
+                <video
+                  ref={videoRef}
+                  muted
+                  playsInline
+                  style={{ width: '100%', maxHeight: '220px', objectFit: 'cover', display: 'block' }}
+                />
+                <canvas ref={canvasRef} style={{ display: 'none' }} />
+                <div style={{ position: 'absolute', top: '8px', right: '8px', backgroundColor: 'rgba(56, 161, 105, 0.9)', color: '#fff', padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>
+                  🟢 Escaneando…
+                </div>
+              </div>
+
+              {!camaraActiva && !camaraError && (
+                <div style={{ textAlign: 'center', color: '#a0aec0', fontSize: '12px', padding: '10px 0' }}>
+                  Presiona "Activar Cámara" para escanear QR con la webcam de tu PC.
+                </div>
+              )}
             </div>
 
             {/* HISTORIAL DE ACTIVIDAD RECIENTE */}

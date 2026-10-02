@@ -267,25 +267,52 @@ export const exportarAsistenciaExcel = ({ grupoNombre, fechaInicio, fechaFin, re
 };
 
 /**
- * Genera un archivo Excel XML (.xls) de Trabajos QR con Sábana / Matriz Completa de Calificaciones
+ * Genera un archivo Excel XML (.xls) de Trabajos QR con Sábana General, Pestañas Separadas por Materia/Campo y Bitácora
  */
 export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, campo, trabajos = [], resumenAlumnos = [] }) => {
-  // 1. Extraer y ordenar trabajos únicos (Columnas de la Sábana)
-  const mapaTareas = new Map();
-  const tareasUnicas = [];
+  // Función para sanitizar nombres de pestañas en Excel (máx 31 caracteres y sin caracteres prohibidos)
+  const sanitizarNombrePestana = (nombre) => {
+    if (!nombre) return 'Materia';
+    let n = String(nombre).trim();
+    if (n.toUpperCase() === 'LENGUAJES') n = 'Lenguajes';
+    else if (n.toUpperCase().includes('SABERES')) n = 'Saberes y P.C.';
+    else if (n.toUpperCase().includes('ÉTICA') || n.toUpperCase().includes('ETICA')) n = 'Ética, Nat. y Soc.';
+    else if (n.toUpperCase().includes('HUMANO')) n = 'De lo Humano';
+    
+    return n.replace(/[/\\?*[\]:]/g, '_').substring(0, 31);
+  };
+
+  // 1. Extraer todas las materias / campos formativos únicos presentes en los trabajos
+  const camposSet = new Set();
+  (trabajos || []).forEach(t => {
+    const cpo = (t.campo || 'GENERAL').trim();
+    if (cpo) camposSet.add(cpo);
+  });
+
+  // Si no hay campos en trabajos, agregar el campo de filtro o lista estándar
+  if (camposSet.size === 0) {
+    if (campo && campo !== 'TODOS') camposSet.add(campo);
+    else camposSet.add('LENGUAJES');
+  }
+
+  const listaMaterias = Array.from(camposSet);
+
+  // 2. Extraer y ordenar trabajos únicos globales
+  const mapaTareasGlobal = new Map();
+  const tareasGlobales = [];
   const matrizCalificaciones = {}; // [alumno_id][taskKey] = valor
 
   (trabajos || []).forEach(t => {
     const nombre = (t.nombre_trabajo || 'Actividad').trim();
     const f = t.fecha || '';
-    const cpo = t.campo || 'GENERAL';
+    const cpo = (t.campo || 'GENERAL').trim();
     const key = `${nombre}___${f}___${cpo}`;
 
-    if (!mapaTareas.has(key)) {
+    if (!mapaTareasGlobal.has(key)) {
       const sem = calcularSemanaEscolar(f);
       const info = { key, nombre, fecha: f, campo: cpo, semana: sem };
-      mapaTareas.set(key, info);
-      tareasUnicas.push(info);
+      mapaTareasGlobal.set(key, info);
+      tareasGlobales.push(info);
     }
 
     if (!matrizCalificaciones[t.alumno_id]) {
@@ -296,7 +323,7 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
   });
 
   // Ordenar tareas cronológicamente
-  tareasUnicas.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+  tareasGlobales.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
 
   let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <?mso-application progid="Excel.Sheet"?>
@@ -321,6 +348,17 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
    <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
    <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/>
    <Interior ss:Color="#2B6CB0" ss:Pattern="Solid"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A0AEC0"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A0AEC0"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A0AEC0"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A0AEC0"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="HeaderMateria">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/>
+   <Interior ss:Color="#4C51BF" ss:Pattern="Solid"/>
    <Borders>
     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A0AEC0"/>
     <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A0AEC0"/>
@@ -410,63 +448,301 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
    </Borders>
   </Style>
  </Styles>
+`;
 
- <!-- ======================================================== -->
- <!-- HOJA 1: SÁBANA / MATRIZ DE CALIFICACIONES COMPLETA       -->
- <!-- ======================================================== -->
- <Worksheet ss:Name="Sábana de Calificaciones">
+  // ========================================================
+  // PESTAÑA 1: CONCENTRADO GENERAL Y PROMEDIO POR MATERIA
+  // ========================================================
+  xml += ` <Worksheet ss:Name="Concentrado General">
+  <Table ss:DefaultRowHeight="22">
+   <Column ss:Width="35"/>
+   <Column ss:Width="250"/>
+`;
+  listaMaterias.forEach(() => {
+    xml += `   <Column ss:Width="110"/>\n`;
+    xml += `   <Column ss:Width="90"/>\n`;
+  });
+  xml += `   <Column ss:Width="100"/>\n`;
+  xml += `   <Column ss:Width="110"/>\n`;
+
+  const totalColsConc = (listaMaterias.length * 2) + 3;
+
+  xml += `   <Row ss:Height="26">
+    <Cell ss:MergeAcross="${totalColsConc}" ss:StyleID="Titulo"><Data ss:Type="String">CONCENTRADO DE TRABAJOS Y EVALUACIONES POR MATERIA</Data></Cell>
+   </Row>
+   <Row ss:Height="18">
+    <Cell ss:MergeAcross="${totalColsConc}" ss:StyleID="Subtitulo"><Data ss:Type="String">Grupo: ${escapeXml(grupoNombre)} | Periodo: ${escapeXml(fechaInicio)} al ${escapeXml(fechaFin)}</Data></Cell>
+   </Row>
+   <Row ss:Height="8"/>
+
+   <Row ss:Height="28">
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Nº</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">ALUMNO</Data></Cell>
+`;
+  listaMaterias.forEach(mat => {
+    const nomMat = sanitizarNombrePestana(mat);
+    xml += `    <Cell ss:StyleID="HeaderMateria"><Data ss:Type="String">${escapeXml(nomMat)}\n(Trabajos)</Data></Cell>\n`;
+    xml += `    <Cell ss:StyleID="HeaderMateria"><Data ss:Type="String">${escapeXml(nomMat)}\n(Promedio)</Data></Cell>\n`;
+  });
+  xml += `    <Cell ss:StyleID="HeaderVerde"><Data ss:Type="String">Total\nEntregados</Data></Cell>\n`;
+  xml += `    <Cell ss:StyleID="HeaderVerde"><Data ss:Type="String">PROMEDIO\nGLOBAL</Data></Cell>\n`;
+  xml += `   </Row>\n`;
+
+  // Filas de alumnos en Concentrado General
+  resumenAlumnos.forEach((alu, idx) => {
+    const notasAlumno = matrizCalificaciones[alu.alumno_id] || {};
+    let entregasGlobal = 0;
+    let sumaNotasGlobal = 0;
+
+    xml += `   <Row>
+    <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${idx + 1}</Data></Cell>
+    <Cell ss:StyleID="CellNormal"><Data ss:Type="String">${escapeXml(alu.alumno_nombre)}</Data></Cell>
+`;
+
+    listaMaterias.forEach(mat => {
+      const tareasDeEstaMateria = tareasGlobales.filter(t => t.campo === mat);
+      let entregasMat = 0;
+      let sumaMat = 0;
+
+      tareasDeEstaMateria.forEach(t => {
+        const n = notasAlumno[t.key];
+        if (n !== undefined && n !== null && n !== '') {
+          const nVal = Number(n);
+          if (!isNaN(nVal)) {
+            entregasMat++;
+            sumaMat += nVal;
+            entregasGlobal++;
+            sumaNotasGlobal += nVal;
+          }
+        }
+      });
+
+      const promMat = entregasMat > 0 ? (sumaMat / entregasMat).toFixed(1) : '-';
+      let stMat = 'CellCenter';
+      if (promMat !== '-') {
+        const pNum = Number(promMat);
+        if (pNum >= 8.5) stMat = 'CalificacionAlta';
+        else if (pNum >= 6.0) stMat = 'CalificacionMedia';
+        else stMat = 'CalificacionBaja';
+      }
+
+      xml += `    <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${entregasMat}</Data></Cell>\n`;
+      xml += `    <Cell ss:StyleID="${stMat}"><Data ss:Type="${promMat !== '-' ? 'Number' : 'String'}">${promMat}</Data></Cell>\n`;
+    });
+
+    const promGlobal = entregasGlobal > 0 ? (sumaNotasGlobal / entregasGlobal).toFixed(1) : '-';
+    let stGlob = 'CellCenter';
+    if (promGlobal !== '-') {
+      const pG = Number(promGlobal);
+      if (pG >= 8.5) stGlob = 'CalificacionAlta';
+      else if (pG >= 6.0) stGlob = 'CalificacionMedia';
+      else stGlob = 'CalificacionBaja';
+    }
+
+    xml += `    <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${entregasGlobal}</Data></Cell>
+    <Cell ss:StyleID="${stGlob}"><Data ss:Type="${promGlobal !== '-' ? 'Number' : 'String'}">${promGlobal}</Data></Cell>
+   </Row>
+`;
+  });
+
+  xml += `  </Table>
+ </Worksheet>
+`;
+
+  // ========================================================
+  // PESTAÑAS INDIVIDUALES: UNA POR CADA MATERIA / CAMPO FORMATIVO
+  // ========================================================
+  listaMaterias.forEach(mat => {
+    const tareasMateria = tareasGlobales.filter(t => t.campo === mat);
+    const nombrePestana = sanitizarNombrePestana(mat);
+
+    xml += ` <Worksheet ss:Name="${escapeXml(nombrePestana)}">
   <Table ss:DefaultRowHeight="22">
    <Column ss:Width="35"/>
    <Column ss:Width="240"/>
 `;
+    tareasMateria.forEach(() => {
+      xml += `   <Column ss:Width="110"/>\n`;
+    });
+    xml += `   <Column ss:Width="90"/>\n`;
+    xml += `   <Column ss:Width="100"/>\n`;
 
-  tareasUnicas.forEach(() => {
+    const totalColsMat = tareasMateria.length + 3;
+
+    xml += `   <Row ss:Height="26">
+    <Cell ss:MergeAcross="${totalColsMat}" ss:StyleID="Titulo"><Data ss:Type="String">EVALUACIÓN DE TRABAJOS: ${escapeXml(mat.toUpperCase())}</Data></Cell>
+   </Row>
+   <Row ss:Height="18">
+    <Cell ss:MergeAcross="${totalColsMat}" ss:StyleID="Subtitulo"><Data ss:Type="String">Materia / Campo: ${escapeXml(mat)} | Grupo: ${escapeXml(grupoNombre)} | Periodo: ${escapeXml(fechaInicio)} al ${escapeXml(fechaFin)}</Data></Cell>
+   </Row>
+   <Row ss:Height="8"/>
+
+   <!-- FILA 1 DE METADATOS (SEMANA Y MATERIA) -->
+   <Row ss:Height="20">
+    <Cell ss:StyleID="HeaderMeta"><Data ss:Type="String">#</Data></Cell>
+    <Cell ss:StyleID="HeaderMeta"><Data ss:Type="String">ACTIVIDADES REGISTRADAS ➔</Data></Cell>
+`;
+    tareasMateria.forEach(t => {
+      xml += `    <Cell ss:StyleID="HeaderMeta"><Data ss:Type="String">${escapeXml(t.semana)}</Data></Cell>\n`;
+    });
+    xml += `    <Cell ss:StyleID="HeaderMeta"><Data ss:Type="String">ENTREGAS</Data></Cell>\n`;
+    xml += `    <Cell ss:StyleID="HeaderMeta"><Data ss:Type="String">PROMEDIO</Data></Cell>\n`;
+    xml += `   </Row>\n`;
+
+    // FILA 2 DE ENCABEZADO: NOMBRE DE LA TAREA Y FECHA
+    xml += `   <Row ss:Height="28">
+    <Cell ss:StyleID="HeaderMateria"><Data ss:Type="String">Nº</Data></Cell>
+    <Cell ss:StyleID="HeaderMateria"><Data ss:Type="String">ALUMNO</Data></Cell>
+`;
+    if (tareasMateria.length === 0) {
+      xml += `    <Cell ss:StyleID="HeaderMateria"><Data ss:Type="String">(Sin actividades registradas)</Data></Cell>\n`;
+    } else {
+      tareasMateria.forEach(t => {
+        xml += `    <Cell ss:StyleID="HeaderMateria"><Data ss:Type="String">${escapeXml(t.nombre)}\n(${escapeXml(t.fecha)})</Data></Cell>\n`;
+      });
+    }
+    xml += `    <Cell ss:StyleID="HeaderVerde"><Data ss:Type="String">Trabajos\nEntregados</Data></Cell>\n`;
+    xml += `    <Cell ss:StyleID="HeaderVerde"><Data ss:Type="String">Promedio\n${escapeXml(nombrePestana)}</Data></Cell>\n`;
+    xml += `   </Row>\n`;
+
+    // FILAS DE ALUMNOS PARA ESTA MATERIA
+    const sumasPorTareaMat = {};
+    const cuentasPorTareaMat = {};
+
+    resumenAlumnos.forEach((alu, idx) => {
+      const notasAlumno = matrizCalificaciones[alu.alumno_id] || {};
+      let entregadosMat = 0;
+      let sumaNotasMat = 0;
+
+      xml += `   <Row>
+    <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${idx + 1}</Data></Cell>
+    <Cell ss:StyleID="CellNormal"><Data ss:Type="String">${escapeXml(alu.alumno_nombre)}</Data></Cell>
+`;
+      if (tareasMateria.length === 0) {
+        xml += `    <Cell ss:StyleID="CellCenter"><Data ss:Type="String">-</Data></Cell>\n`;
+      } else {
+        tareasMateria.forEach(t => {
+          const nota = notasAlumno[t.key];
+          if (nota !== undefined && nota !== null && nota !== '') {
+            const nVal = Number(nota);
+            if (!isNaN(nVal)) {
+              entregadosMat++;
+              sumaNotasMat += nVal;
+              sumasPorTareaMat[t.key] = (sumasPorTareaMat[t.key] || 0) + nVal;
+              cuentasPorTareaMat[t.key] = (cuentasPorTareaMat[t.key] || 0) + 1;
+
+              let st = 'CellCenter';
+              if (nVal >= 8.5) st = 'CalificacionAlta';
+              else if (nVal >= 6.0) st = 'CalificacionMedia';
+              else st = 'CalificacionBaja';
+
+              xml += `    <Cell ss:StyleID="${st}"><Data ss:Type="Number">${nVal}</Data></Cell>\n`;
+            } else {
+              xml += `    <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${escapeXml(nota)}</Data></Cell>\n`;
+            }
+          } else {
+            xml += `    <Cell ss:StyleID="CellCenter"><Data ss:Type="String">-</Data></Cell>\n`;
+          }
+        });
+      }
+
+      const promMat = entregadosMat > 0 ? (sumaNotasMat / entregadosMat).toFixed(1) : '-';
+      let stFinal = 'CellCenter';
+      if (promMat !== '-') {
+        const pNum = Number(promMat);
+        if (pNum >= 8.5) stFinal = 'CalificacionAlta';
+        else if (pNum >= 6.0) stFinal = 'CalificacionMedia';
+        else stFinal = 'CalificacionBaja';
+      }
+
+      xml += `    <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${entregadosMat}</Data></Cell>
+    <Cell ss:StyleID="${stFinal}"><Data ss:Type="${promMat !== '-' ? 'Number' : 'String'}">${promMat}</Data></Cell>
+   </Row>
+`;
+    });
+
+    // FILA FINAL: PROMEDIO GRUPAL DE LA MATERIA
+    xml += `   <Row ss:Height="24">
+    <Cell ss:StyleID="FilaPromedio"><Data ss:Type="String">Σ</Data></Cell>
+    <Cell ss:StyleID="FilaPromedio"><Data ss:Type="String">PROMEDIO GRUPAL</Data></Cell>
+`;
+    let sumaPromediosMat = 0;
+    let tareasConNotasMat = 0;
+
+    if (tareasMateria.length === 0) {
+      xml += `    <Cell ss:StyleID="FilaPromedio"><Data ss:Type="String">-</Data></Cell>\n`;
+    } else {
+      tareasMateria.forEach(t => {
+        const sum = sumasPorTareaMat[t.key] || 0;
+        const cnt = cuentasPorTareaMat[t.key] || 0;
+        if (cnt > 0) {
+          const promTarea = (sum / cnt).toFixed(1);
+          sumaPromediosMat += Number(promTarea);
+          tareasConNotasMat++;
+          xml += `    <Cell ss:StyleID="FilaPromedio"><Data ss:Type="Number">${promTarea}</Data></Cell>\n`;
+        } else {
+          xml += `    <Cell ss:StyleID="FilaPromedio"><Data ss:Type="String">-</Data></Cell>\n`;
+        }
+      });
+    }
+
+    const promTotalMatGrupo = tareasConNotasMat > 0 ? (sumaPromediosMat / tareasConNotasMat).toFixed(1) : '-';
+    xml += `    <Cell ss:StyleID="FilaPromedio"><Data ss:Type="String">${tareasMateria.length} Act.</Data></Cell>
+    <Cell ss:StyleID="FilaPromedio"><Data ss:Type="${promTotalMatGrupo !== '-' ? 'Number' : 'String'}">${promTotalMatGrupo}</Data></Cell>
+   </Row>
+  </Table>
+ </Worksheet>
+`;
+  });
+
+  // ========================================================
+  // PESTAÑA: SÁBANA COMPLETA (TODAS LAS TAREAS JUNTAS)
+  // ========================================================
+  xml += ` <Worksheet ss:Name="Sábana Completa">
+  <Table ss:DefaultRowHeight="22">
+   <Column ss:Width="35"/>
+   <Column ss:Width="240"/>
+`;
+  tareasGlobales.forEach(() => {
     xml += `   <Column ss:Width="110"/>\n`;
   });
   xml += `   <Column ss:Width="90"/>\n`;
   xml += `   <Column ss:Width="90"/>\n`;
 
-  const totalCols = tareasUnicas.length + 3;
+  const totalColsSabana = tareasGlobales.length + 3;
 
   xml += `   <Row ss:Height="26">
-    <Cell ss:MergeAcross="${totalCols}" ss:StyleID="Titulo"><Data ss:Type="String">SÁBANA DE TRABAJOS Y EVALUACIÓN CONTINUA - NEM</Data></Cell>
+    <Cell ss:MergeAcross="${totalColsSabana}" ss:StyleID="Titulo"><Data ss:Type="String">SÁBANA DE TRABAJOS Y EVALUACIÓN CONTINUA - NEM</Data></Cell>
    </Row>
    <Row ss:Height="18">
-    <Cell ss:MergeAcross="${totalCols}" ss:StyleID="Subtitulo"><Data ss:Type="String">Grupo: ${escapeXml(grupoNombre)} | Periodo: ${escapeXml(fechaInicio)} al ${escapeXml(fechaFin)} | Filtro: ${escapeXml(campo || 'TODOS')}</Data></Cell>
+    <Cell ss:MergeAcross="${totalColsSabana}" ss:StyleID="Subtitulo"><Data ss:Type="String">Grupo: ${escapeXml(grupoNombre)} | Periodo: ${escapeXml(fechaInicio)} al ${escapeXml(fechaFin)} | Filtro: ${escapeXml(campo || 'TODOS')}</Data></Cell>
    </Row>
    <Row ss:Height="8"/>
 
-   <!-- FILA 1 DE ENCABEZADO: METADATOS (SEMANA Y CAMPO) -->
    <Row ss:Height="20">
     <Cell ss:StyleID="HeaderMeta"><Data ss:Type="String">#</Data></Cell>
     <Cell ss:StyleID="HeaderMeta"><Data ss:Type="String">DATOS DE LA ACTIVIDAD ➔</Data></Cell>
 `;
-
-  tareasUnicas.forEach(t => {
+  tareasGlobales.forEach(t => {
     xml += `    <Cell ss:StyleID="HeaderMeta"><Data ss:Type="String">${escapeXml(t.semana)} | ${escapeXml(t.campo)}</Data></Cell>\n`;
   });
   xml += `    <Cell ss:StyleID="HeaderMeta"><Data ss:Type="String">ENTREGAS</Data></Cell>\n`;
   xml += `    <Cell ss:StyleID="HeaderMeta"><Data ss:Type="String">FINAL</Data></Cell>\n`;
   xml += `   </Row>\n`;
 
-  // FILA 2 DE ENCABEZADO: FECHA Y NOMBRE DEL TRABAJO
   xml += `   <Row ss:Height="28">
     <Cell ss:StyleID="Header"><Data ss:Type="String">Nº</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">ALUMNO</Data></Cell>
 `;
-
-  tareasUnicas.forEach(t => {
+  tareasGlobales.forEach(t => {
     xml += `    <Cell ss:StyleID="Header"><Data ss:Type="String">${escapeXml(t.nombre)}\n(${escapeXml(t.fecha)})</Data></Cell>\n`;
   });
+  xml += `    <Cell ss:StyleID="HeaderVerde"><Data ss:Type="String">Trabajos\nEntregados</Data></Cell>\n`;
+  xml += `    <Cell ss:StyleID="HeaderVerde"><Data ss:Type="String">Promedio\nTrabajos</Data></Cell>\n`;
+  xml += `   </Row>\n`;
 
-  xml += `    <Cell ss:StyleID="HeaderVerde"><Data ss:Type="String">Trabajos\nEntregados</Data></Cell>
-    <Cell ss:StyleID="HeaderVerde"><Data ss:Type="String">Promedio\nTrabajos</Data></Cell>
-   </Row>
-`;
-
-  // FILAS DE ALUMNOS
-  const sumasPorTarea = {};
-  const cuentasPorTarea = {};
+  const sumasPorTareaGlobal = {};
+  const cuentasPorTareaGlobal = {};
 
   resumenAlumnos.forEach((alu, idx) => {
     const notasAlumno = matrizCalificaciones[alu.alumno_id] || {};
@@ -477,16 +753,15 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
     <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${idx + 1}</Data></Cell>
     <Cell ss:StyleID="CellNormal"><Data ss:Type="String">${escapeXml(alu.alumno_nombre)}</Data></Cell>
 `;
-
-    tareasUnicas.forEach(t => {
+    tareasGlobales.forEach(t => {
       const nota = notasAlumno[t.key];
       if (nota !== undefined && nota !== null && nota !== '') {
         const nVal = Number(nota);
         if (!isNaN(nVal)) {
           entregados++;
           sumaNotas += nVal;
-          sumasPorTarea[t.key] = (sumasPorTarea[t.key] || 0) + nVal;
-          cuentasPorTarea[t.key] = (cuentasPorTarea[t.key] || 0) + 1;
+          sumasPorTareaGlobal[t.key] = (sumasPorTareaGlobal[t.key] || 0) + nVal;
+          cuentasPorTareaGlobal[t.key] = (cuentasPorTareaGlobal[t.key] || 0) + 1;
 
           let st = 'CellCenter';
           if (nVal >= 8.5) st = 'CalificacionAlta';
@@ -517,93 +792,45 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
 `;
   });
 
-  // FILA FINAL: PROMEDIO GRUPAL POR TRABAJO
   xml += `   <Row ss:Height="24">
     <Cell ss:StyleID="FilaPromedio"><Data ss:Type="String">Σ</Data></Cell>
     <Cell ss:StyleID="FilaPromedio"><Data ss:Type="String">PROMEDIO GRUPAL</Data></Cell>
 `;
-
   let sumaPromediosGlobal = 0;
-  let tareasConNotas = 0;
+  let tareasConNotasGlobal = 0;
 
-  tareasUnicas.forEach(t => {
-    const sum = sumasPorTarea[t.key] || 0;
-    const cnt = cuentasPorTarea[t.key] || 0;
+  tareasGlobales.forEach(t => {
+    const sum = sumasPorTareaGlobal[t.key] || 0;
+    const cnt = cuentasPorTareaGlobal[t.key] || 0;
     if (cnt > 0) {
       const promTarea = (sum / cnt).toFixed(1);
       sumaPromediosGlobal += Number(promTarea);
-      tareasConNotas++;
+      tareasConNotasGlobal++;
       xml += `    <Cell ss:StyleID="FilaPromedio"><Data ss:Type="Number">${promTarea}</Data></Cell>\n`;
     } else {
       xml += `    <Cell ss:StyleID="FilaPromedio"><Data ss:Type="String">-</Data></Cell>\n`;
     }
   });
 
-  const promTotalGrupo = tareasConNotas > 0 ? (sumaPromediosGlobal / tareasConNotas).toFixed(1) : '-';
-  xml += `    <Cell ss:StyleID="FilaPromedio"><Data ss:Type="String">${tareasUnicas.length} Act.</Data></Cell>
+  const promTotalGrupo = tareasConNotasGlobal > 0 ? (sumaPromediosGlobal / tareasConNotasGlobal).toFixed(1) : '-';
+  xml += `    <Cell ss:StyleID="FilaPromedio"><Data ss:Type="String">${tareasGlobales.length} Act.</Data></Cell>
     <Cell ss:StyleID="FilaPromedio"><Data ss:Type="${promTotalGrupo !== '-' ? 'Number' : 'String'}">${promTotalGrupo}</Data></Cell>
    </Row>
   </Table>
  </Worksheet>
-
- <!-- ======================================================== -->
- <!-- HOJA 2: RESUMEN DE PROMEDIOS                             -->
- <!-- ======================================================== -->
- <Worksheet ss:Name="Resumen Alumnos">
-  <Table ss:DefaultRowHeight="20">
-   <Column ss:Width="40"/>
-   <Column ss:Width="260"/>
-   <Column ss:Width="110"/>
-   <Column ss:Width="110"/>
-
-   <Row ss:Height="25">
-    <Cell ss:MergeAcross="3" ss:StyleID="Titulo"><Data ss:Type="String">PROMEDIO DE TRABAJOS Y ACTIVIDADES QR - NEM</Data></Cell>
-   </Row>
-   <Row>
-    <Cell ss:MergeAcross="3" ss:StyleID="Subtitulo"><Data ss:Type="String">Grupo: ${escapeXml(grupoNombre)} | Periodo: ${escapeXml(fechaInicio)} al ${escapeXml(fechaFin)} | Campo: ${escapeXml(campo || 'TODOS')}</Data></Cell>
-   </Row>
-   <Row ss:Height="10"/>
-
-   <Row ss:Height="24">
-    <Cell ss:StyleID="Header"><Data ss:Type="String">#</Data></Cell>
-    <Cell ss:StyleID="Header"><Data ss:Type="String">Nombre del Alumno</Data></Cell>
-    <Cell ss:StyleID="Header"><Data ss:Type="String">Total Trabajos</Data></Cell>
-    <Cell ss:StyleID="HeaderVerde"><Data ss:Type="String">Promedio</Data></Cell>
-   </Row>
 `;
 
-  resumenAlumnos.forEach((alu, idx) => {
-    const prom = alu.promedio !== null && alu.promedio !== undefined ? Number(alu.promedio) : null;
-    let styleProm = 'CellCenter';
-    if (prom !== null) {
-      if (prom >= 8.5) styleProm = 'CalificacionAlta';
-      else if (prom >= 6.0) styleProm = 'CalificacionMedia';
-      else styleProm = 'CalificacionBaja';
-    }
-
-    xml += `   <Row>
-    <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${idx + 1}</Data></Cell>
-    <Cell ss:StyleID="CellNormal"><Data ss:Type="String">${escapeXml(alu.alumno_nombre)}</Data></Cell>
-    <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${alu.total_trabajos || 0}</Data></Cell>
-    <Cell ss:StyleID="${styleProm}"><Data ss:Type="${prom !== null ? 'Number' : 'String'}">${prom !== null ? prom.toFixed(1) : '-'}</Data></Cell>
-   </Row>
-`;
-  });
-
-  xml += `  </Table>
- </Worksheet>
-
- <!-- ======================================================== -->
- <!-- HOJA 3: BITÁCORA DETALLADA DE TRABAJOS                  -->
- <!-- ======================================================== -->
- <Worksheet ss:Name="Bitácora Completa">
+  // ========================================================
+  // PESTAÑA FINAL: BITÁCORA COMPLETA
+  // ========================================================
+  xml += ` <Worksheet ss:Name="Bitácora Detallada">
   <Table ss:DefaultRowHeight="20">
    <Column ss:Width="40"/>
    <Column ss:Width="90"/>
    <Column ss:Width="100"/>
    <Column ss:Width="220"/>
    <Column ss:Width="200"/>
-   <Column ss:Width="150"/>
+   <Column ss:Width="160"/>
    <Column ss:Width="90"/>
 
    <Row ss:Height="25">
@@ -620,7 +847,7 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
     <Cell ss:StyleID="Header"><Data ss:Type="String">Semana</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">Alumno</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">Actividad / Trabajo</Data></Cell>
-    <Cell ss:StyleID="Header"><Data ss:Type="String">Campo Formativo</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Materia / Campo</Data></Cell>
     <Cell ss:StyleID="HeaderVerde"><Data ss:Type="String">Calificación</Data></Cell>
    </Row>
 `;
@@ -652,7 +879,7 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
 </Workbook>`;
 
   const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
-  const safeNombre = `Sabana_Trabajos_${(grupoNombre || 'Grupo').replace(/\s+/g, '_')}_${fechaInicio}_a_${fechaFin}.xls`;
+  const safeNombre = `Trabajos_${(grupoNombre || 'Grupo').replace(/\s+/g, '_')}_${fechaInicio}_a_${fechaFin}.xls`;
   triggerDownload(blob, safeNombre);
 };
 

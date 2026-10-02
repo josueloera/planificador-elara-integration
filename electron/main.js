@@ -948,21 +948,52 @@ ipcMain.handle('delete-trabajo-qr', async (e, id) => new Promise(r => {
 }));
 
 // Importar promedios de trabajos por rango de fechas (o día único) hacia un criterio de evaluación
-ipcMain.handle('importar-promedios-qr-a-criterio', async (e, criterio_id, fechaInicio, fechaFin, campo, grupo_id, fechaNota) => new Promise(resolve => {
+ipcMain.handle('importar-promedios-qr-a-criterio', async (e, criterio_id, arg2, arg3, arg4, arg5, arg6) => new Promise(resolve => {
   if (!criterio_id) return resolve(0);
+
+  const isDate = (val) => typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val.trim());
+
+  let fechaInicio, fechaFin, campo, grupo_id, fechaNota;
+  if (isDate(arg2) && isDate(arg3)) {
+    fechaInicio = arg2;
+    fechaFin = arg3;
+    campo = arg4;
+    grupo_id = arg5;
+    fechaNota = arg6 || fechaFin;
+  } else if (isDate(arg2)) {
+    fechaInicio = arg2;
+    fechaFin = arg2;
+    campo = arg3;
+    grupo_id = arg4;
+    fechaNota = arg5 || fechaInicio;
+  } else {
+    fechaInicio = new Date().toISOString().split('T')[0];
+    fechaFin = fechaInicio;
+    campo = arg3 || 'TODOS';
+    grupo_id = arg4 || null;
+    fechaNota = fechaFin;
+  }
+
   const fIni = fechaInicio;
-  const fFin = fechaFin || fechaInicio;
+  const fFin = fechaFin;
   const targetFecha = fechaNota || fFin;
+  const cCampo = (campo && campo !== 'TODOS') ? String(campo).trim() : 'TODOS';
 
   let sql = `
     SELECT alumno_id, AVG(valor) as promedio 
     FROM trabajos_qr 
     WHERE fecha >= ? AND fecha <= ? 
       AND (grupo_id = ? OR grupo_id IS NULL) 
-      AND (campo = ? OR ? = 'TODOS') 
+      ${cCampo !== 'TODOS' ? 'AND (campo = ? OR UPPER(campo) = UPPER(?))' : ''}
     GROUP BY alumno_id
   `;
-  db.all(sql, [fIni, fFin, grupo_id || null, campo || 'TODOS', campo || 'TODOS'], (err, rows) => {
+
+  const params = [fIni, fFin, grupo_id || null];
+  if (cCampo !== 'TODOS') {
+    params.push(cCampo, cCampo);
+  }
+
+  db.all(sql, params, (err, rows) => {
     if (err || !rows || rows.length === 0) return resolve(0);
     let count = 0;
     let pending = rows.length;
@@ -993,8 +1024,32 @@ ipcMain.handle('importar-promedios-qr-a-criterio', async (e, criterio_id, fechaI
 }));
 
 // Importar porcentaje de asistencia hacia un criterio de evaluación (escala 0-10 o configurable)
-ipcMain.handle('importar-asistencia-a-criterio', async (e, criterio_id, fechaInicio, fechaFin, grupo_id, escalaMax = 10, fechaNota) => new Promise(resolve => {
+ipcMain.handle('importar-asistencia-a-criterio', async (e, criterio_id, arg2, arg3, arg4, arg5, arg6) => new Promise(resolve => {
   if (!criterio_id) return resolve(0);
+
+  const isDate = (val) => typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val.trim());
+
+  let fechaInicio, fechaFin, grupo_id, escalaMax, fechaNota;
+  if (isDate(arg2) && isDate(arg3)) {
+    fechaInicio = arg2;
+    fechaFin = arg3;
+    grupo_id = arg4;
+    escalaMax = Number(arg5) || 10;
+    fechaNota = arg6 || fechaFin;
+  } else if (isDate(arg2)) {
+    fechaInicio = arg2;
+    fechaFin = arg2;
+    grupo_id = arg3;
+    escalaMax = Number(arg4) || 10;
+    fechaNota = arg5 || fechaInicio;
+  } else {
+    fechaInicio = new Date().toISOString().split('T')[0];
+    fechaFin = fechaInicio;
+    grupo_id = arg3 || null;
+    escalaMax = Number(arg4) || 10;
+    fechaNota = fechaFin;
+  }
+
   const targetFecha = fechaNota || fechaFin;
 
   let sql = `
