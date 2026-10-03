@@ -56,7 +56,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build Windows installer without publishing
-        run: npm run dist -- --win --x64 --publish never --config.npmRebuild=true
+        run: npm run dist -- --win --x64 --publish never --config.npmRebuild=false --config.beforePack=./scripts/prepare-sqlite.cjs
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - run: node scripts/verify-release.cjs release win
@@ -90,12 +90,12 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "$CSC_LINK" ]; then
-            npm run dist:mac -- --publish never --config.npmRebuild=true --config.forceCodeSigning=true
+            npm run dist:mac -- --publish never --config.npmRebuild=false --config.beforePack=./scripts/prepare-sqlite.cjs --config.forceCodeSigning=true
             echo 'signed=true' >> "$GITHUB_OUTPUT"
           else
             unset CSC_LINK CSC_KEY_PASSWORD
             export CSC_IDENTITY_AUTO_DISCOVERY=false
-            npm run dist:mac -- --publish never --config.npmRebuild=true
+            npm run dist:mac -- --publish never --config.npmRebuild=false --config.beforePack=./scripts/prepare-sqlite.cjs
             echo 'signed=false' >> "$GITHUB_OUTPUT"
             echo '::warning::macOS installers are unsigned; automatic installation requires code signing.'
           fi
@@ -107,8 +107,8 @@ jobs:
         run: |
           set -euo pipefail
           APP="release/mac-universal/$PRODUCT_NAME.app"
-          lipo -verify_arch x86_64 arm64 "$APP/Contents/MacOS/$PRODUCT_NAME"
-          lipo -verify_arch x86_64 arm64 "$APP/Contents/Resources/app/node_modules/sqlite3/build/Release/node_sqlite3.node"
+          lipo "$APP/Contents/MacOS/$PRODUCT_NAME" -verify_arch x86_64 arm64
+          lipo "$APP/Contents/Resources/app/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch x86_64 arm64
           if [ "$MAC_SIGNED" = 'true' ]; then
             codesign --verify --deep --strict "$APP"
           fi
