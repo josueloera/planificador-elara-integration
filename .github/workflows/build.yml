@@ -108,7 +108,16 @@ jobs:
           set -euo pipefail
           APP="release/mac-universal/$PRODUCT_NAME.app"
           lipo "$APP/Contents/MacOS/$PRODUCT_NAME" -verify_arch x86_64 arm64
-          lipo "$APP/Contents/Resources/app/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch x86_64 arm64
+          RESOURCES="$APP/Contents/Resources"
+          if [ -d "$RESOURCES/app-x64" ] && [ -d "$RESOURCES/app-arm64" ]; then
+            test -f "$RESOURCES/app.asar"
+            lipo "$RESOURCES/app-x64/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch x86_64
+            lipo "$RESOURCES/app-arm64/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch arm64
+            test -f "$RESOURCES/app-x64/electron/evaluationQr.js"
+            test -f "$RESOURCES/app-arm64/electron/evaluationQr.js"
+          else
+            lipo "$RESOURCES/app/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch x86_64 arm64
+          fi
           if [ "$MAC_SIGNED" = 'true' ]; then
             codesign --verify --deep --strict "$APP"
           fi
