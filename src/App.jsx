@@ -91,11 +91,15 @@ function App() {
   const [criterios, setCriterios] = useState([]); 
   const criteriosRef = useRef([]);
   const [toast, setToast] = useState('');
+  const toastTimeoutRef = useRef(null);
 
   const showToast = (msg) => {
+      clearTimeout(toastTimeoutRef.current);
       setToast(msg);
-      setTimeout(() => setToast(''), 3000);
+      toastTimeoutRef.current = setTimeout(() => setToast(''), 3000);
   };
+
+  useEffect(() => () => clearTimeout(toastTimeoutRef.current), []);
   
   useEffect(() => {
       criteriosRef.current = criterios;
@@ -479,32 +483,39 @@ function App() {
   }, [vista, semanaPlan, grado, grupoActual, configCiclo]);
 
   // --- LÓGICA DE EVALUACIÓN ---
-      const cargarEval = (campoF) => { 
-      const targetCampo = campoF || campoActual;
-      if(ipcRenderer){ 
-          ipcRenderer.invoke('get-alumnos', grupoActual?.id).then(r => setAlumnos(r || [])); 
-          ipcRenderer.invoke('get-criterios', grupoActual?.id, targetCampo).then(r=>{ 
-              const lista = r || []; 
-              const criteriosSeguros = lista.map((c, idx) => ({ 
-                  ...c, 
-                  frontId: c.id ? `db-${c.id}` : `temp-${targetCampo}-${idx}` 
-              })); 
-              
-              if(criteriosSeguros.length === 0) setModoConfig(true); 
-              else setModoConfig(false);
-              
-              setCriterios(criteriosSeguros); 
-          }); 
-          ipcRenderer.invoke('get-notas-fecha', fechaEval).then(r => { const m={}; (r || []).forEach(x=>m[`${x.alumno_id}-${x.criterio_id}`]=x.valor); setNotas(m); }); 
-      } 
+  const cargaEvalRef = useRef(0);
+  const cargarEval = (campoF, fecha = fechaEval) => {
+    const targetCampo = campoF || campoActual;
+    const grupoId = grupoActual?.id;
+    const request = ++cargaEvalRef.current;
+    if (!ipcRenderer || !grupoId) return;
+    return Promise.all([
+      ipcRenderer.invoke('get-alumnos', grupoId),
+      ipcRenderer.invoke('get-criterios', grupoId, targetCampo),
+      ipcRenderer.invoke('get-notas-fecha', fecha)
+    ]).then(([listaAlumnos, listaCriterios, listaNotas]) => {
+      if (request !== cargaEvalRef.current) return;
+      setAlumnos(listaAlumnos || []);
+      const lista = (listaCriterios || []).map((c, idx) => ({
+        ...c, frontId: c.id ? `db-${c.id}` : `temp-${targetCampo}-${idx}`
+      }));
+      setCriterios(lista);
+      setModoConfig(lista.length === 0);
+      const mapa = {};
+      (listaNotas || []).forEach(n => { mapa[`${n.alumno_id}-${n.criterio_id}`] = n.valor; });
+      setNotas(mapa);
+    }).catch(err => {
+      console.error(err);
+      if (request === cargaEvalRef.current) showToast('❌ No se pudo cargar la evaluación.');
+    });
   };
 
   const cambiarCampo = (nuevoCampo) => {
-      setCampoActual(nuevoCampo);
-      cargarEval(nuevoCampo);
+    setCampoActual(nuevoCampo);
+    cargarEval(nuevoCampo);
   };
 
-  useEffect(() => { if(vista === 'EVAL') cargarEval(campoActual); }, [grupoActual, vista]);
+  useEffect(() => { if (vista === 'EVAL') cargarEval(campoActual); }, [grupoActual?.id, vista, fechaEval, campoActual]);
 
   const handleChangeCriterio = (index, campo, valor) => {
       setCriterios(prev => prev.map((c, i) => i === index ? { ...c, [campo]: valor } : c));
@@ -829,7 +840,7 @@ function App() {
 
     if(vista === 'MENU') {
       const menuItems = [
-        { id: 'GRUPO', icon: '👥', label: grupoActual ? `${grupoActual.grado}º${grupoActual.seccion} ${grupoActual.nombre_disciplina}` : 'Mi Grupo', desc: `${alumnos.length} alumnos`, color: '#6C5CE7', action: ()=>setVista('GRUPO') },
+        { id: 'GRUPO', icon: '👥', label: grupoActual ? `${grupoActual.grado}º${grupoActual.seccion} Primaria` : 'Mi Grupo', desc: `${alumnos.length} alumnos`, color: '#6C5CE7', action: ()=>setVista('GRUPO') },
         { id: 'EVAL', icon: '📝', label: 'Evaluación', desc: 'Calificaciones diarias', color: '#00B894', action: ()=>{setVista('EVAL'); cargarEval();} },
         { id: 'TRIMESTRAL', icon: '📊', label: 'Trimestral', desc: 'Reporte por período', color: '#E17055', action: ()=>{setVista('TRIMESTRAL'); setTrimestre(1);} },
         { id: 'PLANNER', icon: '📅', label: 'Planeación', desc: 'Secuencia semanal', color: '#0984E3', action: ()=>setVista('PLANNER') },
@@ -1554,6 +1565,11 @@ function App() {
     if (vista === 'ASISTENCIA_QR') {
       return (
         <div style={{ backgroundColor: '#f4f6f8', minHeight: '100vh', padding: '10px 20px' }}>
+          {toast && (
+            <div role="status" aria-live="polite" style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', background: '#34495e', color: 'white', padding: '10px 20px', borderRadius: 20, zIndex: 10000, fontWeight: 'bold', boxShadow: '0 4px 10px rgba(0,0,0,0.2)' }}>
+              {toast}
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <button
               onClick={() => setVista('MENU')}
@@ -1577,6 +1593,12 @@ function App() {
             criterios={criterios}
             fechaEval={fechaEval}
             ipcRenderer={ipcRenderer}
+            onDateChanged={setFechaEval}
+            onGradesImported={({ fecha, campo }) => {
+              setFechaEval(fecha);
+              setCampoActual(campo);
+              cargarEval(campo, fecha);
+            }}
             showToast={showToast}
             onAttendanceUpdated={() => {
               if (typeof cargarEval === 'function') cargarEval(campoActual);

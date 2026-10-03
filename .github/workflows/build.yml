@@ -1,80 +1,197 @@
-name: Build Mac and Windows App
+name: Build and publish stable update
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: stable-release-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
-  build:
-    runs-on: macos-latest
-
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      tag: ${{ steps.metadata.outputs.tag }}
+      name: ${{ steps.metadata.outputs.name }}
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Use Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-
-    - name: Install Dependencies
-      run: npm install
-
-    - name: Build macOS App
-      run: npm run dist:mac
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        CSC_IDENTITY_AUTO_DISCOVERY: false
-
-    - name: Upload Mac Installer to GitHub Releases
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: "v1.0.0-build"
-        name: "Planificador Docente Primaria - Compilación"
-        draft: false
-        prerelease: true
-        overwrite: true
-        files: |
-          release/*.dmg
-          release/*.zip
-          release/latest-mac.yml
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v6
+      - name: Validate release version
+        id: metadata
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+            if (!/^\d+\.\d+\.\d+$/.test(pkg.version)) throw new Error('Use a stable numeric version');
+            if (lock.version !== pkg.version || lock.packages[''].version !== pkg.version) {
+              throw new Error('package.json and package-lock.json versions must match');
+            }
+            const tag = 'v' + pkg.version;
+            let release;
+            try {
+              release = (await github.rest.repos.getReleaseByTag({ ...context.repo, tag })).data;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            if (release && !release.draft) throw new Error(tag + ' already published; increment the version');
+            core.setOutput('version', pkg.version);
+            core.setOutput('tag', tag);
+            core.setOutput('name', pkg.build.productName);
 
   build-windows:
+    needs: prepare
     runs-on: windows-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Build Windows installer without publishing
+        run: npm run dist -- --win --x64 --publish never --config.npmRebuild=true
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - run: node scripts/verify-release.cjs release win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
 
-    - name: Use Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
+  build-mac:
+    needs: prepare
+    runs-on: macos-latest
+    outputs:
+      signed: ${{ steps.mac.outputs.signed }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Build universal DMG and ZIP without publishing
+        id: mac
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "$CSC_LINK" ]; then
+            npm run dist:mac -- --publish never --config.npmRebuild=true --config.forceCodeSigning=true
+            echo 'signed=true' >> "$GITHUB_OUTPUT"
+          else
+            unset CSC_LINK CSC_KEY_PASSWORD
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            npm run dist:mac -- --publish never --config.npmRebuild=true
+            echo 'signed=false' >> "$GITHUB_OUTPUT"
+            echo '::warning::macOS installers are unsigned; automatic installation requires code signing.'
+          fi
+      - name: Verify both native architectures
+        shell: bash
+        env:
+          PRODUCT_NAME: ${{ needs.prepare.outputs.name }}
+          MAC_SIGNED: ${{ steps.mac.outputs.signed }}
+        run: |
+          set -euo pipefail
+          APP="release/mac-universal/$PRODUCT_NAME.app"
+          lipo -verify_arch x86_64 arm64 "$APP/Contents/MacOS/$PRODUCT_NAME"
+          lipo -verify_arch x86_64 arm64 "$APP/Contents/Resources/app/node_modules/sqlite3/build/Release/node_sqlite3.node"
+          if [ "$MAC_SIGNED" = 'true' ]; then
+            codesign --verify --deep --strict "$APP"
+          fi
+      - run: node scripts/verify-release.cjs release mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-mac
+          if-no-files-found: error
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml
 
-    - name: Install Dependencies
-      run: npm install
-
-    - name: Build Windows App
-      run: npm run dist -- --win
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Upload Windows Installer to GitHub Releases
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: "v1.0.0-build"
-        name: "Planificador Docente Primaria - Compilación"
-        draft: false
-        prerelease: true
-        overwrite: true
-        files: |
-          release/*.exe
-          release/*.blockmap
-          release/latest.yml
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  publish:
+    needs: [prepare, build-windows, build-mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install build tooling without platform install scripts
+        run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release
+      - name: Validate all update files and hashes
+        run: node scripts/verify-release.cjs release all
+      - name: Upload to draft and publish complete stable release
+        uses: actions/github-script@v8
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_NAME: ${{ needs.prepare.outputs.name }}
+          MAC_SIGNED: ${{ needs.build-mac.outputs.signed }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const manifest = JSON.parse(fs.readFileSync('release/verified-all.json', 'utf8'));
+            const tag = process.env.RELEASE_TAG;
+            let release;
+            try {
+              release = (await github.rest.repos.getReleaseByTag({ ...context.repo, tag })).data;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            if (release && !release.draft) throw new Error('Refusing to overwrite a published release');
+            const body = fs.readFileSync('RELEASE_NOTES.md', 'utf8') +
+              (process.env.MAC_SIGNED === 'true' ? '\nmacOS: aplicación firmada.\n' :
+              '\nmacOS: instaladores sin firma; requieren instalación manual.\n');
+            if (!release) {
+              release = (await github.rest.repos.createRelease({ ...context.repo, tag_name: tag,
+                target_commitish: context.sha, name: process.env.RELEASE_NAME + ' ' + manifest.version,
+                body, draft: true, prerelease: false })).data;
+            }
+            const existing = await github.paginate(github.rest.repos.listReleaseAssets,
+              { ...context.repo, release_id: release.id, per_page: 100 });
+            for (const artifact of manifest.artifacts) {
+              const old = existing.find(asset => asset.name === artifact.name);
+              if (old) {
+                if (old.state === 'uploaded' && old.size === artifact.size &&
+                    old.digest === 'sha256:' + artifact.sha256) continue;
+                await github.rest.repos.deleteReleaseAsset({ ...context.repo, asset_id: old.id });
+              }
+              await github.rest.repos.uploadReleaseAsset({ ...context.repo, release_id: release.id,
+                name: artifact.name, data: fs.readFileSync(path.join('release', artifact.name)),
+                headers: { 'content-type': 'application/octet-stream', 'content-length': artifact.size } });
+            }
+            const uploaded = await github.paginate(github.rest.repos.listReleaseAssets,
+              { ...context.repo, release_id: release.id, per_page: 100 });
+            for (const artifact of manifest.artifacts) {
+              const asset = uploaded.find(item => item.name === artifact.name);
+              if (!asset || asset.state !== 'uploaded' || asset.size !== artifact.size ||
+                  (asset.digest && asset.digest !== 'sha256:' + artifact.sha256)) {
+                throw new Error('Incomplete or corrupt upload: ' + artifact.name);
+              }
+            }
+            await github.rest.repos.updateRelease({ ...context.repo, release_id: release.id,
+              body, draft: false, prerelease: false, make_latest: 'true' });
+            core.summary.addHeading('Published stable update ' + tag)
+              .addLink('GitHub Release', release.html_url);
+            await core.summary.write();

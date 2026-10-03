@@ -1,7 +1,7 @@
 {
   "name": "planificador-docente-elara-integration",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Herramienta de Gestión Docente NEM - Integración ELARA",
   "author": "Josue Loera",
   "main": "electron/main.js",
@@ -45,7 +45,7 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "public/icon.png"
+      "artifactName": "Planificador-Docente-Primaria-Setup-${version}-${arch}.${ext}"
     },
     "mac": {
       "target": [
@@ -54,18 +54,23 @@
           "arch": [
             "universal"
           ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
         }
       ],
-      "identity": null,
-      "icon": "public/icon.png",
       "category": "public.app-category.education",
-      "x64ArchFiles": "**/*.node"
+      "artifactName": "Planificador-Docente-Primaria-${version}-${arch}.${ext}"
     },
     "publish": [
       {
         "provider": "github",
         "owner": "josueloera",
-        "repo": "planificador-elara-integration"
+        "repo": "planificador-elara-integration",
+        "releaseType": "release"
       }
     ]
   },

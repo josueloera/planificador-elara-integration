@@ -57,17 +57,41 @@ const getInfoCampo = (campo) => {
   };
 };
 
+export const normalizarCampo = (value) => {
+  const text = String(value || 'LENGUAJES').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .trim().toUpperCase().replace(/\s+/g, ' ');
+  if (text === 'SABERES' || text.startsWith('SABERES Y')) return 'SABERES';
+  if (text === 'ETICA' || text.startsWith('ETICA,') || text.startsWith('ETICA ')) return 'ETICA';
+  if (text === 'HUMANO' || text.startsWith('DE LO HUMANO')) return 'HUMANO';
+  if (text === 'LENGUAJES') return 'LENGUAJES';
+  return text;
+};
+
+export const getNombreCampoDisplay = (c) => {
+  const norm = normalizarCampo(c);
+  if (norm === 'LENGUAJES') return 'Lenguajes';
+  if (norm === 'SABERES') return 'Saberes y Pensamiento C.';
+  if (norm === 'ETICA') return 'Ética, Nat. y Soc.';
+  if (norm === 'HUMANO') return 'De lo Humano y lo Com.';
+  return c || 'Lenguajes';
+};
+
 export default function ControlQR({
   grupoActual,
   alumnos = [],
-  criterios = [],
   fechaEval,
   ipcRenderer,
   showToast,
   onAttendanceUpdated,
   onGradeSaved,
-  onDateChanged
+  onDateChanged,
+  onGradesImported,
+  nivel = 'primaria'
 }) {
+  const esSecundaria = nivel === 'secundaria';
+  const camposDisponibles = useMemo(() => esSecundaria
+    ? [grupoActual?.nombre_disciplina || 'Materia del grupo']
+    : CAMPOS_FORMATIVOS, [esSecundaria, grupoActual?.nombre_disciplina]);
   const [activeTab, setActiveTab] = useState('ESCANER'); // 'ESCANER', 'ASISTENCIA', 'EVALUACION', 'HISTORIAL', 'GAFETES'
   const [modoEscaneo, setModoEscaneo] = useState('ASISTENCIA'); // 'ASISTENCIA' o 'TRABAJO'
   
@@ -87,7 +111,7 @@ export default function ControlQR({
   const [subtipoAsistencia, setSubtipoAsistencia] = useState('PRESENTE'); // 'PRESENTE', 'RETARDO', 'FALTA', 'JUSTIFICADO'
   
   // Evaluación de Trabajos Diarios y Selección Ágil de Tareas
-  const [campoSeleccionado, setCampoSeleccionado] = useState(CAMPOS_FORMATIVOS[0]);
+  const [campoSeleccionado, setCampoSeleccionado] = useState(camposDisponibles[0]);
   const [criterioSeleccionado, setCriterioSeleccionado] = useState(null);
   const [calificacionActual, setCalificacionActual] = useState(10);
   const [tituloTrabajo, setTituloTrabajo] = useState('Tarea 1');
@@ -98,7 +122,7 @@ export default function ControlQR({
   // Estados dedicados para creación y edición amigable de actividades
   const [creandoNuevaActividad, setCreandoNuevaActividad] = useState(false);
   const [nuevoNombreActividad, setNuevoNombreActividad] = useState('');
-  const [nuevoCampoActividad, setNuevoCampoActividad] = useState(CAMPOS_FORMATIVOS[0]);
+  const [nuevoCampoActividad, setNuevoCampoActividad] = useState(camposDisponibles[0]);
   const [editandoActividad, setEditandoActividad] = useState(null); // { nombreOriginal, nombre, campo }
 
   // Historial en vivo y datos del día
@@ -139,6 +163,8 @@ export default function ControlQR({
   const [resumenTrabajosHist, setResumenTrabajosHist] = useState([]);
   const [trabajosRangoDetalle, setTrabajosRangoDetalle] = useState([]);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
+  const historialRequestRef = useRef(0);
+  const rangoHistorialValido = Boolean(fechaInicioHistorial && fechaFinHistorial && fechaInicioHistorial <= fechaFinHistorial);
 
   // Modales de exportación a criterios
   const [showModalExportAsis, setShowModalExportAsis] = useState(false);
@@ -148,6 +174,9 @@ export default function ControlQR({
   const [campoDestinoAsis, setCampoDestinoAsis] = useState('TODOS');
   const [escalaDestinoAsis, setEscalaDestinoAsis] = useState(10);
   const [criteriosGrupo, setCriteriosGrupo] = useState([]);
+  const [cargandoCriterios, setCargandoCriterios] = useState(false);
+  const [exportando, setExportando] = useState(false);
+  const [exportarAsistenciaTodas, setExportarAsistenciaTodas] = useState(false);
 
   // Cargar IP local, Asistencias, Trabajos y Perfiles guardados en SQLite para la fecha actual
   const cargarDatosDia = () => {
@@ -170,7 +199,7 @@ export default function ControlQR({
       }).catch(console.error);
 
       ipcRenderer.invoke('get-trabajos-qr', fechaActualQR, grupoActual?.id).then(rows => {
-        setTrabajosDia(rows || []);
+        setTrabajosDia((rows || []).map(t => esSecundaria ? { ...t, campo: camposDisponibles[0] } : t));
       }).catch(console.error);
 
       ipcRenderer.invoke('get-todos-perfiles').then(map => {
@@ -214,7 +243,7 @@ export default function ControlQR({
     const nomTrim = (nombre || '').trim();
     if (!nomTrim) return;
     setActividadesCreadas(prev => {
-      const updated = { ...prev, [nomTrim]: campo || CAMPOS_FORMATIVOS[0] };
+      const updated = { ...prev, [nomTrim]: campo || camposDisponibles[0] };
       try {
         localStorage.setItem(storageKeyActividades, JSON.stringify(updated));
       } catch (e) {
@@ -248,7 +277,7 @@ export default function ControlQR({
         if (!map.has(nombre)) {
           map.set(nombre, {
             nombre,
-            campo: t.campo || CAMPOS_FORMATIVOS[0],
+            campo: t.campo || camposDisponibles[0],
             entregas: 0
           });
         }
@@ -263,7 +292,7 @@ export default function ControlQR({
         if (!map.has(nomTrim)) {
           map.set(nomTrim, {
             nombre: nomTrim,
-            campo: cmp || CAMPOS_FORMATIVOS[0],
+            campo: esSecundaria ? camposDisponibles[0] : (cmp || camposDisponibles[0]),
             entregas: 0
           });
         } else if (cmp && (!map.get(nomTrim).campo || map.get(nomTrim).campo === 'GENERAL')) {
@@ -277,13 +306,13 @@ export default function ControlQR({
       const nomDefecto = (tituloTrabajo && tituloTrabajo.trim()) ? tituloTrabajo.trim() : 'Tarea 1';
       map.set(nomDefecto, {
         nombre: nomDefecto,
-        campo: campoSeleccionado || CAMPOS_FORMATIVOS[0],
+        campo: campoSeleccionado || camposDisponibles[0],
         entregas: 0
       });
     }
 
     return Array.from(map.values());
-  }, [trabajosDia, actividadesCreadas, tituloTrabajo, campoSeleccionado]);
+  }, [trabajosDia, actividadesCreadas, tituloTrabajo, campoSeleccionado, esSecundaria, camposDisponibles]);
 
   // Nombres de tareas disponibles (mantiene compatibilidad total con Matriz y componentes existentes)
   const tareasDisponibles = useMemo(() => {
@@ -296,7 +325,7 @@ export default function ControlQR({
       const existe = actividadesDelDia.find(a => a.nombre === tituloTrabajo);
       if (!existe) {
         setTituloTrabajo(actividadesDelDia[0].nombre);
-        setCampoSeleccionado(actividadesDelDia[0].campo || CAMPOS_FORMATIVOS[0]);
+        setCampoSeleccionado(actividadesDelDia[0].campo || camposDisponibles[0]);
       } else {
         if (existe.campo && existe.campo !== campoSeleccionado) {
           setCampoSeleccionado(existe.campo);
@@ -341,7 +370,7 @@ export default function ControlQR({
   const abrirCreadorActividad = () => {
     const num = actividadesDelDia.length + 1;
     setNuevoNombreActividad(`Tarea ${num}`);
-    setNuevoCampoActividad(campoSeleccionado || CAMPOS_FORMATIVOS[0]);
+    setNuevoCampoActividad(campoSeleccionado || camposDisponibles[0]);
     setCreandoNuevaActividad(true);
     setEditandoActividad(null);
   };
@@ -373,7 +402,7 @@ export default function ControlQR({
     setEditandoActividad({
       nombreOriginal: act.nombre,
       nombre: act.nombre,
-      campo: act.campo || CAMPOS_FORMATIVOS[0]
+      campo: act.campo || camposDisponibles[0]
     });
     setCreandoNuevaActividad(false);
   };
@@ -383,7 +412,7 @@ export default function ControlQR({
     if (!editandoActividad) return;
     const nombreOrig = editandoActividad.nombreOriginal;
     const nuevoNom = (editandoActividad.nombre || '').trim();
-    const nuevoCmp = editandoActividad.campo || CAMPOS_FORMATIVOS[0];
+    const nuevoCmp = editandoActividad.campo || camposDisponibles[0];
 
     if (!nuevoNom) {
       if (showToast) showToast('⚠️ El nombre de la actividad no puede estar vacío');
@@ -440,10 +469,10 @@ export default function ControlQR({
     if (tituloTrabajo === nombreActividad) {
       if (restantes.length > 0) {
         setTituloTrabajo(restantes[0].nombre);
-        setCampoSeleccionado(restantes[0].campo || CAMPOS_FORMATIVOS[0]);
+        setCampoSeleccionado(restantes[0].campo || camposDisponibles[0]);
       } else {
         setTituloTrabajo('Tarea 1');
-        setCampoSeleccionado(CAMPOS_FORMATIVOS[0]);
+        setCampoSeleccionado(camposDisponibles[0]);
       }
       setTareaAnterior(null);
     }
@@ -492,6 +521,15 @@ export default function ControlQR({
   // Cargar datos históricos para la pestaña HISTORIAL
   const cargarHistorial = async () => {
     if (!ipcRenderer) return;
+    const requestId = ++historialRequestRef.current;
+    if (!rangoHistorialValido) {
+      setResumenAsistenciaHist([]);
+      setAsistenciaRangoDetalle([]);
+      setResumenTrabajosHist([]);
+      setTrabajosRangoDetalle([]);
+      setCargandoHistorial(false);
+      return;
+    }
     setCargandoHistorial(true);
     try {
       const [resAsis, detAsis, resTrab, detTrab] = await Promise.all([
@@ -500,14 +538,18 @@ export default function ControlQR({
         ipcRenderer.invoke('get-resumen-trabajos', grupoActual?.id, fechaInicioHistorial, fechaFinHistorial, campoFiltroHistorial),
         ipcRenderer.invoke('get-trabajos-rango', grupoActual?.id, fechaInicioHistorial, fechaFinHistorial, campoFiltroHistorial)
       ]);
+      if (requestId !== historialRequestRef.current) return;
       setResumenAsistenciaHist(resAsis || []);
       setAsistenciaRangoDetalle(detAsis || []);
       setResumenTrabajosHist(resTrab || []);
-      setTrabajosRangoDetalle(detTrab || []);
+      setTrabajosRangoDetalle((detTrab || []).map(t => esSecundaria ? { ...t, campo: camposDisponibles[0] } : t));
     } catch (err) {
-      console.error("Error al cargar historial:", err);
+      if (requestId === historialRequestRef.current) {
+        console.error("Error al cargar historial:", err);
+        if (showToast) showToast('❌ No se pudo cargar el historial del grupo.');
+      }
     } finally {
-      setCargandoHistorial(false);
+      if (requestId === historialRequestRef.current) setCargandoHistorial(false);
     }
   };
 
@@ -591,85 +633,57 @@ export default function ControlQR({
     };
   }, [modoEscaneo, subtipoAsistencia, campoSeleccionado, criterioSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo]);
 
-  // Cargar criterios completos del grupo y por campo formativo
-  const recargarCriteriosGrupo = useCallback(() => {
-    if (ipcRenderer && grupoActual?.id) {
-      ipcRenderer.invoke('get-criterios', grupoActual.id).then(list => {
-        setCriteriosGrupo(list || []);
-      }).catch(console.error);
-    }
-  }, [ipcRenderer, grupoActual?.id]);
-
+  // Recargar una vez al cambiar de grupo o abrir un modal, sin depender de la lista recibida.
   useEffect(() => {
-    recargarCriteriosGrupo();
-  }, [recargarCriteriosGrupo]);
-
-  // Cargar criterios cuando cambia el campo formativo
-  useEffect(() => {
-    if (ipcRenderer && grupoActual?.id) {
-      ipcRenderer.invoke('get-criterios', grupoActual.id, campoSeleccionado).then(list => {
-        if (list && list.length > 0) {
-          setCriterioSeleccionado(list[0].id);
-        } else {
-          setCriterioSeleccionado(null);
-        }
-      }).catch(console.error);
+    let active = true;
+    setCriteriosGrupo([]);
+    if (!ipcRenderer || !grupoActual?.id) {
+      setCargandoCriterios(false);
+      return () => { active = false; };
     }
-  }, [ipcRenderer, grupoActual, campoSeleccionado]);
-
-  // Filtrado de criterios para el modal de Trabajos
-  const criteriosFiltradosTrab = useMemo(() => {
-    const list = (criteriosGrupo && criteriosGrupo.length > 0) ? criteriosGrupo : (criterios || []);
-    if (!campoFiltroHistorial || campoFiltroHistorial === 'TODOS') {
-      return list;
-    }
-    return list.filter(c => {
-      const cCampo = (c.campo || 'LENGUAJES').trim().toUpperCase();
-      return cCampo === String(campoFiltroHistorial).trim().toUpperCase();
+    setCargandoCriterios(true);
+    ipcRenderer.invoke('get-criterios', grupoActual.id).then(list => {
+      if (active) setCriteriosGrupo(list || []);
+    }).catch(err => {
+      console.error(err);
+      if (active && showToast) showToast('❌ No se pudieron cargar los criterios de evaluación.');
+    }).finally(() => {
+      if (active) setCargandoCriterios(false);
     });
-  }, [criteriosGrupo, criterios, campoFiltroHistorial]);
+    return () => { active = false; };
+  }, [ipcRenderer, grupoActual?.id, showModalExportAsis, showModalExportTrab]);
 
+  const criteriosDelCampo = useMemo(() => criteriosGrupo.filter(c => esSecundaria ||
+    normalizarCampo(c.campo) === normalizarCampo(campoSeleccionado)), [criteriosGrupo, esSecundaria, campoSeleccionado]);
   useEffect(() => {
-    if (showModalExportTrab) {
-      recargarCriteriosGrupo();
-      if (criteriosFiltradosTrab.length > 0) {
-        const match = criteriosFiltradosTrab.some(c => String(c.id) === String(criterioDestinoTrab));
-        if (!match) {
-          setCriterioDestinoTrab(String(criteriosFiltradosTrab[0].id));
-        }
-      } else {
-        setCriterioDestinoTrab('');
-      }
-    }
-  }, [showModalExportTrab, campoFiltroHistorial, criteriosFiltradosTrab, recargarCriteriosGrupo]);
+    setCriterioSeleccionado(prev => criteriosDelCampo.some(c => c.id === prev) ? prev : (criteriosDelCampo[0]?.id || null));
+  }, [criteriosDelCampo]);
 
-  // Filtrado de criterios para el modal de Asistencia
-  const criteriosFiltradosAsis = useMemo(() => {
-    const list = (criteriosGrupo && criteriosGrupo.length > 0) ? criteriosGrupo : (criterios || []);
-    if (!campoDestinoAsis || campoDestinoAsis === 'TODOS') {
-      return list;
-    }
-    return list.filter(c => {
-      const cCampo = (c.campo || 'LENGUAJES').trim().toUpperCase();
-      return cCampo === String(campoDestinoAsis).trim().toUpperCase();
-    });
-  }, [criteriosGrupo, criterios, campoDestinoAsis]);
-
+  const criteriosFiltradosTrab = useMemo(() => criteriosGrupo.filter(c => esSecundaria ||
+    campoFiltroHistorial === 'TODOS' || normalizarCampo(c.campo) === normalizarCampo(campoFiltroHistorial)),
+    [criteriosGrupo, esSecundaria, campoFiltroHistorial]);
   useEffect(() => {
-    if (showModalExportAsis) {
-      recargarCriteriosGrupo();
-      if (criteriosFiltradosAsis.length > 0) {
-        const match = criteriosFiltradosAsis.some(c => String(c.id) === String(criterioDestinoAsis));
-        if (!match) {
-          setCriterioDestinoAsis(String(criteriosFiltradosAsis[0].id));
-        }
-      } else {
-        setCriterioDestinoAsis('');
-      }
-    }
-  }, [showModalExportAsis, campoDestinoAsis, criteriosFiltradosAsis, recargarCriteriosGrupo]);
+    if (showModalExportTrab) setCriterioDestinoTrab(prev => criteriosFiltradosTrab.some(c => String(c.id) === prev)
+      ? prev : String(criteriosFiltradosTrab.find(c => /trabaj|tarea/i.test(c.nombre))?.id || ''));
+  }, [showModalExportTrab, criteriosFiltradosTrab]);
 
-  // ─── CÁMARA WEB ────────────────────────────────────────────────────────────
+  const criteriosFiltradosAsis = useMemo(() => criteriosGrupo.filter(c => esSecundaria ||
+    campoDestinoAsis === 'TODOS' || normalizarCampo(c.campo) === normalizarCampo(campoDestinoAsis)),
+    [criteriosGrupo, esSecundaria, campoDestinoAsis]);
+  useEffect(() => {
+    if (showModalExportAsis) setCriterioDestinoAsis(prev => criteriosFiltradosAsis.some(c => String(c.id) === prev)
+      ? prev : String(criteriosFiltradosAsis.find(c => /asistenc/i.test(c.nombre))?.id || ''));
+  }, [showModalExportAsis, criteriosFiltradosAsis]);
+
+  const criteriosAsistenciaDestino = useMemo(() => {
+    const elegido = criteriosFiltradosAsis.find(c => String(c.id) === criterioDestinoAsis);
+    if (!elegido) return [];
+    const adicionales = !esSecundaria && exportarAsistenciaTodas
+      ? criteriosGrupo.filter(c => c.id !== elegido.id && /asistenc/i.test(c.nombre)) : [];
+    return [elegido, ...adicionales];
+  }, [criteriosGrupo, criteriosFiltradosAsis, criterioDestinoAsis, esSecundaria, exportarAsistenciaTodas]);
+
+  // Cámara web
   const iniciarCamara = useCallback(async (deviceId) => {
     setCamaraError('');
     try {
@@ -939,53 +953,67 @@ export default function ControlQR({
     if (showToast) showToast('📥 Archivo Excel de Trabajos generado con éxito');
   };
 
-  // Transferir Asistencia a Criterio en Evaluaciones Personalizadas
-  const ejecutarExportacionAsistenciaACriterio = async () => {
-    if (!criterioDestinoAsis) {
-      if (showToast) showToast('⚠️ Por favor selecciona un criterio de destino.');
-      return;
-    }
-    try {
-      const count = await ipcRenderer.invoke(
-        'importar-asistencia-a-criterio',
-        Number(criterioDestinoAsis),
-        fechaInicioHistorial,
-        fechaFinHistorial,
-        grupoActual?.id,
-        Number(escalaDestinoAsis) || 10,
-        fechaActualQR
-      );
-      setShowModalExportAsis(false);
-      if (showToast) showToast(`✅ ¡${count} calificaciones de asistencia exportadas a la evaluación!`);
+  const notificarImportacion = (criterio) => {
+    const campo = esSecundaria ? camposDisponibles[0] : normalizarCampo(criterio.campo);
+    if (typeof onGradesImported === 'function') {
+      onGradesImported({ fecha: fechaActualQR, campo });
+    } else {
+      if (typeof onDateChanged === 'function') onDateChanged(fechaActualQR);
       if (typeof onGradeSaved === 'function') onGradeSaved();
-    } catch (err) {
-      console.error(err);
-      if (showToast) showToast('❌ Error al exportar asistencia a evaluación.');
     }
   };
 
-  // Transferir Promedios de Trabajos a Criterio en Evaluaciones Personalizadas
-  const ejecutarExportacionTrabajosACriterio = async () => {
-    if (!criterioDestinoTrab) {
-      if (showToast) showToast('⚠️ Por favor selecciona un criterio de destino.');
+  // La asistencia general del grupo puede alimentar sus criterios de varias materias.
+  const ejecutarExportacionAsistenciaACriterio = async () => {
+    if (exportando || cargandoCriterios) return;
+    if (!grupoActual?.id || !criteriosAsistenciaDestino.length) {
+      if (showToast) showToast('⚠️ Selecciona el grupo, la materia y un criterio de destino.');
       return;
     }
+    setExportando(true);
     try {
-      const count = await ipcRenderer.invoke(
-        'importar-promedios-qr-a-criterio',
-        Number(criterioDestinoTrab),
-        fechaInicioHistorial,
-        fechaFinHistorial,
-        campoFiltroHistorial,
-        grupoActual?.id,
-        fechaActualQR
-      );
-      setShowModalExportTrab(false);
-      if (showToast) showToast(`✅ ¡${count} promedios de trabajos exportados a la evaluación!`);
-      if (typeof onGradeSaved === 'function') onGradeSaved();
+      const count = await ipcRenderer.invoke('importar-asistencia-a-criterio',
+        criteriosAsistenciaDestino.map(c => c.id), fechaInicioHistorial, fechaFinHistorial,
+        grupoActual.id, Number(escalaDestinoAsis) || 10, fechaActualQR);
+      if (!count) {
+        if (showToast) showToast('⚠️ No hay asistencias del grupo en el periodo seleccionado.');
+        return;
+      }
+      setShowModalExportAsis(false);
+      notificarImportacion(criteriosAsistenciaDestino[0]);
+      if (showToast) showToast(`✅ ${count} calificaciones de asistencia guardadas en Evaluación (${fechaActualQR}).`);
     } catch (err) {
       console.error(err);
-      if (showToast) showToast('❌ Error al exportar promedios de trabajos.');
+      if (showToast) showToast(`❌ No se pudo exportar la asistencia: ${err.message}`);
+    } finally {
+      setExportando(false);
+    }
+  };
+
+  const ejecutarExportacionTrabajosACriterio = async () => {
+    if (exportando || cargandoCriterios) return;
+    const destino = criteriosFiltradosTrab.find(c => String(c.id) === criterioDestinoTrab);
+    if (!grupoActual?.id || !destino) {
+      if (showToast) showToast('⚠️ Selecciona el grupo, la materia y un criterio de destino.');
+      return;
+    }
+    setExportando(true);
+    try {
+      const campo = esSecundaria ? camposDisponibles[0] : normalizarCampo(destino.campo);
+      const count = await ipcRenderer.invoke('importar-promedios-qr-a-criterio',
+        destino.id, fechaInicioHistorial, fechaFinHistorial, campo, grupoActual.id, fechaActualQR);
+      if (!count) {
+        if (showToast) showToast('⚠️ No hay trabajos de esta materia y grupo en el periodo seleccionado.');
+        return;
+      }
+      setShowModalExportTrab(false);
+      notificarImportacion(destino);
+      if (showToast) showToast(`✅ ${count} promedios guardados en la materia de destino (${fechaActualQR}).`);
+    } catch (err) {
+      console.error(err);
+      if (showToast) showToast(`❌ No se pudieron exportar los promedios: ${err.message}`);
+    } finally {
+      setExportando(false);
     }
   };
 
@@ -1354,7 +1382,7 @@ export default function ControlQR({
                               boxSizing: 'border-box'
                             }}
                           >
-                            {CAMPOS_FORMATIVOS.map(c => {
+                            {camposDisponibles.map(c => {
                               const info = getInfoCampo(c);
                               return (
                                 <option key={c} value={c}>
@@ -1464,7 +1492,7 @@ export default function ControlQR({
                               boxSizing: 'border-box'
                             }}
                           >
-                            {CAMPOS_FORMATIVOS.map(c => {
+                            {camposDisponibles.map(c => {
                               const info = getInfoCampo(c);
                               return (
                                 <option key={c} value={c}>
@@ -2371,6 +2399,11 @@ export default function ControlQR({
           </div>
 
           {/* SUB-PESTAÑAS DEL HISTORIAL: ASISTENCIA VS TRABAJOS */}
+          {!rangoHistorialValido && (
+            <p role="alert" style={{ color: '#c53030', margin: '0 0 16px' }}>
+              Selecciona ambas fechas; la fecha de inicio debe ser anterior o igual a la fecha final.
+            </p>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
@@ -2430,6 +2463,7 @@ export default function ControlQR({
                   </button>
                   <button
                     onClick={() => setShowModalExportAsis(true)}
+                    disabled={!rangoHistorialValido}
                     style={{
                       padding: '10px 18px',
                       borderRadius: '8px',
@@ -2471,6 +2505,7 @@ export default function ControlQR({
                   </button>
                   <button
                     onClick={() => setShowModalExportTrab(true)}
+                    disabled={!rangoHistorialValido}
                     style={{
                       padding: '10px 18px',
                       borderRadius: '8px',
@@ -2692,7 +2727,7 @@ export default function ControlQR({
                     style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #9ae6b4', fontSize: '13px', fontWeight: 'bold', color: '#22543d' }}
                   >
                     <option value="TODOS">Todos los Campos Formativos</option>
-                    {CAMPOS_FORMATIVOS.map(c => <option key={c} value={c}>{c}</option>)}
+                    {camposDisponibles.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div style={{ fontSize: '13px', color: '#22543d', fontWeight: 'bold' }}>
@@ -3137,7 +3172,7 @@ export default function ControlQR({
                 style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '14px' }}
               >
                 <option value="TODOS">Todos los Criterios del Grupo</option>
-                {CAMPOS_FORMATIVOS.map(c => <option key={c} value={c}>{c}</option>)}
+                {camposDisponibles.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
 
@@ -3153,7 +3188,7 @@ export default function ControlQR({
                 <option value="">-- Elige un Criterio (ej. Asistencia 10%) --</option>
                 {criteriosFiltradosAsis.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.nombre} ({c.porcentaje}%) [{c.campo || 'LENGUAJES'}]
+                    {c.nombre} ({c.porcentaje}%) [{esSecundaria ? camposDisponibles[0] : getNombreCampoDisplay(c.campo)}]
                   </option>
                 ))}
               </select>
@@ -3163,6 +3198,19 @@ export default function ControlQR({
                 </div>
               )}
             </div>
+
+            {!esSecundaria && (
+              <label style={{ display: 'block', marginBottom: '14px', fontSize: '13px', color: '#2d3748' }}>
+                <input type="checkbox" checked={exportarAsistenciaTodas} disabled={exportando}
+                  onChange={e => setExportarAsistenciaTodas(e.target.checked)} />{' '}
+                Aplicar también a los criterios de asistencia de las otras materias de este grupo
+              </label>
+            )}
+            <p style={{ fontSize: '12px', color: '#2d3748' }}>
+              Fecha de la nota en Evaluación: <strong>{fechaActualQR}</strong>.<br />
+              Destinos: {criteriosAsistenciaDestino.map(c =>
+                (esSecundaria ? camposDisponibles[0] : getNombreCampoDisplay(c.campo)) + ': ' + c.nombre).join('; ') || 'Selecciona un criterio'}.
+            </p>
 
             <div style={{ marginBottom: '16px' }}>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#2d3748', marginBottom: '6px' }}>
@@ -3191,6 +3239,7 @@ export default function ControlQR({
               </button>
               <button
                 onClick={ejecutarExportacionAsistenciaACriterio}
+                disabled={exportando || cargandoCriterios || !criteriosAsistenciaDestino.length}
                 style={{ padding: '8px 18px', borderRadius: '6px', border: 'none', background: '#38a169', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
               >
                 Confirmar y Exportar
@@ -3206,7 +3255,7 @@ export default function ControlQR({
           <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', width: '480px', maxWidth: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
             <h3 style={{ margin: '0 0 10px 0', color: '#1a365d' }}>📤 Exportar Promedio de Trabajos a Evaluación</h3>
             <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#718096' }}>
-              Promedia todos los trabajos registrados en el periodo (<strong>{fechaInicioHistorial} al {fechaFinHistorial}</strong>) y vuelca la calificación al criterio seleccionado.
+              Promedia los trabajos de la materia del criterio seleccionado en el periodo (<strong>{fechaInicioHistorial} al {fechaFinHistorial}</strong>) y vuelca la calificación al criterio seleccionado.
             </p>
 
             <div style={{ marginBottom: '14px' }}>
@@ -3218,8 +3267,8 @@ export default function ControlQR({
                 onChange={e => setCampoFiltroHistorial(e.target.value)}
                 style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '14px' }}
               >
-                <option value="TODOS">Todos los Trabajos (Promedio General)</option>
-                {CAMPOS_FORMATIVOS.map(c => <option key={c} value={c}>{c}</option>)}
+                <option value="TODOS">Materia del criterio de destino</option>
+                {camposDisponibles.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
 
@@ -3235,7 +3284,7 @@ export default function ControlQR({
                 <option value="">-- Elige un Criterio (ej. Trabajos en clase 30%) --</option>
                 {criteriosFiltradosTrab.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.nombre} ({c.porcentaje}%) [{c.campo || 'LENGUAJES'}]
+                    {c.nombre} ({c.porcentaje}%) [{esSecundaria ? camposDisponibles[0] : getNombreCampoDisplay(c.campo)}]
                   </option>
                 ))}
               </select>
@@ -3246,6 +3295,9 @@ export default function ControlQR({
               )}
             </div>
 
+            <p style={{ fontSize: '12px', color: '#2d3748' }}>
+              Fecha de la nota en Evaluación: <strong>{fechaActualQR}</strong>.
+            </p>
             <div style={{ backgroundColor: '#f0fff4', padding: '10px 14px', borderRadius: '8px', fontSize: '12px', color: '#22543d', marginBottom: '16px' }}>
               ℹ️ Cada trabajo registrado individualmente permanece guardado en SQLite. No se sobrescribe ni se pierde ningún detalle histórico.
             </div>
@@ -3259,6 +3311,7 @@ export default function ControlQR({
               </button>
               <button
                 onClick={ejecutarExportacionTrabajosACriterio}
+                disabled={exportando || cargandoCriterios || !criterioDestinoTrab}
                 style={{ padding: '8px 18px', borderRadius: '6px', border: 'none', background: '#276749', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
               >
                 Confirmar y Exportar
