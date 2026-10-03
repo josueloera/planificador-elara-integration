@@ -173,9 +173,9 @@ db.serialize(() => {
     db.run(`ALTER TABLE ${tabla} ADD COLUMN grupo_id INTEGER`, (err) => { /* Ignorar error si la columna ya existe */ });
   });
 
-  // Seeding para el nuevo ciclo escolar 2026-2027
+  // Inicializar el calendario solo si el docente todavía no ha configurado un ciclo.
   db.get("SELECT valor FROM configuracion WHERE llave = 'fechaInicioStr'", (err, row) => {
-    if (!row || row.valor.startsWith('2025')) {
+    if (!err && !row) {
       const defaultPeriodosStr = JSON.stringify({
         1: { nombre: '1º Trimestre', inicio: '2026-08-31', fin: '2026-11-27' },
         2: { nombre: '2º Trimestre', inicio: '2026-11-30', fin: '2027-03-19' },
@@ -473,7 +473,22 @@ ipcMain.handle('toggle-visto', async (e, tipo, itemId, completado) => {
 
 // -- CRITERIOS --
 // -- CRITERIOS (AISLADOS POR CAMPO FORMATIVO) --
-require('./evaluationQr').registerEvaluationHandlers({ ipcMain, db, variant: 'primaria' });
+const notifyEvaluationChange = (grupoId = null) => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+      window.webContents.send('evaluacion-qr-actualizada', { grupo_id: grupoId });
+    }
+  }
+};
+const { transaction: evaluationTransaction } = require('./evaluationQr').registerEvaluationHandlers({
+  ipcMain, db, variant: 'primaria', onChange: notifyEvaluationChange
+});
+// Un único orden de escritura para QR, criterios y vínculos del ciclo.
+const registerQrMutation = (channel, handler) => ipcMain.handle(channel, async (...args) => {
+  const result = await evaluationTransaction(() => handler(...args));
+  if (result?.success !== false) notifyEvaluationChange();
+  return result;
+});
 
 // -- NOTAS --
 ipcMain.handle('get-notas-fecha', async (e, fecha) => new Promise(r => db.all("SELECT * FROM notas WHERE fecha = ?", [fecha], (err, rows) => r(rows || []))));
@@ -678,7 +693,10 @@ ipcMain.handle('save-multiple-events', async (e, eventosObj) => {
 });
 ipcMain.handle('clear-evaluaciones-rango', async (e, f1, f2) => new Promise(r => db.run("DELETE FROM notas WHERE fecha >= ? AND fecha <= ?", [f1, f2], () => r(true))));
 ipcMain.handle('get-config', async () => new Promise(r => db.all("SELECT * FROM configuracion", [], (e, rows) => { const map = {}; (rows || []).forEach(x => map[x.llave] = x.valor); r(map); })));
-ipcMain.handle('save-config', async (e, llave, valor) => new Promise(r => db.run("INSERT OR REPLACE INTO configuracion (llave, valor) VALUES (?, ?)", [llave, valor], () => r(true))));
+registerQrMutation('save-config', async (e, llave, valor) => new Promise((resolve, reject) => {
+  db.run("INSERT OR REPLACE INTO configuracion (llave, valor) VALUES (?, ?)", [llave, valor],
+    err => err ? reject(err) : resolve(true));
+}));
 ipcMain.handle('seed-database', async () => true);
 
 // -- CONTROL Y ASISTENCIA QR --
@@ -689,7 +707,7 @@ ipcMain.handle('get-asistencia-fecha', async (e, fecha, grupo_id) => new Promise
   db.all("SELECT * FROM asistencia WHERE fecha = ? AND (grupo_id = ? OR grupo_id IS NULL)", [fecha, grupo_id || null], (err, rows) => r(rows || []));
 }));
 
-ipcMain.handle('save-asistencia-qr', async (e, alumno_id, fecha, estado, grupo_id) => new Promise((resolve, reject) => {
+registerQrMutation('save-asistencia-qr', async (e, alumno_id, fecha, estado, grupo_id) => new Promise((resolve, reject) => {
   db.run("INSERT OR REPLACE INTO asistencia (alumno_id, fecha, estado, grupo_id) VALUES (?, ?, ?, ?)",
     [alumno_id, fecha, estado || 'PRESENTE', grupo_id || null], function(err) {
       if (err) reject(err);
@@ -697,13 +715,16 @@ ipcMain.handle('save-asistencia-qr', async (e, alumno_id, fecha, estado, grupo_i
     });
 }));
 
-ipcMain.handle('save-asistencia-bulk', async (e, asistencias, fecha, grupo_id) => new Promise(resolve => {
+registerQrMutation('save-asistencia-bulk', async (e, asistencias, fecha, grupo_id) => new Promise((resolve, reject) => {
   db.serialize(() => {
     const stmt = db.prepare("INSERT OR REPLACE INTO asistencia (alumno_id, fecha, estado, grupo_id) VALUES (?, ?, ?, ?)");
+    let writeError;
     (asistencias || []).forEach(a => {
-      stmt.run(a.alumno_id, fecha, a.estado || 'PRESENTE', grupo_id || null);
+      stmt.run(a.alumno_id, fecha, a.estado || 'PRESENTE', grupo_id || null, err => {
+        if (err && !writeError) writeError = err;
+      });
     });
-    stmt.finalize(() => resolve(true));
+    stmt.finalize(err => (writeError || err) ? reject(writeError || err) : resolve(true));
   });
 }));
 
@@ -783,7 +804,7 @@ ipcMain.handle('get-todos-perfiles', async () => new Promise(r => {
   });
 }));
 
-ipcMain.handle('save-trabajo-qr', async (e, alumno_id, campo, nombre_trabajo, fecha, valor, grupo_id) => new Promise((resolve, reject) => {
+registerQrMutation('save-trabajo-qr', async (e, alumno_id, campo, nombre_trabajo, fecha, valor, grupo_id) => new Promise((resolve, reject) => {
   const c = campo || 'GENERAL';
   const nt = nombre_trabajo || 'Trabajo';
   const gId = grupo_id || null;
@@ -831,28 +852,28 @@ ipcMain.handle('get-trabajos-qr', async (e, fecha, grupo_id) => new Promise(r =>
     [fecha, grupo_id || null], (err, rows) => r(rows || []));
 }));
 
-ipcMain.handle('delete-actividad-fecha', async (e, fecha, nombreTrabajo, grupo_id) => new Promise(r => {
+registerQrMutation('delete-actividad-fecha', async (e, fecha, nombreTrabajo, grupo_id) => new Promise(r => {
   db.run(
-    "DELETE FROM trabajos_qr WHERE fecha = ? AND nombre_trabajo = ? AND (grupo_id = ? OR grupo_id IS NULL)",
-    [fecha, nombreTrabajo, grupo_id || null],
+    "DELETE FROM trabajos_qr WHERE fecha = ? AND nombre_trabajo = ? AND (grupo_id = ? OR grupo_id IS NULL) AND alumno_id IN (SELECT id FROM alumnos WHERE grupo_id = ?)",
+    [fecha, nombreTrabajo, grupo_id || null, grupo_id || null],
     function(err) {
       r({ success: !err, changes: this ? this.changes : 0 });
     }
   );
 }));
 
-ipcMain.handle('update-actividad-fecha', async (e, fecha, nombreViejo, nombreNuevo, campoNuevo, grupo_id) => new Promise(r => {
+registerQrMutation('update-actividad-fecha', async (e, fecha, nombreViejo, nombreNuevo, campoNuevo, grupo_id) => new Promise(r => {
   db.run(
-    "UPDATE trabajos_qr SET nombre_trabajo = ?, campo = ? WHERE fecha = ? AND nombre_trabajo = ? AND (grupo_id = ? OR grupo_id IS NULL)",
-    [nombreNuevo, campoNuevo, fecha, nombreViejo, grupo_id || null],
+    "UPDATE trabajos_qr SET nombre_trabajo = ?, campo = ? WHERE fecha = ? AND nombre_trabajo = ? AND (grupo_id = ? OR grupo_id IS NULL) AND alumno_id IN (SELECT id FROM alumnos WHERE grupo_id = ?)",
+    [nombreNuevo, campoNuevo, fecha, nombreViejo, grupo_id || null, grupo_id || null],
     function(err) {
       r({ success: !err, changes: this ? this.changes : 0 });
     }
   );
 }));
 
-ipcMain.handle('delete-trabajo-qr', async (e, id) => new Promise(r => {
-  db.run("DELETE FROM trabajos_qr WHERE id = ?", [id], () => r(true));
+registerQrMutation('delete-trabajo-qr', async (e, id) => new Promise((resolve, reject) => {
+  db.run("DELETE FROM trabajos_qr WHERE id = ?", [id], err => err ? reject(err) : resolve(true));
 }));
 
 // --- 11. GENERACIÓN DE MATERIALES CON IA (CLOUD TRANSPARENTE) ---

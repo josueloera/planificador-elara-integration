@@ -1,7 +1,7 @@
 {
   "name": "planificador-docente-elara-integration",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Herramienta de Gestión Docente NEM - Integración ELARA",
   "author": "Josue Loera",
   "main": "electron/main.js",

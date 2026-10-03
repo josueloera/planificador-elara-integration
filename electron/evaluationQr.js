@@ -9,7 +9,7 @@ function normalizarCampo(value) {
   return text;
 }
 
-function registerEvaluationHandlers({ ipcMain, db, variant = 'primaria' }) {
+function registerEvaluationHandlers({ ipcMain, db, variant = 'primaria', onChange = () => {} }) {
   const secundaria = variant === 'secundaria';
   const all = (sql, params = []) => new Promise((resolve, reject) => {
     db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows || []));
@@ -78,6 +78,12 @@ function registerEvaluationHandlers({ ipcMain, db, variant = 'primaria' }) {
         AND t.fecha >= ? AND t.fecha <= ? ORDER BY t.fecha DESC, t.id DESC`, [grupoId, grupoId, inicio, fin]);
     return rows.filter(t => secundaria || !campo || campo === 'TODOS' || normalizarCampo(t.campo) === normalizarCampo(campo));
   };
+
+  require('./evaluationCycle').registerCycleHandlers({
+    ipcMain, all, run, transaction, normalizarCampo, trabajosDelGrupo,
+    grupoValido, criteriosDestino, secundaria, onChange,
+    waitForWrites: () => pendingWrites
+  });
 
   ipcMain.handle('get-trabajos-rango', async (_, grupo_id, inicio, fin, campo) => {
     if (!grupo_id) return [];
@@ -207,6 +213,7 @@ function registerEvaluationHandlers({ ipcMain, db, variant = 'primaria' }) {
       return guardarNotas(rows, criterios, fecha);
     });
   });
+  return { transaction };
 }
 
 module.exports = { normalizarCampo, registerEvaluationHandlers };

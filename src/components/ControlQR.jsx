@@ -1,3 +1,4 @@
+import { rangoDelCiclo } from '../evaluacionAutomatica';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { exportarAsistenciaExcel, exportarTrabajosExcel, calcularSemanaEscolar } from '../utils/excelExporter';
@@ -80,6 +81,7 @@ export default function ControlQR({
   grupoActual,
   alumnos = [],
   fechaEval,
+  configCiclo,
   ipcRenderer,
   showToast,
   onAttendanceUpdated,
@@ -89,6 +91,7 @@ export default function ControlQR({
   nivel = 'primaria'
 }) {
   const esSecundaria = nivel === 'secundaria';
+  const ciclo = rangoDelCiclo(configCiclo);
   const camposDisponibles = useMemo(() => esSecundaria
     ? [grupoActual?.nombre_disciplina || 'Materia del grupo']
     : CAMPOS_FORMATIVOS, [esSecundaria, grupoActual?.nombre_disciplina]);
@@ -148,12 +151,12 @@ export default function ControlQR({
   const animFrameRef = useRef(null);
 
   // Estados para la pestaña: HISTORIAL Y REPORTES
-  const [fechaInicioHistorial, setFechaInicioHistorial] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().split('T')[0];
-  });
-  const [fechaFinHistorial, setFechaFinHistorial] = useState(() => new Date().toISOString().split('T')[0]);
+  const [fechaInicioHistorial, setFechaInicioHistorial] = useState(ciclo.inicio);
+  const [fechaFinHistorial, setFechaFinHistorial] = useState(ciclo.fin);
+  useEffect(() => {
+    setFechaInicioHistorial(ciclo.inicio);
+    setFechaFinHistorial(ciclo.fin);
+  }, [ciclo.inicio, ciclo.fin]);
   const [subTabHistorial, setSubTabHistorial] = useState('ASISTENCIA'); // 'ASISTENCIA' o 'TRABAJOS'
   const [campoFiltroHistorial, setCampoFiltroHistorial] = useState('TODOS');
   const [vistaModoAsistencia, setVistaModoAsistencia] = useState('RESUMEN'); // 'RESUMEN' o 'MATRIZ'
@@ -559,6 +562,18 @@ export default function ControlQR({
     }
   }, [activeTab, fechaInicioHistorial, fechaFinHistorial, campoFiltroHistorial, grupoActual]);
 
+  useEffect(() => {
+    if (!ipcRenderer) return;
+    let timer;
+    const actualizar = (_, payload = {}) => {
+      if (payload.grupo_id && payload.grupo_id !== grupoActual?.id) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (activeTab === 'HISTORIAL') cargarHistorial(); }, 100);
+    };
+    ipcRenderer.on('evaluacion-qr-actualizada', actualizar);
+    return () => { clearTimeout(timer); ipcRenderer.removeListener('evaluacion-qr-actualizada', actualizar); };
+  }, [ipcRenderer, activeTab, grupoActual?.id, fechaInicioHistorial, fechaFinHistorial, campoFiltroHistorial]);
+
   // Presets rápidos para fechas de historial
   const setPresetFechas = (tipo) => {
     const hoy = new Date();
@@ -579,8 +594,8 @@ export default function ControlQR({
       setFechaInicioHistorial(hace30.toISOString().split('T')[0]);
       setFechaFinHistorial(hoyStr);
     } else if (tipo === 'CICLO') {
-      setFechaInicioHistorial('2026-08-31');
-      setFechaFinHistorial(hoyStr);
+      setFechaInicioHistorial(ciclo.inicio);
+      setFechaFinHistorial(ciclo.fin);
     }
   };
 
@@ -972,16 +987,13 @@ export default function ControlQR({
     }
     setExportando(true);
     try {
-      const count = await ipcRenderer.invoke('importar-asistencia-a-criterio',
-        criteriosAsistenciaDestino.map(c => c.id), fechaInicioHistorial, fechaFinHistorial,
-        grupoActual.id, Number(escalaDestinoAsis) || 10, fechaActualQR);
-      if (!count) {
-        if (showToast) showToast('⚠️ No hay asistencias del grupo en el periodo seleccionado.');
-        return;
-      }
+      await ipcRenderer.invoke('configurar-evaluacion-automatica', {
+        grupo_id: grupoActual.id, tipo: 'asistencia',
+        criterio_ids: criteriosAsistenciaDestino.map(c => c.id), escala: Number(escalaDestinoAsis)
+      });
       setShowModalExportAsis(false);
       notificarImportacion(criteriosAsistenciaDestino[0]);
-      if (showToast) showToast(`✅ ${count} calificaciones de asistencia guardadas en Evaluación (${fechaActualQR}).`);
+      if (showToast) showToast('✅ Asistencia vinculada. La evaluación se actualizará durante todo el ciclo.');
     } catch (err) {
       console.error(err);
       if (showToast) showToast(`❌ No se pudo exportar la asistencia: ${err.message}`);
@@ -999,16 +1011,12 @@ export default function ControlQR({
     }
     setExportando(true);
     try {
-      const campo = esSecundaria ? camposDisponibles[0] : normalizarCampo(destino.campo);
-      const count = await ipcRenderer.invoke('importar-promedios-qr-a-criterio',
-        destino.id, fechaInicioHistorial, fechaFinHistorial, campo, grupoActual.id, fechaActualQR);
-      if (!count) {
-        if (showToast) showToast('⚠️ No hay trabajos de esta materia y grupo en el periodo seleccionado.');
-        return;
-      }
+      await ipcRenderer.invoke('configurar-evaluacion-automatica', {
+        grupo_id: grupoActual.id, tipo: 'trabajos', criterio_ids: [destino.id], escala: 10
+      });
       setShowModalExportTrab(false);
       notificarImportacion(destino);
-      if (showToast) showToast(`✅ ${count} promedios guardados en la materia de destino (${fechaActualQR}).`);
+      if (showToast) showToast('✅ Trabajos vinculados. La evaluación se actualizará durante todo el ciclo.');
     } catch (err) {
       console.error(err);
       if (showToast) showToast(`❌ No se pudieron exportar los promedios: ${err.message}`);
@@ -2463,7 +2471,7 @@ export default function ControlQR({
                   </button>
                   <button
                     onClick={() => setShowModalExportAsis(true)}
-                    disabled={!rangoHistorialValido}
+                    disabled={!grupoActual?.id || !ciclo.inicio || !ciclo.fin}
                     style={{
                       padding: '10px 18px',
                       borderRadius: '8px',
@@ -2479,7 +2487,7 @@ export default function ControlQR({
                       boxShadow: '0 2px 4px rgba(107, 70, 193, 0.3)'
                     }}
                   >
-                    📤 Exportar a Criterio de Evaluación
+                    🔗 Vincular asistencia para todo el ciclo
                   </button>
                 </>
               ) : (
@@ -2505,7 +2513,7 @@ export default function ControlQR({
                   </button>
                   <button
                     onClick={() => setShowModalExportTrab(true)}
-                    disabled={!rangoHistorialValido}
+                    disabled={!grupoActual?.id || !ciclo.inicio || !ciclo.fin}
                     style={{
                       padding: '10px 18px',
                       borderRadius: '8px',
@@ -2521,7 +2529,7 @@ export default function ControlQR({
                       boxShadow: '0 2px 4px rgba(107, 70, 193, 0.3)'
                     }}
                   >
-                    📤 Exportar Promedios a Evaluación
+                    🔗 Vincular trabajos para todo el ciclo
                   </button>
                 </>
               )}
@@ -3157,9 +3165,9 @@ export default function ControlQR({
       {showModalExportAsis && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', width: '480px', maxWidth: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-            <h3 style={{ margin: '0 0 10px 0', color: '#1a365d' }}>📤 Exportar Asistencia a Evaluación</h3>
+            <h3 style={{ margin: '0 0 10px 0', color: '#1a365d' }}>🔗 Vincular Asistencia con Evaluación</h3>
             <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#718096' }}>
-              Calcula automáticamente el porcentaje de asistencia de cada alumno en el periodo seleccionado (<strong>{fechaInicioHistorial} al {fechaFinHistorial}</strong>) y guarda la nota en tu criterio de evaluación.
+              Vincula la asistencia de todo el ciclo (<strong>{ciclo.inicio} al {ciclo.fin}</strong>) con los criterios elegidos. La nota se actualizará automáticamente con cada registro o corrección.
             </p>
 
             <div style={{ marginBottom: '14px' }}>
@@ -3207,7 +3215,7 @@ export default function ControlQR({
               </label>
             )}
             <p style={{ fontSize: '12px', color: '#2d3748' }}>
-              Fecha de la nota en Evaluación: <strong>{fechaActualQR}</strong>.<br />
+              Actualización automática durante todo el ciclo escolar.<br />
               Destinos: {criteriosAsistenciaDestino.map(c =>
                 (esSecundaria ? camposDisponibles[0] : getNombreCampoDisplay(c.campo)) + ': ' + c.nombre).join('; ') || 'Selecciona un criterio'}.
             </p>
@@ -3242,7 +3250,7 @@ export default function ControlQR({
                 disabled={exportando || cargandoCriterios || !criteriosAsistenciaDestino.length}
                 style={{ padding: '8px 18px', borderRadius: '6px', border: 'none', background: '#38a169', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
               >
-                Confirmar y Exportar
+                Guardar vinculación automática
               </button>
             </div>
           </div>
@@ -3253,9 +3261,9 @@ export default function ControlQR({
       {showModalExportTrab && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', width: '480px', maxWidth: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-            <h3 style={{ margin: '0 0 10px 0', color: '#1a365d' }}>📤 Exportar Promedio de Trabajos a Evaluación</h3>
+            <h3 style={{ margin: '0 0 10px 0', color: '#1a365d' }}>🔗 Vincular Trabajos con Evaluación</h3>
             <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#718096' }}>
-              Promedia los trabajos de la materia del criterio seleccionado en el periodo (<strong>{fechaInicioHistorial} al {fechaFinHistorial}</strong>) y vuelca la calificación al criterio seleccionado.
+              Vincula los trabajos de esta materia durante todo el ciclo (<strong>{ciclo.inicio} al {ciclo.fin}</strong>). Su promedio se actualizará automáticamente al registrar, corregir o eliminar un trabajo.
             </p>
 
             <div style={{ marginBottom: '14px' }}>
@@ -3296,7 +3304,7 @@ export default function ControlQR({
             </div>
 
             <p style={{ fontSize: '12px', color: '#2d3748' }}>
-              Fecha de la nota en Evaluación: <strong>{fechaActualQR}</strong>.
+              El vínculo permanece guardado al cerrar la app. Las fechas se ajustan en Configuración del ciclo escolar.
             </p>
             <div style={{ backgroundColor: '#f0fff4', padding: '10px 14px', borderRadius: '8px', fontSize: '12px', color: '#22543d', marginBottom: '16px' }}>
               ℹ️ Cada trabajo registrado individualmente permanece guardado en SQLite. No se sobrescribe ni se pierde ningún detalle histórico.
@@ -3314,7 +3322,7 @@ export default function ControlQR({
                 disabled={exportando || cargandoCriterios || !criterioDestinoTrab}
                 style={{ padding: '8px 18px', borderRadius: '6px', border: 'none', background: '#276749', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
               >
-                Confirmar y Exportar
+                Guardar vinculación automática
               </button>
             </div>
           </div>
