@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './ClippyAssistant.css';
+import { EVENTO_PREFERENCIAS_ELARA, leerPreferenciasElara, guardarPreferenciasElara } from '../elaraPreferences';
 import { getLocalResponse, getRandomTip } from './assistantRules';
 import {
   buildChatTools,
@@ -50,6 +51,8 @@ const ChatInput = React.memo(React.forwardRef(({ onSend, isTyping }, ref) => {
 }));
 
 const ClippyAssistant = () => {
+  const [preferencias, setPreferencias] = useState(leerPreferenciasElara);
+  const ocultarElara = () => guardarPreferenciasElara({ ...preferencias, visible: false });
   const [isOpen, setIsOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(() => localStorage.getItem('elara_muted') === 'true');
   const toggleMute = () => {
@@ -126,17 +129,41 @@ const ClippyAssistant = () => {
     };
   }, []);
 
-  // Random tooltips de ELARA
   useEffect(() => {
-    if (isOpen) return;
+    const actualizar = () => setPreferencias(leerPreferenciasElara());
+    window.addEventListener(EVENTO_PREFERENCIAS_ELARA, actualizar);
+    window.addEventListener('storage', actualizar);
+    return () => {
+      window.removeEventListener(EVENTO_PREFERENCIAS_ELARA, actualizar);
+      window.removeEventListener('storage', actualizar);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (preferencias.visible) return;
+    setIsOpen(false);
+    setTooltip('');
+    isDragging.current = false;
+    currentAudioRef.current?.pause();
+    recognitionRef.current?.abort();
+    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    setIsListening(false);
+  }, [preferencias.visible]);
+
+  // Los consejos se detienen al abrir el chat, ocultar ELARA o desactivarlos.
+  useEffect(() => {
+    setTooltip('');
+    if (isOpen || !preferencias.visible || !preferencias.consejos) return;
+    let timeout;
     const interval = setInterval(() => {
       if (Math.random() > 0.6) {
         setTooltip(getRandomTip());
-        setTimeout(() => setTooltip(''), 5000);
+        timeout = setTimeout(() => setTooltip(''), 5000);
       }
     }, 45000);
-    return () => clearInterval(interval);
-  }, [isOpen]);
+    return () => { clearInterval(interval); clearTimeout(timeout); };
+  }, [isOpen, preferencias.visible, preferencias.consejos]);
 
   const toggleMic = async () => {
     const hasOpenAI = MI_OPENAI_API_KEY && MI_OPENAI_API_KEY.startsWith('sk-');
@@ -241,7 +268,7 @@ const ClippyAssistant = () => {
 
   // Text-To-Speech (TTS)
   const speakText = async (text) => {
-    if (isMuted) return;
+    if (isMuted || !leerPreferenciasElara().visible) return;
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
@@ -276,6 +303,7 @@ const ClippyAssistant = () => {
         if (response.ok) {
           const blob = await response.blob();
           const audioUrl = URL.createObjectURL(blob);
+          if (!leerPreferenciasElara().visible) { URL.revokeObjectURL(audioUrl); return; }
           const audio = new Audio(audioUrl);
           currentAudioRef.current = audio;
           await audio.play();
@@ -290,6 +318,7 @@ const ClippyAssistant = () => {
     if (ipcRenderer) {
       try {
         const audioUrl = await ipcRenderer.invoke('elara-speak', cleanText);
+        if (!leerPreferenciasElara().visible) return;
         const audio = new Audio(audioUrl);
         currentAudioRef.current = audio;
         await audio.play();
@@ -301,6 +330,7 @@ const ClippyAssistant = () => {
 
     // 3. Fallback final: utilizar síntesis nativa del navegador si falla o no está en Electron
     if ('speechSynthesis' in window) {
+      if (!leerPreferenciasElara().visible) return;
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = 'es-MX';
       const voices = window.speechSynthesis.getVoices();
@@ -789,9 +819,11 @@ const ClippyAssistant = () => {
     }
   };
 
+  if (!preferencias.visible) return null;
+
   return (
     <div className="clippy-container" style={{ left: pos.x, top: pos.y, bottom: 'auto', right: 'auto' }}>
-      {!isOpen && tooltip && (
+      {!isOpen && preferencias.consejos && tooltip && (
         <div className="clippy-tooltip" style={{ right: '80px', bottom: '15px' }}>
           {tooltip}
         </div>
@@ -809,6 +841,7 @@ const ClippyAssistant = () => {
             >
               {isMuted ? '🔇' : '🔊'}
             </button>
+            <button type="button" onClick={ocultarElara} title="Ocultar icono y consejos de ELARA">Ocultar</button>
             <button onClick={() => setIsOpen(false)}>✖</button>
           </div>
         </div>
@@ -834,6 +867,9 @@ const ClippyAssistant = () => {
         <ChatInput ref={inputRef} onSend={handleSend} isTyping={isTyping} />
       </div>
 
+      <button type="button" className="elara-hide-button" onClick={ocultarElara}
+        title="Ocultar ELARA. Puedes volver a mostrarla en Ajustes Ciclo."
+        aria-label="Ocultar icono y consejos de ELARA">×</button>
       <div 
         className={`elara-chat-avatar ${!isOpen ? 'bouncing' : ''}`}
         onPointerDown={handlePointerDown}

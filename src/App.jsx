@@ -62,7 +62,7 @@ const CeldaNota = memo(({ idAlumno, idCriterio, valorInicial, onGuardar, soloLec
     const [valor, setValor] = useState(valorInicial ?? '');
     useEffect(() => { setValor(valorInicial ?? ''); }, [valorInicial]);
     const handleBlur = () => { if (!soloLectura && valor !== valorInicial) onGuardar(idAlumno, idCriterio, valor === '' ? null : valor); };
-    return ( <input className="input-nota" readOnly={soloLectura} title={soloLectura ? "Promedio automático del ciclo escolar. Corrige los registros en Control QR." : undefined} type="text" inputMode="decimal" style={{background: 'rgba(255,255,255,0.8)', fontWeight: 'bold', fontSize: '1.2rem', textAlign: 'center', width: '100%', height: '40px', border: '1px solid #eee', borderRadius: '4px', outline: 'none', color: '#333'}} value={valor} onChange={(e) => setValor(e.target.value)} onBlur={handleBlur} placeholder="-" /> );
+    return ( <input className="input-nota" readOnly={soloLectura} title={soloLectura ? "Calificación automática de esta fecha. Corrige los registros en Control QR." : undefined} type="text" inputMode="decimal" style={{background: 'rgba(255,255,255,0.8)', fontWeight: 'bold', fontSize: '1.2rem', textAlign: 'center', width: '100%', height: '40px', border: '1px solid #eee', borderRadius: '4px', outline: 'none', color: '#333'}} value={valor} onChange={(e) => setValor(e.target.value)} onBlur={handleBlur} placeholder="-" /> );
 });
 
 const safeParse = (data, fallback) => { if (typeof data === 'object' && data !== null) return data; try { return JSON.parse(data); } catch (e) { return fallback; } };
@@ -498,7 +498,7 @@ function App() {
       ipcRenderer.invoke('get-alumnos', grupoId),
       ipcRenderer.invoke('get-criterios', grupoId, targetCampo),
       ipcRenderer.invoke('get-notas-fecha', fecha),
-      ipcRenderer.invoke('get-evaluacion-automatica', grupoId)
+      ipcRenderer.invoke('get-evaluacion-automatica', grupoId, { inicio: fecha, fin: fecha })
     ]).then(([listaAlumnos, listaCriterios, listaNotas, automatica]) => {
       if (request !== cargaEvalRef.current || grupoId !== grupoEvaluacionRef.current) return;
       setAlumnos(listaAlumnos || []);
@@ -508,7 +508,7 @@ function App() {
       setCriterios(lista);
       setModoConfig(lista.length === 0);
       setEvaluacionAutomatica(automatica);
-      setNotas(mezclarNotasAutomaticas(listaNotas, automatica));
+      setNotas(mezclarNotasAutomaticas(listaNotas, automatica, fecha));
     }).catch(err => {
       console.error(err);
       if (request === cargaEvalRef.current && grupoId === grupoEvaluacionRef.current) showToast('❌ No se pudo cargar la evaluación.');
@@ -1010,7 +1010,7 @@ function App() {
           <div className="header-dosificador" style={{ flexShrink: 0, marginBottom: '12px' }}>
               <div style={{display:'flex', gap:15, alignItems:'center'}}>
                 <h2>📝 Evaluación ({grado}º Primaria)</h2>
-                <label style={{fontSize: 12}}>Notas manuales: <input type="date" title="Fecha de notas manuales. Los criterios QR abarcan todo el ciclo." value={fechaEval} onChange={e=>setFechaEval(e.target.value)} style={{fontSize:'1.1rem', padding:'5px', border:'2px solid #004aad', borderRadius:5}} /></label>
+                <label style={{fontSize: 12}}>Fecha de evaluación: <input type="date" title="Fecha de las calificaciones del día, tanto QR como manuales." value={fechaEval} onChange={e=>setFechaEval(e.target.value)} style={{fontSize:'1.1rem', padding:'5px', border:'2px solid #004aad', borderRadius:5}} /></label>
               </div>
               <div style={{display:'flex', gap:10}}>
                 <button
@@ -1045,7 +1045,7 @@ function App() {
               onDone={async () => {
                 await cargarEval(campoActual);
                 setShowModalImportarQR(false);
-                showToast('✅ Vínculo guardado. Las notas QR se actualizarán durante todo el ciclo.');
+                showToast('✅ Vínculo guardado. Cada nota QR se actualizará en la fecha de su registro.');
               }}
             />
           )}

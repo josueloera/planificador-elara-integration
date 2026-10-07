@@ -1,51 +1,44 @@
-// Los criterios vinculados muestran el acumulado del ciclo; las notas manuales siguen por fecha.
+// Las fuentes QR conservan la fecha original de cada trabajo y asistencia.
 export function rangoDelCiclo(config = {}) {
   const finales = Object.values(config.periodos || {}).map(p => p?.fin).filter(Boolean).sort();
   return { inicio: config.fechaInicioStr || '', fin: finales[finales.length - 1] || '' };
 }
 
-export function mezclarNotasAutomaticas(notas, automatica) {
-  const mapa = {};
+function notasConAutomaticas(notas, automatica) {
   const ids = new Set((automatica?.enlaces || []).map(e => e.criterio_id));
-  for (const nota of notas || []) {
-    if (!ids.has(nota.criterio_id)) mapa[`${nota.alumno_id}-${nota.criterio_id}`] = nota.valor;
+  return [
+    ...(notas || []).filter(n => !ids.has(n.criterio_id)),
+    ...(automatica?.notas || []).filter(n => ids.has(n.criterio_id) && n.fecha)
+  ];
+}
+
+export function mezclarNotasAutomaticas(notas, automatica, fecha) {
+  const mapa = {};
+  for (const nota of notasConAutomaticas(notas, automatica)) {
+    if (nota.fecha === fecha) mapa[`${nota.alumno_id}-${nota.criterio_id}`] = nota.valor;
   }
-  for (const nota of automatica?.notas || []) mapa[`${nota.alumno_id}-${nota.criterio_id}`] = nota.valor;
   return mapa;
 }
 
 export function promedioPeriodo(criterios, todasNotas, automatica, alumnoId) {
   const ids = new Set(criterios.map(c => c.id));
-  const notas = (todasNotas || []).filter(n => n.alumno_id === alumnoId && ids.has(n.criterio_id));
-  const enlaces = new Set((automatica?.enlaces || []).map(e => e.criterio_id));
-  // Con vínculos QR, cada criterio aporta su promedio del periodo una sola vez.
-  if (criterios.some(c => enlaces.has(c.id))) {
+  const porFecha = new Map();
+  for (const nota of notasConAutomaticas(todasNotas, automatica)) {
+    if (nota.alumno_id !== alumnoId || !ids.has(nota.criterio_id) || !nota.fecha) continue;
+    if (!porFecha.has(nota.fecha)) porFecha.set(nota.fecha, new Map());
+    porFecha.get(nota.fecha).set(nota.criterio_id, nota.valor);
+  }
+  const diarios = [];
+  for (const notasDia of porFecha.values()) {
     let suma = 0;
     let pesos = 0;
-    for (const c of criterios) {
-      const valores = enlaces.has(c.id)
-        ? (automatica.notas || []).filter(n => n.alumno_id === alumnoId && n.criterio_id === c.id).map(n => n.valor)
-        : notas.filter(n => n.criterio_id === c.id).map(n => n.valor);
-      const numericos = valores.filter(v => v != null && String(v).trim() !== '' && Number.isFinite(Number(v))).map(Number);
-      const peso = Number(c.porcentaje) || 0;
-      if (numericos.length && peso > 0) {
-        suma += numericos.reduce((a, b) => a + b, 0) / numericos.length * peso;
+    for (const criterio of criterios) {
+      const valor = notasDia.get(criterio.id);
+      const peso = Number(criterio.porcentaje) || 0;
+      if (valor != null && String(valor).trim() !== '' && Number.isFinite(Number(valor)) && peso > 0) {
+        suma += Number(valor) * peso;
         pesos += peso;
       }
-    }
-    return pesos ? Number((suma / pesos).toFixed(1)) : null;
-  }
-  // Conservar el cálculo diario de los grupos que todavía no han vinculado QR.
-  const fechas = [...new Set(notas.map(n => n.fecha))];
-  const diarios = [];
-  for (const fecha of fechas) {
-    let suma = 0;
-    let pesos = 0;
-    for (const c of criterios) {
-      const n = notas.find(n => n.fecha === fecha && n.criterio_id === c.id);
-      const valor = n ? parseFloat(n.valor) : NaN;
-      const peso = parseFloat(c.porcentaje) || 0;
-      if (!Number.isNaN(valor) && peso > 0) { suma += valor * peso; pesos += peso; }
     }
     if (pesos > 0) diarios.push(suma / pesos);
   }

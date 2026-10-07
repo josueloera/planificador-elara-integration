@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import PreferenciasElara from './PreferenciasElara';
 
 const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
 
@@ -168,6 +169,7 @@ Instrucciones:
                     <h3 style={{ color: '#2c3e50', borderBottom: '2px solid #ecf0f1', paddingBottom: '10px', marginBottom: '20px' }}>
                         Ajuste Manual
                     </h3>
+                    <PreferenciasElara />
                     
                     <div style={{ marginBottom: '20px' }}>
                         <div style={{ marginBottom: '15px' }}>

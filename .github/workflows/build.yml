@@ -55,6 +55,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Verify daily QR evaluation
+        run: npm run test:daily
       - name: Build Windows installer without publishing
         run: npm run dist -- --win --x64 --publish never --config.npmRebuild=false --config.beforePack=./scripts/prepare-sqlite.cjs
         env:
@@ -81,6 +83,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Verify daily QR evaluation
+        run: npm run test:daily
       - name: Build universal DMG and ZIP without publishing
         id: mac
         shell: bash

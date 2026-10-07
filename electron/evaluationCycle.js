@@ -1,3 +1,5 @@
+const { promediosDiarios } = require('./evaluationDaily');
+
 // Vinculación permanente de Control QR con Evaluación, usando la configuración existente.
 function registerCycleHandlers({
   ipcMain, all, run, transaction, normalizarCampo, trabajosDelGrupo,
@@ -61,29 +63,20 @@ function registerCycleHandlers({
         const campo = secundaria ? 'TODOS' : normalizarCampo(criterio.campo);
         if (!cacheTrabajos.has(campo)) {
           const trabajos = await trabajosDelGrupo(grupoId, inicio, fin, campo);
-          const promedios = new Map();
-          for (const t of trabajos) {
-            if (t.valor == null || String(t.valor).trim() === '' || !Number.isFinite(Number(t.valor))) continue;
-            const item = promedios.get(t.alumno_id) || { suma: 0, total: 0 };
-            item.suma += Number(t.valor);
-            item.total++;
-            promedios.set(t.alumno_id, item);
-          }
-          cacheTrabajos.set(campo, [...promedios].map(([alumno_id, p]) =>
-            ({ alumno_id, valor: Number((p.suma / p.total).toFixed(1)) })));
+          cacheTrabajos.set(campo, promediosDiarios(trabajos));
         }
         notas.push(...cacheTrabajos.get(campo).map(n => ({ ...n, criterio_id: criterio.id })));
       } else {
-        if (!asistencia) asistencia = await all(`SELECT al.id AS alumno_id, COUNT(a.id) AS total_dias,
+        if (!asistencia) asistencia = await all(`SELECT al.id AS alumno_id, a.fecha, COUNT(a.id) AS total_dias,
           SUM(CASE WHEN a.estado = 'PRESENTE' THEN 1 ELSE 0 END) AS presentes,
           SUM(CASE WHEN a.estado = 'RETARDO' THEN 1 ELSE 0 END) AS retardos,
           SUM(CASE WHEN a.estado = 'JUSTIFICADO' THEN 1 ELSE 0 END) AS justificados
           FROM alumnos al JOIN asistencia a ON a.alumno_id = al.id
           WHERE al.grupo_id = ? AND (a.grupo_id = ? OR a.grupo_id IS NULL)
-            AND a.fecha >= ? AND a.fecha <= ? GROUP BY al.id`, [grupoId, grupoId, inicio, fin]);
+            AND a.fecha >= ? AND a.fecha <= ? GROUP BY al.id, a.fecha ORDER BY a.fecha, al.id`, [grupoId, grupoId, inicio, fin]);
         for (const a of asistencia) {
           if (a.total_dias > 0) notas.push({
-            alumno_id: a.alumno_id, criterio_id: criterio.id,
+            alumno_id: a.alumno_id, fecha: a.fecha, criterio_id: criterio.id,
             valor: Number(((a.presentes + a.retardos * 0.5 + a.justificados * 0.8)
               / a.total_dias * enlace.escala).toFixed(1))
           });

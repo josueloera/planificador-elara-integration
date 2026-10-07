@@ -1,3 +1,18 @@
+# Planificador Docente 1.0.3
+
+- Opción para ocultar el icono de ELARA y sus consejos desde el propio asistente o desde Ajustes Ciclo. La preferencia se conserva al reiniciar.
+- Opción independiente para desactivar únicamente los consejos automáticos.
+- Las calificaciones de Control QR se muestran en la fecha de cada trabajo o asistencia. Cambiar de día ya no repite el promedio del ciclo escolar.
+- Promedios diarios separados por alumno, grupo y campo formativo en Primaria, y por materia o módulo en Secundaria.
+- Registrar, corregir o eliminar un registro QR actualiza únicamente su día. Los días sin registros quedan vacíos y los ceros sí cuentan.
+- Los reportes trimestrales combinan las notas QR y manuales de cada día con los porcentajes configurados y promedian los días evaluados.
+- Las importaciones de rangos conservan las fechas originales de los registros.
+- Pruebas de evaluación diaria ejecutadas antes de generar los instaladores de Windows y macOS.
+
+Los vínculos QR existentes siguen funcionando. Se conservan las bases de datos, calificaciones manuales y licencias de los docentes.
+
+Para volver a mostrar ELARA, abre **Ajustes Ciclo → Asistente ELARA → Mostrar el icono de ELARA**.
+
 # Planificador Docente 1.0.2
 
 - Vinculación permanente de trabajos y asistencia de Control QR con los criterios de Evaluación.

@@ -1,3 +1,5 @@
+const { promediosDiarios } = require('./evaluationDaily');
+
 // Comunicación entre Control QR y Evaluación. No modifica el esquema de SQLite.
 function normalizarCampo(value) {
   const text = String(value || 'LENGUAJES').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -56,15 +58,15 @@ function registerEvaluationHandlers({ ipcMain, db, variant = 'primaria', onChang
     if (rows.length !== ids.length) throw new Error('El criterio de destino no pertenece al grupo activo o ya fue eliminado.');
     return rows;
   };
-  const guardarNotas = async (rows, criterios, fecha) => {
+  const guardarNotas = async (rows, criterios) => {
     let count = 0;
     for (const row of rows) {
       for (const criterio of criterios) {
         const changed = await run('UPDATE notas SET valor = ? WHERE alumno_id = ? AND criterio_id = ? AND fecha = ?',
-          [row.valor, row.alumno_id, criterio.id, fecha]);
+          [row.valor, row.alumno_id, criterio.id, row.fecha]);
         if (!changed.changes) {
           await run('INSERT INTO notas (alumno_id, criterio_id, fecha, valor) VALUES (?, ?, ?, ?)',
-            [row.alumno_id, criterio.id, fecha, row.valor]);
+            [row.alumno_id, criterio.id, row.fecha, row.valor]);
         }
         count++;
       }
@@ -173,18 +175,8 @@ function registerEvaluationHandlers({ ipcMain, db, variant = 'primaria', onChang
         throw new Error('La materia de los trabajos no coincide con la del criterio de destino.');
       }
       const trabajos = await trabajosDelGrupo(grupoId, inicio, fin, secundaria ? 'TODOS' : destinoCampo);
-      const promedios = new Map();
-      for (const trabajo of trabajos) {
-        // En Secundaria cada grupo representa una materia, tutoría o taller.
-        // Sus trabajos anteriores pueden estar etiquetados con campos de Primaria.
-        if (trabajo.valor == null || trabajo.valor === '' || !Number.isFinite(Number(trabajo.valor))) continue;
-        const item = promedios.get(trabajo.alumno_id) || { suma: 0, total: 0 };
-        item.suma += Number(trabajo.valor);
-        item.total++;
-        promedios.set(trabajo.alumno_id, item);
-      }
-      const rows = [...promedios].map(([alumno_id, item]) => ({ alumno_id, valor: Number((item.suma / item.total).toFixed(1)) }));
-      return guardarNotas(rows, [criterio], fecha);
+      // La fecha de destino antigua no reemplaza la fecha original de cada trabajo.
+      return guardarNotas(promediosDiarios(trabajos), [criterio]);
     });
   });
 
@@ -199,18 +191,18 @@ function registerEvaluationHandlers({ ipcMain, db, variant = 'primaria', onChang
     if (escala <= 0 || !Number.isFinite(escala)) throw new Error('La escala de evaluación debe ser mayor que cero.');
     return transaction(async () => {
       const criterios = await criteriosDestino(criterio_id, grupoId);
-      const asistencia = await all(`SELECT al.id AS alumno_id, COUNT(a.id) AS total_dias,
+      const asistencia = await all(`SELECT al.id AS alumno_id, a.fecha, COUNT(a.id) AS total_dias,
         SUM(CASE WHEN a.estado = 'PRESENTE' THEN 1 ELSE 0 END) AS presentes,
         SUM(CASE WHEN a.estado = 'RETARDO' THEN 1 ELSE 0 END) AS retardos,
         SUM(CASE WHEN a.estado = 'JUSTIFICADO' THEN 1 ELSE 0 END) AS justificados
         FROM alumnos al JOIN asistencia a ON a.alumno_id = al.id
         WHERE al.grupo_id = ? AND (a.grupo_id = ? OR a.grupo_id IS NULL)
-          AND a.fecha >= ? AND a.fecha <= ? GROUP BY al.id`, [grupoId, grupoId, inicio, fin]);
+          AND a.fecha >= ? AND a.fecha <= ? GROUP BY al.id, a.fecha ORDER BY a.fecha, al.id`, [grupoId, grupoId, inicio, fin]);
       const rows = asistencia.filter(r => r.total_dias > 0).map(r => ({
-        alumno_id: r.alumno_id,
+        alumno_id: r.alumno_id, fecha: r.fecha,
         valor: Number(((r.presentes + r.retardos * 0.5 + r.justificados * 0.8) / r.total_dias * escala).toFixed(1))
       }));
-      return guardarNotas(rows, criterios, fecha);
+      return guardarNotas(rows, criterios);
     });
   });
   return { transaction };
