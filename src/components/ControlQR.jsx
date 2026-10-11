@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { QRCodeSVG } from 'qrcode.react';
 import { exportarAsistenciaExcel, exportarTrabajosExcel, calcularSemanaEscolar } from '../utils/excelExporter';
 import jsQR from 'jsqr';
+import { prepararFotoAlumno } from '../alumnoFoto.js';
 
 const CAMPOS_FORMATIVOS = [
   'LENGUAJES',
@@ -907,22 +908,18 @@ export default function ControlQR({
   };
 
   // Guardar/Actualizar Foto de perfil de un alumno desde los gafetes
-  const handleUploadFoto = (alumnoId, file) => {
+  const handleUploadFoto = async (alumnoId, file) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const base64Photo = e.target.result;
-      const perfilActual = perfilesMap[alumnoId] || {};
-      const perfilNuevo = { ...perfilActual, alumno_id: alumnoId, foto_url: base64Photo };
-      
-      setPerfilesMap(prev => ({ ...prev, [alumnoId]: perfilNuevo }));
-
-      if (ipcRenderer) {
-        await ipcRenderer.invoke('save-perfil', perfilNuevo);
-        if (showToast) showToast('📸 Foto actualizada para el gafete');
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      if (!ipcRenderer) throw new Error('Abre los gafetes desde la aplicación instalada.');
+      const foto_url = await prepararFotoAlumno(file);
+      const perfilNuevo = { ...(perfilesMap[alumnoId] || {}), alumno_id: alumnoId, foto_url };
+      const saved = await ipcRenderer.invoke('save-perfil', perfilNuevo);
+      setPerfilesMap(prev => ({ ...prev, [alumnoId]: { ...perfilNuevo, ...(typeof saved === 'object' ? saved : {}) } }));
+      if (showToast) showToast('📸 Foto guardada para el gafete y el perfil del alumno');
+    } catch (error) {
+      if (showToast) showToast('⚠️ ' + (error.message || 'No se pudo guardar la foto.'));
+    }
   };
 
   // Cálculo de promedios diarios por alumno

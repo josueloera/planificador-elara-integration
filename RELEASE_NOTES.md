@@ -1,3 +1,11 @@
+# Planificador Docente 1.0.5
+
+- ALUMNO muestra en Primaria únicamente el grupo activo de Mi Grupo, incluyendo bases antiguas; no incluye alumnos huérfanos ni de otros grupos. Secundaria conserva la búsqueda por grado entre sus grupos.
+- Fotos compartidas entre gafetes y ALUMNO, guardadas antes de confirmar la carga y adaptadas a 800 píxeles. Las fotos no guardadas por versiones antiguas deben volver a cargarse.
+- Seguimiento con calendario mensual: presente, retardo, falta, justificado y días sin registro. Cada día abre sus trabajos QR, evaluaciones e incidencias, respetando alumno, grupo y ciclo.
+- Exportación e impresión de ficha también incluyen los trabajos QR.
+- Se conservan las bases existentes. Windows instala la actualización al cerrar; macOS requiere instalación manual mientras no haya firma de Apple.
+
 # 1.0.4 — ALUMNO y expediente escolar
 
 Nuevo acceso ALUMNO con búsqueda, foto y ficha compartida con Bitácora, tutor y contacto de emergencia, calificaciones trimestrales con QR, expediente de documentos y seguimiento. Exportación ZIP e impresión de ficha completa. QR pasa a la parte superior junto a Evaluación.

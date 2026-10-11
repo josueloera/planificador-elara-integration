@@ -3,7 +3,7 @@ const PROFILE_FIELDS = ['curp','f_nacimiento','edad','peso','estatura','tipo_san
 const CATEGORIES = ['Comprobante de domicilio','INE del tutor','Acta de nacimiento','CURP','Examen trimestral','Trabajo','Otro'];
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
-function installStudentRecord({ db, ipcMain }) {
+function installStudentRecord({ db, ipcMain, variante = 'secundaria' }) {
   const all = (sql, params = []) => new Promise((resolve, reject) => db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows || [])));
   const run = (sql, params = []) => new Promise((resolve, reject) => db.run(sql, params, function (err) { err ? reject(err) : resolve({ id: this.lastID, changes: this.changes }); }));
   const validId = value => { const id = Number(value); if (!Number.isSafeInteger(id) || id < 1) throw new Error('Selecciona un alumno válido.'); return id; };
@@ -35,18 +35,26 @@ function installStudentRecord({ db, ipcMain }) {
     return { alumno_id: alumno.id, ...Object.fromEntries(PROFILE_FIELDS.map(field => [field, String(merged[field] ?? '')])) };
   }
   const handle = (name, fn) => ipcMain.handle(name, async (_event, ...args) => { await ready; return fn(...args); });
-  handle('alumno-buscar', () => all(`SELECT a.id, a.nombre, a.grupo_id, g.grado, g.seccion, g.disciplina_id, g.tipo, g.ciclo_escolar FROM alumnos a LEFT JOIN grupos_maestro g ON g.id = a.grupo_id ORDER BY a.nombre COLLATE NOCASE, g.grado, g.seccion, a.id`));
+  handle('alumno-buscar', (contexto = {}) => {
+    // Primaria usa exactamente el grupo de Mi Grupo, incluso en bases antiguas
+    // cuyo tipo quedó como Materia Regular. No se mezclan huérfanos ni otros grupos.
+    const grupo = Number(contexto?.grupo_id);
+    if (variante === 'primaria' && (!Number.isSafeInteger(grupo) || grupo < 1)) return [];
+    const filtro = variante === 'primaria' ? 'WHERE a.grupo_id = ?' : "WHERE LOWER(COALESCE(g.tipo,'')) <> 'primaria'";
+    return all(`SELECT a.id, a.nombre, a.grupo_id, g.grado, g.seccion, g.disciplina_id, g.tipo, g.ciclo_escolar FROM alumnos a JOIN grupos_maestro g ON g.id = a.grupo_id ${filtro} ORDER BY a.nombre COLLATE NOCASE, g.grado, g.seccion, a.id`, variante === 'primaria' ? [grupo] : []);
+  });
   handle('alumno-get-detalle', async id => {
     const alumno = await student(id);
-    const [perfiles, criterios, notas, incidencias, asistencia, archivos] = await Promise.all([
+    const [perfiles, criterios, notas, incidencias, asistencia, archivos, trabajos] = await Promise.all([
       all('SELECT * FROM perfil_alumno WHERE alumno_id = ?', [alumno.id]),
       alumno.grupo_id ? all('SELECT * FROM criterios WHERE grupo_id = ?', [alumno.grupo_id]) : Promise.resolve([]),
       all(`SELECT n.* FROM notas n JOIN criterios c ON c.id = n.criterio_id WHERE n.alumno_id = ? AND c.grupo_id = ? ORDER BY n.fecha DESC, n.id DESC`, [alumno.id, alumno.grupo_id]),
-      all('SELECT * FROM incidencias WHERE alumno_id = ? ORDER BY fecha DESC, id DESC', [alumno.id]),
+      all('SELECT * FROM incidencias WHERE alumno_id = ? AND (grupo_id = ? OR grupo_id IS NULL) ORDER BY fecha DESC, id DESC', [alumno.id, alumno.grupo_id]),
       all('SELECT * FROM asistencia WHERE alumno_id = ? AND (grupo_id = ? OR grupo_id IS NULL) ORDER BY fecha DESC', [alumno.id, alumno.grupo_id]),
-      documents(alumno.id)
+      documents(alumno.id),
+      all('SELECT * FROM trabajos_qr WHERE alumno_id = ? AND (grupo_id = ? OR grupo_id IS NULL) ORDER BY fecha DESC, id DESC', [alumno.id, alumno.grupo_id])
     ]);
-    return { alumno, perfil: perfiles[0] || {}, criterios, notas, incidencias, asistencia, archivos };
+    return { alumno, perfil: perfiles[0] || {}, criterios, notas, incidencias, asistencia, archivos, trabajos };
   });
   handle('alumno-save-perfil', savePerfil);
   handle('alumno-list-expediente', async id => documents((await student(id)).id));

@@ -3,3 +3,30 @@
 @media(max-width:850px){.alumno-screen{padding:16px}.alumno-layout{grid-template-columns:minmax(200px,240px) minmax(0,1fr);gap:16px}.alumno-search,.alumno-content{padding:16px}.alumno-fields{grid-template-columns:1fr}.alumno-documents li{align-items:stretch;flex-direction:column}.alumno-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.alumno-screen{padding:12px}.alumno-header{align-items:start;flex-direction:column;margin-bottom:16px;gap:12px}.alumno-header h1{font-size:26px}.alumno-layout{grid-template-columns:minmax(0,1fr);gap:16px}.alumno-search{position:static;max-height:none}.alumno-results{max-height:250px;overflow:auto}.alumno-content{min-height:300px}.alumno-identity{gap:12px}.alumno-identity h2{font-size:21px}.alumno-avatar{width:72px;height:90px}.alumno-actions button{flex:1;min-width:130px}}
 @media print{body:has(.alumno-screen),html:has(.alumno-screen){height:auto!important;overflow:visible!important}.elara-app-root:has(.alumno-screen){height:auto!important;overflow:visible!important}.alumno-screen{height:auto!important;overflow:visible!important;background:white!important;color:#172b42!important;padding:0!important}.alumno-screen .no-print,.alumno-header,.alumno-layout{display:none!important}.alumno-print{display:block!important;font-size:11pt}.alumno-print header{display:flex;align-items:center;gap:20px;border-bottom:2px solid #147768;padding-bottom:14px}.alumno-print .foto{width:90px;height:110px;object-fit:cover}.alumno-print h1{font-size:22pt}.alumno-print h2{font-size:15pt;margin-top:20px}.alumno-print dl{display:grid;grid-template-columns:170px 1fr;gap:7px}.alumno-print dt{font-weight:bold}.alumno-print dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}.alumno-print table{min-width:0!important;width:100%!important;font-size:10pt}.alumno-print td,.alumno-print th{padding:7px;border:1px solid #ccd4da}.alumno-print tr,.alumno-print section{break-inside:avoid}.android-toolbar,.clippy-container,.clippy-trigger{display:none!important}}
+
+.alumno-calendar-nav{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0}
+.alumno-calendar-nav label{max-width:240px;flex:1}.alumno-calendar-nav input{margin-bottom:0!important}
+.alumno-calendar-legend{display:flex;flex-wrap:wrap;gap:10px 16px;list-style:none;padding:0;margin:16px 0;font-size:12px}
+.alumno-calendar-legend li{display:flex;align-items:center;gap:5px}
+.alumno-state{display:inline-block;padding:4px 8px;border-radius:6px;font-size:13px;font-weight:600}
+.alumno-state.presente,.alumno-screen .alumno-day.presente{background:#dcf5e7;color:#185c37;border-color:#7bbf96}
+.alumno-state.retardo,.alumno-screen .alumno-day.retardo{background:#fff0bd;color:#714b00;border-color:#d6ae38}
+.alumno-state.falta,.alumno-screen .alumno-day.falta{background:#ffe1e1;color:#912727;border-color:#db9393}
+.alumno-state.justificado,.alumno-screen .alumno-day.justificado{background:#e0efff;color:#24558a;border-color:#8cb8e9}
+.alumno-state.sin-registro,.alumno-screen .alumno-day.sin-registro{background:#f3f5f7;color:#66778a;border-color:#dbe2e8}
+.alumno-screen .alumno-calendar{width:100%;min-width:0;table-layout:fixed;border-collapse:separate;border-spacing:3px;font-size:13px}
+.alumno-calendar caption{text-transform:capitalize;font-size:20px;font-weight:700;padding:8px 0 16px;text-align:left;color:#20334a}
+.alumno-screen .alumno-calendar th{background:transparent;text-align:center;border:0;padding:5px 0}
+.alumno-screen .alumno-calendar td{padding:0;border:0;vertical-align:top}
+.alumno-screen .alumno-day{width:100%;min-width:0;min-height:95px;height:100%;border:1px solid;padding:7px 4px;display:flex;flex-direction:column;align-items:center;gap:5px;border-radius:9px;line-height:1.2}
+.alumno-day-number{font-size:16px;font-weight:700}.alumno-day-state{font-size:12px}
+.alumno-day-markers{display:flex;flex-wrap:wrap;justify-content:center;gap:3px;font-size:10px;font-weight:600;min-height:15px}
+.alumno-incident-marker{border-bottom:2px solid #952f78}.alumno-day.sin-registro.weekend{background:#e9edf1}
+.alumno-calendar-key{margin-top:12px!important}.alumno-day:disabled{opacity:.35!important}
+.alumno-day-dialog{padding:0;border:1px solid #cedbe3;border-radius:16px;width:min(760px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(var(--app-height,100dvh) - 32px);color:#20334a;background:white;box-shadow:0 20px 70px #142b4655;overflow:auto}
+.alumno-day-dialog::backdrop{background:#142b4680}.alumno-day-detail{padding:24px}.alumno-day-detail header{display:flex;align-items:start;justify-content:space-between;gap:16px;margin-bottom:20px}
+.alumno-day-detail h2{font-size:21px;text-transform:capitalize;overflow-wrap:anywhere}.alumno-day-detail h3{margin-top:24px}.alumno-day-detail p{line-height:1.6}
+@media(max-width:620px){.alumno-calendar-nav{gap:8px}.alumno-screen .alumno-calendar{border-spacing:2px}.alumno-screen .alumno-day{min-height:80px;padding:6px 1px;border-radius:6px}.alumno-day-markers{font-size:9px;gap:2px}.alumno-calendar-legend{gap:8px;font-size:11px}.alumno-day-detail{padding:16px}.alumno-day-detail header{flex-direction:column;gap:8px}.alumno-day-detail h2{font-size:19px}}
+@media print{.alumno-day-dialog{display:none!important}}
+
+.alumno-day-dialog .alumno-table-scroll table{min-width:0;table-layout:fixed}.alumno-day-dialog td,.alumno-day-dialog th{overflow-wrap:anywhere}.alumno-day-dialog th:last-child{width:100px}

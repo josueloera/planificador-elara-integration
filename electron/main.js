@@ -909,4 +909,4 @@ ipcMain.handle('generate-ai-material', async (e, { prompt, systemPrompt }) => {
 });
 
 // Perfil y expediente: datos locales compartidos con Bitácora.
-const alumnoService = require('./studentRecord.js').installStudentRecord({ db, ipcMain });
+const alumnoService = require('./studentRecord.js').installStudentRecord({ db, ipcMain, variante: 'primaria' });

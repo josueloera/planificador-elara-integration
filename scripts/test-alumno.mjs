@@ -21,7 +21,7 @@ const toModule=source=>'data:text/javascript;base64,'+Buffer.from(source).toStri
 const evaluationUrl=toModule(readFileSync(path.join(root,'src/evaluacionAutomatica.js'),'utf8'));
 const utils=await import(toModule(readFileSync(path.join(root,'src/alumnoUtils.js'),'utf8').replace("'./evaluacionAutomatica.js'",JSON.stringify(evaluationUrl))));
 
-async function fixture(t, filename=':memory:') {
+async function fixture(t, filename=':memory:', variante='secundaria') {
   const sqlite=new DatabaseSync(filename);
   sqlite.exec(`CREATE TABLE IF NOT EXISTS grupos_maestro(id INTEGER PRIMARY KEY,grado INTEGER,seccion TEXT,disciplina_id INTEGER,tipo TEXT,ciclo_escolar TEXT);
     CREATE TABLE IF NOT EXISTS alumnos(id INTEGER PRIMARY KEY,nombre TEXT,grupo_id INTEGER);
@@ -29,12 +29,13 @@ async function fixture(t, filename=':memory:') {
     CREATE TABLE IF NOT EXISTS criterios(id INTEGER PRIMARY KEY,grupo_id INTEGER,campo TEXT,nombre TEXT,porcentaje REAL);
     CREATE TABLE IF NOT EXISTS notas(id INTEGER PRIMARY KEY,alumno_id INTEGER,criterio_id INTEGER,fecha TEXT,valor REAL);
     CREATE TABLE IF NOT EXISTS asistencia(id INTEGER PRIMARY KEY,alumno_id INTEGER,grupo_id INTEGER,fecha TEXT,estado TEXT);
-    CREATE TABLE IF NOT EXISTS incidencias(id INTEGER PRIMARY KEY,alumno_id INTEGER,fecha TEXT,situacion TEXT,medidas TEXT);`);
+    CREATE TABLE IF NOT EXISTS incidencias(id INTEGER PRIMARY KEY,alumno_id INTEGER,fecha TEXT,situacion TEXT,medidas TEXT,grupo_id INTEGER);
+    CREATE TABLE IF NOT EXISTS trabajos_qr(id INTEGER PRIMARY KEY,alumno_id INTEGER,campo TEXT,nombre_trabajo TEXT,fecha TEXT,valor REAL,grupo_id INTEGER);`);
   const db={
     all(sql,params,callback){try{const rows=sqlite.prepare(sql).all(...params);queueMicrotask(()=>callback(null,rows));}catch(e){queueMicrotask(()=>callback(e));}},
     run(sql,params,callback){try{const result=sqlite.prepare(sql).run(...params);queueMicrotask(()=>callback.call({lastID:Number(result.lastInsertRowid),changes:Number(result.changes)},null));}catch(e){queueMicrotask(()=>callback(e));}}
   };
-  const handlers=new Map();const api=installStudentRecord({db,ipcMain:{handle(name,fn){assert.ok(!handlers.has(name));handlers.set(name,fn);}}});
+  const handlers=new Map();const api=installStudentRecord({db,variante,ipcMain:{handle(name,fn){assert.ok(!handlers.has(name));handlers.set(name,fn);}}});
   await api.ready;
   const invoke=(name,...args)=>handlers.get(name)({},...args);
   t.after(()=>sqlite.close());
@@ -102,4 +103,67 @@ test('Persistencia de expediente y migración repetida tras reabrir SQLite',asyn
   const dir=mkdtempSync(path.join(tmpdir(),'alumno-persistencia-'));t.after(()=>removeTemporary(dir));const dbPath=path.join(dir,'user.sqlite');
   const first=await fixture({after:()=>{}},dbPath);await first.invoke('alumno-add-documento',1,file('persistente'));await first.api.savePerfil({alumno_id:1,nombre_tutor:'Persona tutora'});first.sqlite.close();
   const second=await fixture({after:()=>{}},dbPath);try{const data=await second.invoke('alumno-get-detalle',1);assert.equal(data.archivos.length,1);assert.equal(data.perfil.nombre_tutor,'Persona tutora');assert.equal(Buffer.from((await second.invoke('alumno-get-documento',1,data.archivos[0].id)).contenido,'base64').toString(),'persistente');}finally{second.sqlite.close();}
+});
+
+const seguimiento=await import(toModule(readFileSync(path.join(root,'src/alumnoSeguimiento.js'),'utf8')));
+
+test('Primaria lista los mismos 17 alumnos del grupo activo aunque tenga tipo antiguo',async t=>{
+  const f=await fixture(t,':memory:','primaria');
+  f.sqlite.exec("UPDATE grupos_maestro SET tipo='Materia Regular' WHERE id=1; INSERT INTO alumnos VALUES(90,'Huérfano',NULL),(91,'Grupo eliminado',99);");
+  for(let id=3;id<=18;id++)f.sqlite.prepare('INSERT INTO alumnos VALUES(?,?,1)').run(id,`Alumno ${id}`);
+  assert.equal((await f.invoke('alumno-buscar',{grupo_id:1})).length,17);
+  assert.ok((await f.invoke('alumno-buscar',{grupo_id:1})).every(a=>a.grupo_id===1));
+  assert.deepEqual(await f.invoke('alumno-buscar'),[]);
+  assert.deepEqual(await f.invoke('alumno-buscar',{grupo_id:'no válido'}),[]);
+});
+
+test('Secundaria busca entre grados válidos sin alumnos de Primaria ni grupos eliminados',async t=>{
+  const f=await fixture(t);
+  f.sqlite.exec("INSERT INTO grupos_maestro VALUES(3,3,'C',1,'Primaria','2026-2027'); INSERT INTO alumnos VALUES(3,'Primaria',3),(4,'Sin grupo',NULL),(5,'Grupo eliminado',99);");
+  assert.deepEqual((await f.invoke('alumno-buscar')).map(a=>a.id).sort(),[1,2]);
+});
+
+test('Seguimiento SQL devuelve trabajos e incidencias solo del alumno y su grupo',async t=>{
+  const f=await fixture(t);
+  f.sqlite.exec(`INSERT INTO trabajos_qr VALUES(1,1,'LENGUAJES','Lectura','2026-10-09',0,1),(2,2,'LENGUAJES','Otro alumno','2026-10-09',9,2),(3,1,'LENGUAJES','Otro grupo','2026-10-09',9,2),(4,1,'SABERES','Legado','2026-10-09',8,NULL);
+    INSERT INTO incidencias VALUES(1,1,'2026-10-09','Del alumno','Seguimiento',1),(2,1,'2026-10-09','Otro grupo','No mostrar',2),(3,2,'2026-10-09','Otro alumno','No mostrar',2),(4,1,'2026-10-09','Legado','Conservar',NULL);`);
+  const data=await f.invoke('alumno-get-detalle',1);
+  assert.deepEqual(data.trabajos.map(w=>w.id).sort(),[1,4]);
+  assert.deepEqual(data.incidencias.map(i=>i.id).sort(),[1,4]);
+  assert.equal(data.trabajos.find(w=>w.id===1).valor,0);
+});
+
+test('Calendario lunes-domingo conserva fechas locales, años bisiestos y cambio de año',()=>{
+  const febrero=seguimiento.diasDelMes('2028-02').flat().filter(Boolean);
+  assert.equal(febrero.length,29);assert.equal(febrero.at(-1),'2028-02-29');
+  assert.equal(seguimiento.diasDelMes('2026-08')[0][5],'2026-08-01');
+  assert.equal(seguimiento.moverMes('2026-12',1),'2027-01');
+  assert.equal(seguimiento.moverMes('2027-01',-1),'2026-12');
+  assert.equal(seguimiento.fechaEscolar('2026-10-09T23:59:00-06:00'),'2026-10-09');
+  assert.equal(seguimiento.fechaEscolar('2026-02-30'),'');
+  assert.deepEqual(seguimiento.diasDelMes('2026-13'),[]);
+});
+
+test('Calendario distingue falta/retardo y no convierte días sin registro en falta',()=>{
+  const data={alumno:{id:1,grupo_id:1},criterios:[{id:1,grupo_id:1,nombre:'Trabajo',campo:'LENGUAJES'}],
+    notas:[{alumno_id:1,criterio_id:1,fecha:'2026-10-08',valor:0}],
+    asistencia:[{id:1,alumno_id:1,grupo_id:1,fecha:'2026-10-09',estado:'FALTA'},{id:2,alumno_id:1,grupo_id:1,fecha:'2026-10-10',estado:'RETARDO'},{id:3,alumno_id:2,grupo_id:1,fecha:'2026-10-11',estado:'FALTA'}],
+    trabajos:[{id:1,alumno_id:1,grupo_id:1,fecha:'2026-10-09',valor:0},{id:2,alumno_id:1,grupo_id:2,fecha:'2026-10-09',valor:9},{id:3,alumno_id:1,grupo_id:1,fecha:'2025-10-09',valor:9}],
+    incidencias:[{id:1,alumno_id:1,grupo_id:1,fecha:'2026-10-09',situacion:'Revisión'},{id:2,alumno_id:2,grupo_id:1,fecha:'2026-10-09',situacion:'Ajena'}]};
+  const config={fechaInicioStr:'2026-08-31',periodos:{1:{inicio:'2026-08-31',fin:'2027-07-21'}}};
+  const result=seguimiento.crearSeguimiento(data,{},config);
+  assert.equal(result.dias['2026-10-09'].estado,'FALTA');assert.equal(result.dias['2026-10-10'].estado,'RETARDO');
+  assert.equal(result.dias['2026-10-08'].estado,'SIN_REGISTRO');assert.equal(result.dias['2026-10-08'].evaluaciones[0].valor,0);
+  assert.equal(result.dias['2026-10-09'].trabajos.length,1);assert.equal(result.dias['2026-10-09'].trabajos[0].valor,0);
+  assert.equal(result.dias['2026-10-09'].incidencias.length,1);
+  assert.equal(result.dias['2026-10-11'],undefined);assert.equal(result.dias['2025-10-09'],undefined);
+  assert.equal(seguimiento.mesInicial(result.limites,new Date(2030,0,1)),'2027-07');
+});
+
+test('Detalle diario sustituye criterios QR vinculados, conserva ceros y evita duplicar períodos',()=>{
+  const data={alumno:{id:1,grupo_id:1},criterios:[{id:1,grupo_id:1,nombre:'Trabajo',campo:'LENGUAJES'},{id:2,grupo_id:1,nombre:'Participación'}],notas:[{alumno_id:1,criterio_id:1,fecha:'2026-10-09',valor:10},{alumno_id:1,criterio_id:2,fecha:'2026-10-09',valor:7}]};
+  const auto={enlaces:[{criterio_id:1}],notas:[{alumno_id:1,criterio_id:1,fecha:'2026-10-09',valor:0},{alumno_id:2,criterio_id:1,fecha:'2026-10-09',valor:9},{alumno_id:1,criterio_id:99,fecha:'2026-10-09',valor:9}]};
+  const day=seguimiento.crearSeguimiento(data,{1:auto,2:auto},{}).dias['2026-10-09'];
+  assert.equal(day.evaluaciones.length,2);assert.equal(day.evaluaciones.find(n=>n.criterio_id===1).valor,0);
+  assert.equal(day.evaluaciones.find(n=>n.criterio_id===2).valor,7);
 });

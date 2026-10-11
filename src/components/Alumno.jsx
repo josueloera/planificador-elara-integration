@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIAS, CAMPOS_PERFIL, filtrarAlumnos, construirCalificaciones, htmlPerfil, nombreSeguro, leerArchivo, bytesBase64, crearZip, guardarArchivo } from '../alumnoUtils.js';
 import './Alumno.css';
+import AlumnoSeguimiento from './AlumnoSeguimiento.jsx';
+import { prepararFotoAlumno } from '../alumnoFoto.js';
 
 const TABS = [['perfil','Perfil'],['calificaciones','Calificaciones'],['expediente','Expediente'],['seguimiento','Seguimiento']];
 const fecha = value => value ? String(value).slice(0,10) : '—';
@@ -12,15 +14,15 @@ export default function Alumno({ ipcRenderer, variante = 'primaria', configCiclo
   const [calificaciones,setCalificaciones] = useState([]), [tab,setTab] = useState('perfil');
   const [cargando,setCargando] = useState(true), [cargandoDetalle,setCargandoDetalle] = useState(false), [ocupado,setOcupado] = useState(false);
   const [error,setError] = useState(''), [aviso,setAviso] = useState(''), [categoria,setCategoria] = useState(CATEGORIAS[0]);
-  const [editado,setEditado] = useState(false);
+  const [editado,setEditado] = useState(false), [automaticas,setAutomaticas] = useState({});
   const request = useRef(0), alive = useRef(true), fileInput = useRef(null);
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;request.current++;};},[]);
   useEffect(()=>{
-    let active=true;
+    let active=true;setCargando(true);setLista([]);
     async function load() {
       try {
         if(!ipcRenderer)throw new Error('Abre ALUMNO desde la aplicación instalada.');
-        const [alumnos,disciplinas] = await Promise.all([ipcRenderer.invoke('alumno-buscar'),ipcRenderer.invoke('get-disciplinas')]);
+        const [alumnos,disciplinas] = await Promise.all([ipcRenderer.invoke('alumno-buscar',{grupo_id:grupoActual?.id}),ipcRenderer.invoke('get-disciplinas')]);
         const names = new Map((disciplinas || []).map(d=>[Number(d.id),d.nombre]));
         if(active)setLista(alumnos.map(a=>({...a,grado:variante==='primaria' && Number(a.grupo_id)===Number(grupoActual?.id)?grupoActual?.grado:a.grado,seccion:variante==='primaria' && Number(a.grupo_id)===Number(grupoActual?.id)?grupoActual?.seccion || '':a.seccion,materia:variante==='primaria'?'Primaria':names.get(Number(a.disciplina_id)) || `Materia ${a.disciplina_id || ''}`})));
       } catch(e){if(active)setError(e.message);} finally {if(active)setCargando(false);}
@@ -32,13 +34,14 @@ export default function Alumno({ ipcRenderer, variante = 'primaria', configCiclo
   async function seleccionar(alumno) {
     if(ocupado)return;
     if(editado && !window.confirm('Hay cambios sin guardar. ¿Descartarlos y abrir otro alumno?'))return;
-    const current=++request.current;setSeleccion(alumno);setDetalle(null);setPerfil({});setCalificaciones([]);setEditado(false);setCargandoDetalle(true);setError('');setAviso('');setTab('perfil');
+    const current=++request.current;setSeleccion(alumno);setDetalle(null);setPerfil({});setCalificaciones([]);setAutomaticas({});setEditado(false);setCargandoDetalle(true);setError('');setAviso('');setTab('perfil');
     try {
       const data = await ipcRenderer.invoke('alumno-get-detalle',alumno.id);
       const periodos=configCiclo?.periodos || {};
       const auto=await Promise.all(Object.entries(periodos).map(async([id,p])=>[id,data.alumno.grupo_id ? await ipcRenderer.invoke('get-evaluacion-automatica',data.alumno.grupo_id,{inicio:p.inicio,fin:p.fin}) : null]));
       if(current!==request.current || !alive.current)return;
       data.alumno={...data.alumno,...alumno};setDetalle(data);setPerfil(data.perfil);
+      setAutomaticas(Object.fromEntries(auto));
       setCalificaciones(construirCalificaciones(data,Object.fromEntries(auto),periodos,variante,alumno.materia));
     } catch(e){if(current===request.current && alive.current)setError(e.message);} finally {if(current===request.current && alive.current)setCargandoDetalle(false);}
   }
@@ -56,11 +59,7 @@ export default function Alumno({ ipcRenderer, variante = 'primaria', configCiclo
   async function foto(event) {
     const file=event.target.files?.[0];event.target.value='';if(!file)return;
     await ejecutar(async()=>{
-      if(!/^image\/(jpeg|png|webp)$/.test(file.type))throw new Error('Selecciona una foto JPG, PNG o WebP.');
-      if(file.size>20*1024*1024)throw new Error('La foto original no puede superar 20 MB.');
-      const url=await leerArchivo(file);
-      const image=await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('No se pudo abrir la foto.'));img.src=url;});
-      const scale=Math.min(1,800/Math.max(image.width,image.height)),canvas=document.createElement('canvas');canvas.width=Math.round(image.width*scale);canvas.height=Math.round(image.height*scale);const context=canvas.getContext('2d');context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0,canvas.width,canvas.height);cambiar('foto_url',canvas.toDataURL('image/jpeg',0.85));setAviso('Foto preparada. Guarda el perfil para conservarla.');
+      cambiar('foto_url',await prepararFotoAlumno(file));setAviso('Foto preparada. Guarda el perfil para conservarla.');
     });
   }
   async function cargarArchivos(event) {
@@ -124,7 +123,7 @@ export default function Alumno({ ipcRenderer, variante = 'primaria', configCiclo
             {tab==='perfil' && <form onSubmit={guardarPerfil}><div className="alumno-photo-actions"><label className="alumno-file-label">Cambiar foto<input type="file" accept="image/jpeg,image/png,image/webp" disabled={ocupado} onChange={foto} /></label>{perfil.foto_url && <button type="button" disabled={ocupado} onClick={()=>cambiar('foto_url','')}>Quitar foto</button>}</div>{CAMPOS_PERFIL.map(([section,fields])=><fieldset key={section} disabled={ocupado}><legend>{section}</legend><div className="alumno-fields">{fields.map(([name,label,type])=><label key={name}>{label}{name==='otros_datos'?<textarea value={perfil[name] || ''} onChange={e=>cambiar(name,e.target.value)} rows={4}/>:<input type={type || 'text'} value={perfil[name] || ''} onChange={e=>cambiar(name,e.target.value)} />}</label>)}</div></fieldset>)}<button className="alumno-primary" type="submit" disabled={ocupado || !editado}>{ocupado?'Guardando…':'Guardar perfil'}</button></form>}
             {tab==='calificaciones' && <><h3>Calificaciones por trimestre</h3><p className="alumno-muted">{seleccion.materia} · {seleccion.grado || '—'}º {seleccion.seccion}. Incluye las evaluaciones vinculadas a Control QR.</p><div className="alumno-table-scroll"><table><thead><tr><th>Período</th><th>Campo / materia</th><th>Calificación</th></tr></thead><tbody>{calificaciones.map((c,i)=><tr key={i}><td>{c.periodo}<small>{c.inicio} a {c.fin}</small></td><td>{c.materia}</td><td><strong>{c.nota===null?'Sin calificación':c.nota.toFixed(1)}</strong></td></tr>)}</tbody></table></div>{!detalle.criterios.length && <p>No hay criterios de evaluación registrados para este grupo.</p>}</>}
             {tab==='expediente' && <><h3>Documentos del expediente</h3><p className="alumno-muted">PDF, imágenes y otros documentos. Máximo 20 MB por archivo. Se conserva una copia dentro de la aplicación.</p><div className="alumno-upload"><label>Categoría<select value={categoria} disabled={ocupado} onChange={e=>setCategoria(e.target.value)}>{CATEGORIAS.map(c=><option key={c}>{c}</option>)}</select></label><button className="alumno-primary" disabled={ocupado} onClick={()=>fileInput.current.click()}>+ Cargar archivos</button><input ref={fileInput} type="file" multiple hidden disabled={ocupado} onChange={cargarArchivos} /></div><ul className="alumno-documents">{detalle.archivos.map(file=><li key={file.id}><div><span className="alumno-category">{file.categoria}</span><strong>{file.nombre}</strong><small>{fecha(file.fecha)} · {peso(file.tamano)}</small></div><div className="alumno-document-actions"><button disabled={ocupado} onClick={()=>descargar(file)} aria-label={`Exportar ${file.nombre}`}>Exportar archivo</button><button className="alumno-danger" disabled={ocupado} onClick={()=>eliminar(file)} aria-label={`Eliminar ${file.nombre}`}>Eliminar</button></div></li>)}</ul>{!detalle.archivos.length && <div className="alumno-empty small"><p>El expediente aún no tiene archivos.</p><p>Elige una categoría y carga el primer documento.</p></div>}</>}
-            {tab==='seguimiento' && <><h3>Incidencias</h3>{detalle.incidencias.length?detalle.incidencias.map(i=><article className="alumno-incident" key={i.id}><strong>{fecha(i.fecha)} · {i.situacion}</strong><p>{i.medidas || 'Sin medidas registradas'}</p></article>):<p>Sin incidencias registradas.</p>}<h3>Asistencia</h3><div className="alumno-table-scroll"><table><thead><tr><th>Fecha</th><th>Estado</th></tr></thead><tbody>{detalle.asistencia.map(a=><tr key={a.id}><td>{fecha(a.fecha)}</td><td>{a.estado}</td></tr>)}</tbody></table></div>{!detalle.asistencia.length && <p>Sin asistencias registradas.</p>}</>}
+            {tab==='seguimiento' && <AlumnoSeguimiento key={seleccion.id} detalle={detalle} automaticas={automaticas} configCiclo={configCiclo} variante={variante} materia={seleccion.materia} />}
           </div>
         </>}
         {ocupado && <p className="alumno-busy" role="status">Procesando…</p>}

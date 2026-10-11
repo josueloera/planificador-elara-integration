@@ -13,3 +13,11 @@ El menú principal incluye ALUMNO en Primaria y Secundaria para Windows, macOS y
 Los documentos se almacenan en la base SQLite local, no como referencias al archivo original. Los respaldos completos de SQLite incluyen el expediente. Cada archivo admite hasta 20 MB; la exportación completa admite hasta 200 MB por operación. La lectura de contenido se fragmenta para ser compatible con CursorWindow de Android. La foto se adapta a un máximo de 800 píxeles.
 
 Las migraciones agregan una tabla e índices y columnas opcionales al perfil sin borrar registros anteriores. No se modifican bases reales durante las pruebas: se utilizan bases temporales.
+
+## Correcciones y calendario
+
+En Primaria, ALUMNO utiliza el mismo grupo activo que Mi Grupo; las bases antiguas pueden contener más registros, que no se borran. Secundaria busca entre sus grupos existentes por nombre y grado.
+
+La foto se comparte con Gafetes y se guarda en SQLite. En versiones anteriores a 1.0.4 las cargas de gafetes podían quedar solo en pantalla: las que no llegaron a guardarse deben cargarse otra vez.
+
+Seguimiento muestra un calendario del ciclo escolar. Verde: presente; amarillo: retardo; rojo: falta; azul: justificado; gris: sin registro. Un día sin registro no cuenta como falta. Al seleccionar un día se abre su asistencia, trabajos y calificaciones e incidencias; los ceros se conservan. Se puede navegar por mes y cerrar la ventana con Cerrar o Escape.
