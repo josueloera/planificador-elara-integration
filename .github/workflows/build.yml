@@ -57,8 +57,12 @@ jobs:
       - run: npm ci
       - name: Verify daily QR evaluation
         run: npm run test:daily
+      - name: Verify student profiles and records
+        run: npm run test:alumno
+      - name: Prepare clean distribution databases
+        run: node scripts/prepare-release-seeds.cjs
       - name: Build Windows installer without publishing
-        run: npm run dist -- --win --x64 --publish never --config.npmRebuild=false --config.beforePack=./scripts/prepare-sqlite.cjs
+        run: npm run dist -- --win --x64 --publish never --config=.release-seeds/build.json --config.npmRebuild=false --config.beforePack=./scripts/prepare-sqlite.cjs
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - run: node scripts/verify-release.cjs release win
@@ -85,6 +89,10 @@ jobs:
       - run: npm ci
       - name: Verify daily QR evaluation
         run: npm run test:daily
+      - name: Verify student profiles and records
+        run: npm run test:alumno
+      - name: Prepare clean distribution databases
+        run: node scripts/prepare-release-seeds.cjs
       - name: Build universal DMG and ZIP without publishing
         id: mac
         shell: bash
@@ -94,12 +102,12 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "$CSC_LINK" ]; then
-            npm run dist:mac -- --publish never --config.npmRebuild=false --config.beforePack=./scripts/prepare-sqlite.cjs --config.forceCodeSigning=true
+            npm run dist:mac -- --publish never --config=.release-seeds/build.json --config.npmRebuild=false --config.beforePack=./scripts/prepare-sqlite.cjs --config.forceCodeSigning=true
             echo 'signed=true' >> "$GITHUB_OUTPUT"
           else
             unset CSC_LINK CSC_KEY_PASSWORD
             export CSC_IDENTITY_AUTO_DISCOVERY=false
-            npm run dist:mac -- --publish never --config.npmRebuild=false --config.beforePack=./scripts/prepare-sqlite.cjs
+            npm run dist:mac -- --publish never --config=.release-seeds/build.json --config.npmRebuild=false --config.beforePack=./scripts/prepare-sqlite.cjs
             echo 'signed=false' >> "$GITHUB_OUTPUT"
             echo '::warning::macOS installers are unsigned; automatic installation requires code signing.'
           fi
@@ -118,8 +126,11 @@ jobs:
             lipo "$RESOURCES/app-x64/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch x86_64
             lipo "$RESOURCES/app-arm64/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch arm64
             test -f "$RESOURCES/app-x64/electron/evaluationQr.js"
+            test -f "$RESOURCES/app-x64/electron/studentRecord.js"
             test -f "$RESOURCES/app-arm64/electron/evaluationQr.js"
+            test -f "$RESOURCES/app-arm64/electron/studentRecord.js"
           else
+            test -f "$RESOURCES/app/electron/studentRecord.js"
             lipo "$RESOURCES/app/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch x86_64 arm64
           fi
           if [ "$MAC_SIGNED" = 'true' ]; then

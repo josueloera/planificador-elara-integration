@@ -1,3 +1,11 @@
+# 1.0.4 — ALUMNO y expediente escolar
+
+Nuevo acceso ALUMNO con búsqueda, foto y ficha compartida con Bitácora, tutor y contacto de emergencia, calificaciones trimestrales con QR, expediente de documentos y seguimiento. Exportación ZIP e impresión de ficha completa. QR pasa a la parte superior junto a Evaluación.
+
+Los documentos se almacenan en SQLite. La migración conserva los datos anteriores; los homónimos permanecen separados por grupo/materia. Véase ALUMNO.md para límites y uso.
+
+Actualización estable para Windows y macOS, publicada con sus archivos de actualización y verificación de integridad. Windows descarga la actualización y la instala al cerrar la aplicación. En macOS, la instalación automática requiere la firma de Apple; sin ella, se utiliza el instalador manual.
+
 # Planificador Docente 1.0.3
 
 - Opción para ocultar el icono de ELARA y sus consejos desde el propio asistente o desde Ajustes Ciclo. La preferencia se conserva al reiniciar.

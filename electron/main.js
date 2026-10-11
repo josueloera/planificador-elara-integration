@@ -509,15 +509,7 @@ ipcMain.handle('check-hay-datos', async () => new Promise(r => db.get("SELECT co
 
 // -- PERFIL --
 ipcMain.handle('get-perfil', async (e, id) => new Promise(r => db.get("SELECT * FROM perfil_alumno WHERE alumno_id = ?", [id], (err, row) => r(row || {}))));
-ipcMain.handle('save-perfil', async (e, data) => {
-  return new Promise(r => {
-    const { alumno_id, curp, f_nacimiento, edad, peso, estatura, tipo_sangre, alergias, servicio_medico, direccion, nombre_mama, tel_mama, nombre_papa, tel_papa, otros_datos } = data;
-    db.run("DELETE FROM perfil_alumno WHERE alumno_id = ?", [alumno_id], () => {
-      db.run(`INSERT INTO perfil_alumno (alumno_id, curp, f_nacimiento, edad, peso, estatura, tipo_sangre, alergias, servicio_medico, direccion, nombre_mama, tel_mama, nombre_papa, tel_papa, otros_datos) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [alumno_id, curp, f_nacimiento, edad, peso, estatura, tipo_sangre, alergias, servicio_medico, direccion, nombre_mama, tel_mama, nombre_papa, tel_papa, otros_datos], () => r(true));
-    });
-  });
-});
+ipcMain.handle('save-perfil', (_event, data) => alumnoService.savePerfil(data));
 ipcMain.handle('get-incidencias', async (e, id) => new Promise(r => db.all("SELECT * FROM incidencias WHERE alumno_id = ?", [id], (err, rows) => r(rows || []))));
 ipcMain.handle('save-incidencia', async (e, d) => new Promise(r => db.run("INSERT INTO incidencias (alumno_id, fecha, situacion, medidas) VALUES (?,?,?,?)", [d.alumno_id, d.fecha, d.situacion, d.medidas], () => r(true))));
 
@@ -915,3 +907,6 @@ ipcMain.handle('generate-ai-material', async (e, { prompt, systemPrompt }) => {
     return { success: false, error: err.message || 'Error de conexión' };
   }
 });
+
+// Perfil y expediente: datos locales compartidos con Bitácora.
+const alumnoService = require('./studentRecord.js').installStudentRecord({ db, ipcMain });
