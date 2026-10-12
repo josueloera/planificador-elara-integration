@@ -129,7 +129,27 @@ export default function ControlQR({
   const [creandoNuevaActividad, setCreandoNuevaActividad] = useState(false);
   const [nuevoNombreActividad, setNuevoNombreActividad] = useState('');
   const [nuevoCampoActividad, setNuevoCampoActividad] = useState(camposDisponibles[0]);
+  const [nuevoTipoActividad, setNuevoTipoActividad] = useState('GENERAL');
+  const [alumnosAdecuacionActividad, setAlumnosAdecuacionActividad] = useState([]);
+  const [destinatariosActividad, setDestinatariosActividad] = useState([]);
+  const [cargandoAlumnosAdecuacion, setCargandoAlumnosAdecuacion] = useState(false);
   const [editandoActividad, setEditandoActividad] = useState(null); // { nombreOriginal, nombre, campo }
+
+  useEffect(() => {
+    if (!creandoNuevaActividad || !grupoActual?.id || !ipcRenderer) return undefined;
+    let vigente = true;
+    setCargandoAlumnosAdecuacion(true);
+    ipcRenderer.invoke('get-qr-adecuaciones', grupoActual.id, ciclo.inicio, ciclo.fin, nuevoCampoActividad)
+      .then(ids => {
+        if (!vigente) return;
+        const seleccionados = Array.isArray(ids) ? ids : [];
+        setAlumnosAdecuacionActividad(seleccionados);
+        setDestinatariosActividad(seleccionados);
+      })
+      .catch(error => { if (vigente) showToast?.(`No se pudieron cargar los alumnos NEE: ${error.message}`); })
+      .finally(() => { if (vigente) setCargandoAlumnosAdecuacion(false); });
+    return () => { vigente = false; };
+  }, [creandoNuevaActividad, grupoActual?.id, ciclo.inicio, ciclo.fin, nuevoCampoActividad, ipcRenderer]);
 
   // Historial en vivo y datos del día
   const [historialEscaneos, setHistorialEscaneos] = useState([]);
@@ -413,6 +433,7 @@ export default function ControlQR({
     const num = actividadesDelDia.length + 1;
     setNuevoNombreActividad(`Tarea ${num}`);
     setNuevoCampoActividad(campoSeleccionado || camposDisponibles[0]);
+    setNuevoTipoActividad('GENERAL');
     setCreandoNuevaActividad(true);
     setEditandoActividad(null);
   };
@@ -426,7 +447,16 @@ export default function ControlQR({
     }
     try {
       if (actividadesDelDia.some(a => a.nombre === nomTrim)) throw new Error('Ya existe una actividad con ese nombre.');
-      await crearActividadGeneral(nomTrim, nuevoCampoActividad);
+      if (nuevoTipoActividad === 'NEE') {
+        const alumnoIds = destinatariosActividad.filter(id => alumnosAdecuacionActividad.some(neeId => String(neeId) === String(id)));
+        if (cargandoAlumnosAdecuacion) throw new Error('Espera a que termine la carga de alumnos NEE.');
+        if (!alumnoIds.length) throw new Error('Selecciona al menos un alumno NEE para esta actividad.');
+        await ipcRenderer.invoke('save-qr-actividad', grupoActual.id, fechaActualQR, {
+          nombre: nomTrim, campo: nuevoCampoActividad, modo: 'ADAPTADA', alumno_ids: alumnoIds
+        });
+      } else {
+        await crearActividadGeneral(nomTrim, nuevoCampoActividad);
+      }
       await cargarAsignaciones();
     } catch (e) { showToast?.(e.message); return; }
     guardarActividadCreada(nomTrim, nuevoCampoActividad);
@@ -1084,7 +1114,7 @@ export default function ControlQR({
       `}</style>
 
       {/* HEADER PRINCIPAL DE CONTROL QR */}
-      <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff', padding: '16px 24px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', marginBottom: '20px' }}>
+      <div className="no-print" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '14px', backgroundColor: '#ffffff', padding: '16px 24px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', marginBottom: '20px' }}>
         <div>
           <h2 style={{ margin: 0, color: '#1a202c', display: 'flex', alignItems: 'center', gap: '10px' }}>
             📱 Control de Asistencia y Trabajos por Código QR
@@ -1137,7 +1167,7 @@ export default function ControlQR({
         </div>
 
         {/* PESTAÑAS DE NAVEGACIÓN QR */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', width: '100%', marginTop: '2px' }}>
           {[
             { id: 'ESCANER', label: '📷 Escáner y Móvil' },
             { id: 'ASISTENCIA', label: '📋 Lista de Asistencia' },
@@ -1379,7 +1409,36 @@ export default function ControlQR({
                         </button>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr auto', gap: '10px', alignItems: 'flex-end' }}>
+                      <div role="tablist" aria-label="Destinatarios de la actividad" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '12px 0' }}>
+                        {[
+                          { id: 'GENERAL', label: '👥 Clase en general' },
+                          { id: 'NEE', label: '🧩 Alumnos NEE' }
+                        ].map(tab => (
+                          <button key={tab.id} type="button" role="tab" aria-selected={nuevoTipoActividad === tab.id}
+                            onClick={() => setNuevoTipoActividad(tab.id)}
+                            style={{ padding: '9px 14px', borderRadius: 8, border: nuevoTipoActividad === tab.id ? '2px solid #2b6cb0' : '1px solid #cbd5e0', background: nuevoTipoActividad === tab.id ? '#ebf8ff' : '#f7fafc', color: nuevoTipoActividad === tab.id ? '#1a4f7a' : '#4a5568', fontWeight: 700, cursor: 'pointer' }}>
+                            {tab.label}
+                          </button>
+                        ))}
+                      </div>
+                      {nuevoTipoActividad === 'NEE' ? (
+                        <fieldset disabled={cargandoAlumnosAdecuacion} style={{ border: '1px solid #cbd5e0', borderRadius: 8, padding: 12, margin: '0 0 12px' }}>
+                          <legend style={{ padding: '0 6px', fontWeight: 700 }}>Alumnos NEE destinatarios</legend>
+                          {cargandoAlumnosAdecuacion ? <p style={{ margin: 0 }}>Cargando alumnos con adecuaciones...</p> : alumnosAdecuacionActividad.length ? (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
+                              {alumnos.filter(alumno => alumnosAdecuacionActividad.some(id => String(id) === String(alumno.id))).map(alumno => (
+                                <label key={alumno.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 6 }}>
+                                  <input type="checkbox" checked={destinatariosActividad.some(id => String(id) === String(alumno.id))}
+                                    onChange={() => setDestinatariosActividad(actual => actual.some(id => String(id) === String(alumno.id)) ? actual.filter(id => String(id) !== String(alumno.id)) : [...actual, alumno.id])} />
+                                  {alumno.nombre}
+                                </label>
+                              ))}
+                            </div>
+                          ) : <p style={{ margin: 0 }}>Todavía no hay alumnos marcados. Agrégalos en Adecuaciones curriculares.</p>}
+                        </fieldset>
+                      ) : <p style={{ margin: '0 0 12px', color: '#52687d', fontSize: 12 }}>La actividad se asignará al grupo general según la configuración de adecuaciones de esta materia.</p>}
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px', alignItems: 'end' }}>
                         <div>
                           <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#744210', marginBottom: '4px' }}>
                             Nombre de la Actividad / Tarea:

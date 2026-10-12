@@ -1,3 +1,12 @@
+# Planificador Docente 1.0.8
+
+- Control QR: al crear una actividad desde Modo de Captura, se puede asignar a la clase en general o a alumnos NEE seleccionados.
+- Las actividades para alumnos NEE conservan sus destinatarios individuales para la captura y calificación.
+- La navegación de Control QR ocupa una fila separada del título y la fecha, con botones que se acomodan al ancho de pantalla.
+- Se mantienen las asignaciones curriculares por grupo, materia y ciclo escolar.
+
+Windows instala la actualización al cerrar después de descargarla. macOS requiere instalación manual.
+
 # Planificador Docente 1.0.7
 
 - Control QR incorpora Adecuaciones curriculares: selección de alumnos por grupo, materia y ciclo escolar.
