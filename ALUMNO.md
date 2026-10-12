@@ -21,3 +21,9 @@ En Primaria, ALUMNO utiliza el mismo grupo activo que Mi Grupo; las bases antigu
 La foto se comparte con Gafetes y se guarda en SQLite. En versiones anteriores a 1.0.4 las cargas de gafetes podían quedar solo en pantalla: las que no llegaron a guardarse deben cargarse otra vez.
 
 Seguimiento muestra un calendario del ciclo escolar. Verde: presente; amarillo: retardo; rojo: falta; azul: justificado; gris: sin registro. Un día sin registro no cuenta como falta. Al seleccionar un día se abre su asistencia, trabajos y calificaciones e incidencias; los ceros se conservan. Se puede navegar por mes y cerrar la ventana con Cerrar o Escape.
+
+## Tablas por trimestre y materia
+
+Calificaciones organiza las materias en filas y los trimestres configurados en columnas. La impresión y Perfil.html del expediente usan esa misma distribución. Las notas pendientes se muestran como Sin calificación y los ceros se conservan.
+
+En Seguimiento, al abrir un día los trabajos se separan por materia. Evaluaciones del día muestra una tabla de materias, criterios evaluados y promedios. Al pulsar una materia se despliegan los criterios de ese día con sus porcentajes y calificaciones; volver a pulsarla los oculta. El promedio conserva las mismas ponderaciones que Evaluación y no mezcla alumnos, grupos ni ciclos.

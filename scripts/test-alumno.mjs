@@ -167,3 +167,41 @@ test('Detalle diario sustituye criterios QR vinculados, conserva ceros y evita d
   assert.equal(day.evaluaciones.length,2);assert.equal(day.evaluaciones.find(n=>n.criterio_id===1).valor,0);
   assert.equal(day.evaluaciones.find(n=>n.criterio_id===2).valor,7);
 });
+
+test('Tabla trimestral conserva materias, fechas, ceros y ausencia de nota sin mezclar trimestres con el mismo nombre',()=>{
+  const notas=[
+    {periodoId:'2',periodo:'Trimestre',inicio:'2027-01-01',fin:'2027-03-31',campo:'LENGUAJES',materia:'Lenguajes',nota:9},
+    {periodoId:'1',periodo:'Trimestre',inicio:'2026-08-31',fin:'2026-11-30',campo:'LENGUAJES',materia:'Lenguajes',nota:0},
+    {periodoId:'1',periodo:'Trimestre',inicio:'2026-08-31',fin:'2026-11-30',campo:'SABERES',materia:'Saberes',nota:8},
+    {periodoId:'3',periodo:'Tercero',inicio:'2027-04-01',fin:'2027-07-21',campo:'LENGUAJES',materia:'Lenguajes',nota:null}
+  ];
+  const tabla=utils.crearTablaCalificaciones(notas);
+  assert.deepEqual(tabla.periodos.map(p=>p.id),['1','2','3']);
+  assert.deepEqual(tabla.materias.map(m=>m.notas),[[0,9,null],[8,null,null]]);
+  assert.deepEqual(utils.crearTablaCalificaciones([]),{periodos:[],materias:[]});
+  const html=utils.htmlPerfil({alumno:{nombre:'Alumno'},perfil:{},calificaciones:notas,archivos:[]});
+  assert.ok(html.includes('<th>Campo / materia</th><th>Trimestre</th><th>Trimestre</th><th>Tercero</th>'));
+  assert.ok(html.includes('<td>Lenguajes</td><td>0.0</td><td>9.0</td><td>Sin calificación</td>'));
+});
+
+test('Evaluaciones del día agrupan campos equivalentes y ponderan solo criterios con nota válida, conservando cero',()=>{
+  const crear=(id,campo,porcentaje,valor)=>({alumno_id:1,criterio_id:id,fecha:'2026-10-09',valor,criterio:{id,campo,porcentaje,nombre:`Criterio ${id}`}});
+  const notas=[crear(1,'LENGUAJES',25,0),crear(2,'LENGUAJES',75,8),crear(3,'LENGUAJES',100,''),crear(4,'LENGUAJES',0,10),
+    crear(5,'SABERES',40,5),crear(6,'Saberes y pensamiento científico',60,10),crear(7,'ÉTICA, NATURALEZA Y SOCIEDADES',100,null)];
+  const grupos=utils.agruparEvaluacionesPorMateria(notas,'primaria','Primaria');
+  assert.deepEqual(grupos.map(g=>g.id),['LENGUAJES','SABERES','ETICA']);
+  assert.equal(grupos[0].promedio,6);assert.equal(grupos[0].evaluados,3);
+  assert.equal(grupos[1].registros.length,2);assert.equal(grupos[1].promedio,8);
+  assert.equal(grupos[2].promedio,null);assert.equal(grupos[2].evaluados,0);
+  const secundaria=utils.agruparEvaluacionesPorMateria(notas.slice(0,2),'secundaria','Matemáticas');
+  assert.equal(secundaria.length,1);assert.equal(secundaria[0].nombre,'Matemáticas');assert.equal(secundaria[0].promedio,6);
+});
+
+test('Trabajos diarios separan materias, reconocen nombres completos y conservan registros sin campo',()=>{
+  const trabajos=[{id:1,campo:'SABERES',valor:0},{id:2,campo:'Saberes y pensamiento científico',valor:8},{id:3,campo:'LENGUAJES',valor:null},{id:4,campo:null,valor:7}];
+  const grupos=utils.agruparTrabajosPorMateria(trabajos,'primaria','Primaria');
+  assert.deepEqual(grupos.map(g=>g.registros.map(t=>t.id)),[[3],[1,2],[4]]);
+  assert.equal(grupos[1].registros[0].valor,0);assert.equal(grupos[2].nombre,'Sin campo / materia');
+  assert.equal(utils.agruparTrabajosPorMateria(trabajos,'secundaria','Español')[0].registros.length,4);
+  assert.deepEqual(utils.agruparTrabajosPorMateria([],'primaria'),[]);
+});

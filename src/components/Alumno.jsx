@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CATEGORIAS, CAMPOS_PERFIL, filtrarAlumnos, construirCalificaciones, htmlPerfil, nombreSeguro, leerArchivo, bytesBase64, crearZip, guardarArchivo } from '../alumnoUtils.js';
+import { CATEGORIAS, CAMPOS_PERFIL, filtrarAlumnos, construirCalificaciones, crearTablaCalificaciones, htmlPerfil, nombreSeguro, leerArchivo, bytesBase64, crearZip, guardarArchivo } from '../alumnoUtils.js';
 import './Alumno.css';
 import AlumnoSeguimiento from './AlumnoSeguimiento.jsx';
 import { prepararFotoAlumno } from '../alumnoFoto.js';
@@ -31,6 +31,7 @@ export default function Alumno({ ipcRenderer, variante = 'primaria', configCiclo
   },[ipcRenderer,variante,grupoActual?.id,grupoActual?.grado,grupoActual?.seccion]);
   const encontrados = useMemo(()=>filtrarAlumnos(lista,busqueda,grado),[lista,busqueda,grado]);
   const grados = useMemo(()=>[...new Set(lista.map(a=>a.grado).filter(Boolean))].sort((a,b)=>a-b),[lista]);
+  const tablaCalificaciones = useMemo(() => crearTablaCalificaciones(calificaciones), [calificaciones]);
   async function seleccionar(alumno) {
     if(ocupado)return;
     if(editado && !window.confirm('Hay cambios sin guardar. ¿Descartarlos y abrir otro alumno?'))return;
@@ -121,7 +122,17 @@ export default function Alumno({ ipcRenderer, variante = 'primaria', configCiclo
           <nav className="alumno-tabs" role="tablist" aria-label="Secciones del alumno">{TABS.map(([id,label])=><button key={id} id={`alumno-tab-${id}`} role="tab" aria-selected={tab===id} aria-controls={`alumno-panel-${id}`} className={tab===id?'active':''} onClick={()=>setTab(id)}>{label}{id==='expediente'?` (${detalle.archivos.length})`:''}</button>)}</nav>
           <div role="tabpanel" id={`alumno-panel-${tab}`} aria-labelledby={`alumno-tab-${tab}`} className="alumno-panel">
             {tab==='perfil' && <form onSubmit={guardarPerfil}><div className="alumno-photo-actions"><label className="alumno-file-label">Cambiar foto<input type="file" accept="image/jpeg,image/png,image/webp" disabled={ocupado} onChange={foto} /></label>{perfil.foto_url && <button type="button" disabled={ocupado} onClick={()=>cambiar('foto_url','')}>Quitar foto</button>}</div>{CAMPOS_PERFIL.map(([section,fields])=><fieldset key={section} disabled={ocupado}><legend>{section}</legend><div className="alumno-fields">{fields.map(([name,label,type])=><label key={name}>{label}{name==='otros_datos'?<textarea value={perfil[name] || ''} onChange={e=>cambiar(name,e.target.value)} rows={4}/>:<input type={type || 'text'} value={perfil[name] || ''} onChange={e=>cambiar(name,e.target.value)} />}</label>)}</div></fieldset>)}<button className="alumno-primary" type="submit" disabled={ocupado || !editado}>{ocupado?'Guardando…':'Guardar perfil'}</button></form>}
-            {tab==='calificaciones' && <><h3>Calificaciones por trimestre</h3><p className="alumno-muted">{seleccion.materia} · {seleccion.grado || '—'}º {seleccion.seccion}. Incluye las evaluaciones vinculadas a Control QR.</p><div className="alumno-table-scroll"><table><thead><tr><th>Período</th><th>Campo / materia</th><th>Calificación</th></tr></thead><tbody>{calificaciones.map((c,i)=><tr key={i}><td>{c.periodo}<small>{c.inicio} a {c.fin}</small></td><td>{c.materia}</td><td><strong>{c.nota===null?'Sin calificación':c.nota.toFixed(1)}</strong></td></tr>)}</tbody></table></div>{!detalle.criterios.length && <p>No hay criterios de evaluación registrados para este grupo.</p>}</>}
+            {tab==='calificaciones' && <>
+              <h3>Calificaciones por trimestre</h3>
+              <p className="alumno-muted">{seleccion.materia} · {seleccion.grado || '—'}º {seleccion.seccion}. Incluye las evaluaciones vinculadas a Control QR.</p>
+              {tablaCalificaciones.periodos.length ? <div className="alumno-table-scroll">
+                <table className="alumno-grades-table" aria-label="Calificaciones por materia y trimestre">
+                  <thead><tr><th scope="col">Campo / materia</th>{tablaCalificaciones.periodos.map(p => <th scope="col" key={p.id}>{p.nombre}<small>{p.inicio} a {p.fin}</small></th>)}</tr></thead>
+                  <tbody>{tablaCalificaciones.materias.map(m => <tr key={m.id}><th scope="row">{m.nombre}</th>{m.notas.map((nota, i) => <td key={tablaCalificaciones.periodos[i].id}><strong>{nota == null ? 'Sin calificación' : nota.toFixed(1)}</strong></td>)}</tr>)}</tbody>
+                </table>
+              </div> : <p>Configura los trimestres del ciclo escolar para consultar las calificaciones.</p>}
+              {!detalle.criterios.length && <p>No hay criterios de evaluación registrados para este grupo.</p>}
+            </>}
             {tab==='expediente' && <><h3>Documentos del expediente</h3><p className="alumno-muted">PDF, imágenes y otros documentos. Máximo 20 MB por archivo. Se conserva una copia dentro de la aplicación.</p><div className="alumno-upload"><label>Categoría<select value={categoria} disabled={ocupado} onChange={e=>setCategoria(e.target.value)}>{CATEGORIAS.map(c=><option key={c}>{c}</option>)}</select></label><button className="alumno-primary" disabled={ocupado} onClick={()=>fileInput.current.click()}>+ Cargar archivos</button><input ref={fileInput} type="file" multiple hidden disabled={ocupado} onChange={cargarArchivos} /></div><ul className="alumno-documents">{detalle.archivos.map(file=><li key={file.id}><div><span className="alumno-category">{file.categoria}</span><strong>{file.nombre}</strong><small>{fecha(file.fecha)} · {peso(file.tamano)}</small></div><div className="alumno-document-actions"><button disabled={ocupado} onClick={()=>descargar(file)} aria-label={`Exportar ${file.nombre}`}>Exportar archivo</button><button className="alumno-danger" disabled={ocupado} onClick={()=>eliminar(file)} aria-label={`Eliminar ${file.nombre}`}>Eliminar</button></div></li>)}</ul>{!detalle.archivos.length && <div className="alumno-empty small"><p>El expediente aún no tiene archivos.</p><p>Elige una categoría y carga el primer documento.</p></div>}</>}
             {tab==='seguimiento' && <AlumnoSeguimiento key={seleccion.id} detalle={detalle} automaticas={automaticas} configCiclo={configCiclo} variante={variante} materia={seleccion.materia} />}
           </div>

@@ -30,3 +30,22 @@
 @media print{.alumno-day-dialog{display:none!important}}
 
 .alumno-day-dialog .alumno-table-scroll table{min-width:0;table-layout:fixed}.alumno-day-dialog td,.alumno-day-dialog th{overflow-wrap:anywhere}.alumno-day-dialog th:last-child{width:100px}
+
+.alumno-screen .alumno-grades-table{min-width:560px;table-layout:fixed}
+.alumno-grades-table th:first-child{width:40%}.alumno-grades-table th:not(:first-child),.alumno-grades-table td{text-align:center}
+.alumno-grades-table th small{display:block;margin-top:6px;color:#607488;font-size:11px;font-weight:400}
+.alumno-screen .alumno-grades-table tbody th{background:white;font-weight:600;overflow-wrap:anywhere}
+.alumno-subject-work{margin:16px 0 22px}.alumno-subject-work h4{margin:0 0 10px;font-size:15px;color:var(--alumno-color);overflow-wrap:anywhere}
+.alumno-subject-work h4 span{font-weight:400;color:#607488}
+.alumno-screen .alumno-subject-evaluations th:first-child{width:55%}
+.alumno-screen .alumno-subject-evaluations>tbody>tr>th{background:white;padding:0}
+.alumno-screen .alumno-materia-toggle{width:100%;min-height:52px;text-align:left;display:flex;flex-direction:column;gap:5px;border:0;border-radius:0;background:transparent;padding:12px;white-space:normal;overflow-wrap:anywhere}
+.alumno-materia-toggle small{font-weight:400;color:var(--alumno-color)}.alumno-materia-toggle:hover,.alumno-materia-toggle[aria-expanded=true]{background:#eef5f3!important}
+.alumno-screen .alumno-materia-toggle:focus-visible{outline-offset:-3px}
+.alumno-screen .alumno-criteria-row>td{padding:12px;background:#f3f6f8}
+.alumno-screen .alumno-criteria-table{font-size:13px;background:white;table-layout:fixed}
+.alumno-screen .alumno-criteria-table th:first-child{width:auto}
+.alumno-screen .alumno-criteria-table th:nth-child(2){width:75px}
+.alumno-screen .alumno-criteria-table tbody th{background:white;font-weight:400}
+.alumno-screen .alumno-criteria-table tfoot th,.alumno-screen .alumno-criteria-table tfoot td{background:#eff5f3}
+@media(max-width:620px){.alumno-screen .alumno-subject-evaluations th,.alumno-screen .alumno-subject-evaluations td{padding:8px;font-size:12px}.alumno-screen .alumno-subject-evaluations>thead>tr>th:first-child{width:48%}.alumno-day-dialog .alumno-subject-evaluations>thead>tr>th:last-child{width:78px}.alumno-screen .alumno-materia-toggle{padding:10px 8px;font-size:13px}.alumno-screen .alumno-criteria-row>td{padding:8px}.alumno-screen .alumno-criteria-table th:nth-child(2){width:58px}.alumno-day-dialog .alumno-criteria-table th:last-child{width:92px}}

@@ -1,3 +1,11 @@
+# Planificador Docente 1.0.6
+
+- ALUMNO: calificaciones con materias en filas y trimestres en columnas. La ficha impresa y el HTML del expediente utilizan la misma tabla.
+- Seguimiento: evaluaciones del día agrupadas por materia, con número de criterios y promedio. Al seleccionar una materia se despliegan sus criterios, porcentajes y calificaciones.
+- Trabajos del día separados por materia, con sus propias tablas.
+- Promedios con los porcentajes del evaluador; se conservan ceros, notas pendientes y vínculos QR por alumno, grupo y ciclo escolar.
+- Se conservan los datos y licencias existentes. Windows descarga la actualización y la instala al cerrar; macOS utiliza instalación manual.
+
 # Planificador Docente 1.0.5
 
 - ALUMNO muestra en Primaria únicamente el grupo activo de Mi Grupo, incluyendo bases antiguas; no incluye alumnos huérfanos ni de otros grupos. Secundaria conserva la búsqueda por grado entre sus grupos.

@@ -23,16 +23,72 @@ export function construirCalificaciones(detalle, automaticas, periodos, variante
     const automatica = original && { ...original, notas: (original.notas || []).filter(n => Number(n.alumno_id) === Number(detalle.alumno.id) && n.fecha >= periodo.inicio && n.fecha <= periodo.fin) };
     for (const [campo, nombre] of variante === 'secundaria' ? [['MATERIA',materia || 'Materia del grupo']] : FIELDS) {
       const criterios = variante === 'secundaria' ? detalle.criterios : detalle.criterios.filter(c => c.campo === campo || (!c.campo && campo === 'LENGUAJES'));
-      result.push({ periodo: periodo.nombre || `Trimestre ${id}`, inicio: periodo.inicio, fin: periodo.fin, campo, materia: nombre, nota: promedioPeriodo(criterios, notas, automatica, detalle.alumno.id) });
+      result.push({ periodoId: id, periodo: periodo.nombre || `Trimestre ${id}`, inicio: periodo.inicio, fin: periodo.fin, campo, materia: nombre, nota: promedioPeriodo(criterios, notas, automatica, detalle.alumno.id) });
     }
   }
   return result;
 }
+export function crearTablaCalificaciones(calificaciones = []) {
+  const periodos = new Map(), materias = new Map();
+  for (const nota of calificaciones) {
+    const periodoId = String(nota.periodoId ?? JSON.stringify([nota.periodo, nota.inicio, nota.fin]));
+    const materiaId = nota.campo || nota.materia;
+    if (!periodos.has(periodoId)) periodos.set(periodoId, { id: periodoId, nombre: nota.periodo, inicio: nota.inicio, fin: nota.fin });
+    if (!materias.has(materiaId)) materias.set(materiaId, { id: materiaId, nombre: nota.materia, porPeriodo: new Map() });
+    materias.get(materiaId).porPeriodo.set(periodoId, nota.nota);
+  }
+  const columnas = [...periodos.values()].sort((a, b) => String(a.inicio || '').localeCompare(String(b.inicio || '')));
+  return {
+    periodos: columnas,
+    materias: [...materias.values()].map(({ id, nombre, porPeriodo }) => ({ id, nombre, notas: columnas.map(p => porPeriodo.get(p.id) ?? null) }))
+  };
+}
+
+function materiaDelRegistro(campo, variante, materia, esCriterio = false) {
+  if (variante === 'secundaria') return { id: 'MATERIA', nombre: materia || 'Materia del grupo' };
+  const nombre = String(campo || (esCriterio ? 'LENGUAJES' : '')).trim();
+  const clave = normalizar(nombre).replace(/[^a-z]/g, '');
+  const id = clave === 'lenguajes' ? 'LENGUAJES' : clave.startsWith('saberes') ? 'SABERES' :
+    clave.startsWith('etica') ? 'ETICA' : clave === 'humano' || clave.startsWith('delohumano') ? 'HUMANO' : clave || 'SIN_MATERIA';
+  return { id, nombre: FIELDS.find(([key]) => key === id)?.[1] || nombre || 'Sin campo / materia' };
+}
+
+function agruparPorMateria(registros, variante, materia, esCriterio) {
+  const grupos = new Map();
+  for (const registro of registros || []) {
+    const campo = materiaDelRegistro(esCriterio ? registro.criterio?.campo : registro.campo, variante, materia, esCriterio);
+    if (!grupos.has(campo.id)) grupos.set(campo.id, { ...campo, registros: [] });
+    grupos.get(campo.id).registros.push(registro);
+  }
+  const orden = FIELDS.map(([id]) => id);
+  return [...grupos.values()].sort((a, b) => {
+    const posicion = id => orden.includes(id) ? orden.indexOf(id) : orden.length;
+    return posicion(a.id) - posicion(b.id) || a.nombre.localeCompare(b.nombre, 'es');
+  });
+}
+
+export function agruparTrabajosPorMateria(trabajos, variante, materia) {
+  return agruparPorMateria(trabajos, variante, materia, false);
+}
+
+export function agruparEvaluacionesPorMateria(evaluaciones, variante, materia) {
+  return agruparPorMateria(evaluaciones, variante, materia, true).map(grupo => {
+    const criterios = grupo.registros.map(n => ({ ...n.criterio, id: Number(n.criterio_id) }));
+    const notas = grupo.registros.map(n => ({ ...n, criterio_id: Number(n.criterio_id), alumno_id: Number(n.alumno_id) }));
+    return {
+      ...grupo,
+      evaluados: notas.filter(n => n.valor != null && String(n.valor).trim() !== '' && Number.isFinite(Number(n.valor))).length,
+      promedio: promedioPeriodo(criterios, notas, null, notas[0]?.alumno_id)
+    };
+  });
+}
+
 export function htmlPerfil({ alumno, perfil, calificaciones, archivos, incidencias = [], asistencia = [], trabajos = [], escuela = {} }) {
   const e = escaparHtml;
+  const tablaCalificaciones = crearTablaCalificaciones(calificaciones);
   const foto = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(perfil.foto_url || '') ? `<img class="foto" alt="Foto del alumno" src="${perfil.foto_url}">` : '';
   const table = (headers, rows) => `<table><thead><tr>${headers.map(h=>`<th>${e(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map(c=>`<td>${e(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Perfil de ${e(alumno.nombre)}</title><style>body{font:14px system-ui,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#172b42}header{display:flex;gap:20px;align-items:center;border-bottom:3px solid #167868;padding-bottom:16px}.foto{width:100px;height:120px;object-fit:cover;border-radius:8px}h1{font-size:25px;margin:0 0 8px}h2{font-size:18px;margin-top:26px}dl{display:grid;grid-template-columns:180px 1fr;gap:8px}dt{font-weight:bold}dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;font-size:12px}td,th{border:1px solid #ccd4da;text-align:left;padding:8px;overflow-wrap:anywhere}th{background:#eef5f3}section,tr{break-inside:avoid}@media print{body{margin:0;max-width:none}button{display:none}@page{size:letter;margin:14mm}}</style></head><body><header>${foto}<div><h1>${e(alumno.nombre)}</h1><div>${e(escuela.nombreEscuela || 'Planificador Docente')} · ${e(escuela.cct || '')}</div><p>${e(alumno.grado || '—')}º ${e(alumno.seccion || '')} · ${e(alumno.materia || alumno.tipo || '')} · Ciclo ${e(alumno.ciclo_escolar || '')}</p></div></header>${CAMPOS_PERFIL.map(([section, fields])=>`<section><h2>${e(section)}</h2><dl>${fields.map(([field,label])=>`<dt>${e(label)}</dt><dd>${e(perfil[field] || 'Sin registrar')}</dd>`).join('')}</dl></section>`).join('')}<h2>Calificaciones</h2>${table(['Período','Campo / materia','Calificación'],calificaciones.map(c=>[c.periodo,c.materia,c.nota === null ? 'Sin calificación' : c.nota.toFixed(1)]))}<h2>Expediente</h2>${table(['Categoría','Archivo','Fecha'],archivos.map(a=>[a.categoria,a.nombre,a.fecha.slice(0,10)]))}<h2>Trabajos QR</h2>${table(['Fecha','Trabajo','Campo / materia','Calificación'],trabajos.map(t=>[t.fecha,t.nombre_trabajo,alumno.materia === 'Primaria' ? t.campo : alumno.materia,t.valor ?? 'Sin calificación']))}<h2>Incidencias</h2>${table(['Fecha','Situación','Medidas'],incidencias.map(i=>[i.fecha,i.situacion,i.medidas]))}<h2>Asistencia</h2>${table(['Fecha','Estado'],asistencia.map(a=>[a.fecha,a.estado]))}<p>Generado el ${e(new Date().toLocaleDateString('es-MX'))}. Las calificaciones corresponden a los períodos configurados y al grupo del alumno.</p></body></html>`;
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Perfil de ${e(alumno.nombre)}</title><style>body{font:14px system-ui,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#172b42}header{display:flex;gap:20px;align-items:center;border-bottom:3px solid #167868;padding-bottom:16px}.foto{width:100px;height:120px;object-fit:cover;border-radius:8px}h1{font-size:25px;margin:0 0 8px}h2{font-size:18px;margin-top:26px}dl{display:grid;grid-template-columns:180px 1fr;gap:8px}dt{font-weight:bold}dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;font-size:12px}td,th{border:1px solid #ccd4da;text-align:left;padding:8px;overflow-wrap:anywhere}th{background:#eef5f3}section,tr{break-inside:avoid}@media print{body{margin:0;max-width:none}button{display:none}@page{size:letter;margin:14mm}}</style></head><body><header>${foto}<div><h1>${e(alumno.nombre)}</h1><div>${e(escuela.nombreEscuela || 'Planificador Docente')} · ${e(escuela.cct || '')}</div><p>${e(alumno.grado || '—')}º ${e(alumno.seccion || '')} · ${e(alumno.materia || alumno.tipo || '')} · Ciclo ${e(alumno.ciclo_escolar || '')}</p></div></header>${CAMPOS_PERFIL.map(([section, fields])=>`<section><h2>${e(section)}</h2><dl>${fields.map(([field,label])=>`<dt>${e(label)}</dt><dd>${e(perfil[field] || 'Sin registrar')}</dd>`).join('')}</dl></section>`).join('')}<h2>Calificaciones</h2>${table(['Campo / materia',...tablaCalificaciones.periodos.map(p=>p.nombre)],tablaCalificaciones.materias.map(m=>[m.nombre,...m.notas.map(n=>n == null ? 'Sin calificación' : n.toFixed(1))]))}<h2>Expediente</h2>${table(['Categoría','Archivo','Fecha'],archivos.map(a=>[a.categoria,a.nombre,a.fecha.slice(0,10)]))}<h2>Trabajos QR</h2>${table(['Fecha','Trabajo','Campo / materia','Calificación'],trabajos.map(t=>[t.fecha,t.nombre_trabajo,alumno.materia === 'Primaria' ? t.campo : alumno.materia,t.valor ?? 'Sin calificación']))}<h2>Incidencias</h2>${table(['Fecha','Situación','Medidas'],incidencias.map(i=>[i.fecha,i.situacion,i.medidas]))}<h2>Asistencia</h2>${table(['Fecha','Estado'],asistencia.map(a=>[a.fecha,a.estado]))}<p>Generado el ${e(new Date().toLocaleDateString('es-MX'))}. Las calificaciones corresponden a los períodos configurados y al grupo del alumno.</p></body></html>`;
 }
 
 // ZIP sin compresión: funciona sin dependencias en escritorio y WebView Android.
