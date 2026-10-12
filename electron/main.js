@@ -480,12 +480,17 @@ const notifyEvaluationChange = (grupoId = null) => {
     }
   }
 };
-const { transaction: evaluationTransaction } = require('./evaluationQr').registerEvaluationHandlers({
+const { transaction: evaluationTransaction, beforeQrMutation } = require('./evaluationQr').registerEvaluationHandlers({
   ipcMain, db, variant: 'primaria', onChange: notifyEvaluationChange
 });
 // Un único orden de escritura para QR, criterios y vínculos del ciclo.
 const registerQrMutation = (channel, handler) => ipcMain.handle(channel, async (...args) => {
-  const result = await evaluationTransaction(() => handler(...args));
+  const result = await evaluationTransaction(async () => {
+    await beforeQrMutation(channel, args);
+    const value = await handler(...args);
+    if (value?.success === false) throw new Error('No se pudo guardar el cambio de Control QR.');
+    return value;
+  });
   if (result?.success !== false) notifyEvaluationChange();
   return result;
 });

@@ -55,6 +55,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Verify individualized QR assignments
+        run: npm run test:qr
       - name: Verify daily QR evaluation
         run: npm run test:daily
       - name: Verify student profiles and records
@@ -87,6 +89,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Verify individualized QR assignments
+        run: npm run test:qr
       - name: Verify daily QR evaluation
         run: npm run test:daily
       - name: Verify student profiles and records
@@ -125,11 +129,14 @@ jobs:
             test -f "$RESOURCES/app.asar"
             lipo "$RESOURCES/app-x64/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch x86_64
             lipo "$RESOURCES/app-arm64/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch arm64
+            test -f "$RESOURCES/app-x64/electron/qrAssignments.js"
             test -f "$RESOURCES/app-x64/electron/evaluationQr.js"
             test -f "$RESOURCES/app-x64/electron/studentRecord.js"
+            test -f "$RESOURCES/app-arm64/electron/qrAssignments.js"
             test -f "$RESOURCES/app-arm64/electron/evaluationQr.js"
             test -f "$RESOURCES/app-arm64/electron/studentRecord.js"
           else
+            test -f "$RESOURCES/app/electron/qrAssignments.js"
             test -f "$RESOURCES/app/electron/studentRecord.js"
             lipo "$RESOURCES/app/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch x86_64 arm64
           fi

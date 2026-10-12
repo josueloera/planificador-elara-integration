@@ -1,3 +1,4 @@
+import { actividadAsignada } from '../qrAssignments';
 // Utilidad de exportación a Excel nativo (.xls / XML Spreadsheet) y CSV UTF-8
 // Diseñado para compatibilidad inmediata con Microsoft Excel (Windows/Mac) sin requerir dependencias binarias pesadas.
 
@@ -269,7 +270,7 @@ export const exportarAsistenciaExcel = ({ grupoNombre, fechaInicio, fechaFin, re
 /**
  * Genera un archivo Excel XML (.xls) de Trabajos QR con Sábana General, Pestañas Separadas por Materia/Campo y Bitácora
  */
-export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, campo, trabajos = [], resumenAlumnos = [] }) => {
+export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, campo, trabajos = [], resumenAlumnos = [], actividades = [] }) => {
   // Función para sanitizar nombres de pestañas en Excel (máx 31 caracteres y sin caracteres prohibidos)
   const sanitizarNombrePestana = (nombre) => {
     if (!nombre) return 'Materia';
@@ -284,7 +285,7 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
 
   // 1. Extraer todas las materias / campos formativos únicos presentes en los trabajos
   const camposSet = new Set();
-  (trabajos || []).forEach(t => {
+  [...actividades.map(a => ({ ...a, nombre_trabajo: a.nombre })), ...(trabajos || [])].forEach(t => {
     const cpo = (t.campo || 'GENERAL').trim();
     if (cpo) camposSet.add(cpo);
   });
@@ -302,7 +303,7 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
   const tareasGlobales = [];
   const matrizCalificaciones = {}; // [alumno_id][taskKey] = valor
 
-  (trabajos || []).forEach(t => {
+  [...actividades.map(a => ({ ...a, nombre_trabajo: a.nombre })), ...(trabajos || [])].forEach(t => {
     const nombre = (t.nombre_trabajo || 'Actividad').trim();
     const f = t.fecha || '';
     const cpo = (t.campo || 'GENERAL').trim();
@@ -310,11 +311,12 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
 
     if (!mapaTareasGlobal.has(key)) {
       const sem = calcularSemanaEscolar(f);
-      const info = { key, nombre, fecha: f, campo: cpo, semana: sem };
+      const info = { key, nombre, fecha: f, campo: cpo, semana: sem, alumno_ids: t.alumno_ids };
       mapaTareasGlobal.set(key, info);
       tareasGlobales.push(info);
     }
 
+    if (t.alumno_id == null) return;
     if (!matrizCalificaciones[t.alumno_id]) {
       matrizCalificaciones[t.alumno_id] = {};
     }
@@ -622,6 +624,10 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
         xml += `    <Cell ss:StyleID="CellCenter"><Data ss:Type="String">-</Data></Cell>\n`;
       } else {
         tareasMateria.forEach(t => {
+          if (!actividadAsignada(t, alu.alumno_id)) {
+            xml += `    <Cell ss:StyleID="CellCenter"><Data ss:Type="String">No aplica</Data></Cell>\n`;
+            return;
+          }
           const nota = notasAlumno[t.key];
           if (nota !== undefined && nota !== null && nota !== '') {
             const nVal = Number(nota);
@@ -655,7 +661,7 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
         else stFinal = 'CalificacionBaja';
       }
 
-      xml += `    <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${entregadosMat}</Data></Cell>
+      xml += `    <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${entregadosMat}/${tareasMateria.filter(t => actividadAsignada(t, alu.alumno_id)).length}</Data></Cell>
     <Cell ss:StyleID="${stFinal}"><Data ss:Type="${promMat !== '-' ? 'Number' : 'String'}">${promMat}</Data></Cell>
    </Row>
 `;
@@ -754,6 +760,10 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
     <Cell ss:StyleID="CellNormal"><Data ss:Type="String">${escapeXml(alu.alumno_nombre)}</Data></Cell>
 `;
     tareasGlobales.forEach(t => {
+      if (!actividadAsignada(t, alu.alumno_id)) {
+        xml += `    <Cell ss:StyleID="CellCenter"><Data ss:Type="String">No aplica</Data></Cell>\n`;
+        return;
+      }
       const nota = notasAlumno[t.key];
       if (nota !== undefined && nota !== null && nota !== '') {
         const nVal = Number(nota);
@@ -786,7 +796,7 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
       else stFinal = 'CalificacionBaja';
     }
 
-    xml += `    <Cell ss:StyleID="CellCenter"><Data ss:Type="Number">${entregados}</Data></Cell>
+    xml += `    <Cell ss:StyleID="CellCenter"><Data ss:Type="String">${entregados}/${tareasGlobales.filter(t => actividadAsignada(t, alu.alumno_id)).length}</Data></Cell>
     <Cell ss:StyleID="${stFinal}"><Data ss:Type="${promFinal !== '-' ? 'Number' : 'String'}">${promFinal}</Data></Cell>
    </Row>
 `;

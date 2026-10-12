@@ -1,3 +1,12 @@
+# Planificador Docente 1.0.7
+
+- Control QR incorpora Adecuaciones curriculares: selección de alumnos por grupo, materia y ciclo escolar.
+- Actividades adaptadas con destinatarios individuales, tareas generales y actividades compartidas.
+- Las tareas no asignadas aparecen como No aplica y no aumentan el total exigido a los demás alumnos. La matriz diaria, el historial y Excel utilizan las actividades de cada alumno, incluso las que todavía no tienen entregas.
+- El escáner y la captura manual impiden registrar entregas de actividades ajenas. Se conservan las asignaciones al renombrar y los vínculos con Evaluación por fecha y materia.
+- Las actividades anteriores conservan sus destinatarios hasta editarlos. Las asignaciones se guardan en la base de datos y en sus respaldos.
+- Windows descarga la actualización y la instala al cerrar; macOS utiliza instalación manual.
+
 # Planificador Docente 1.0.6
 
 - ALUMNO: calificaciones con materias en filas y trimestres en columnas. La ficha impresa y el HTML del expediente utilizan la misma tabla.

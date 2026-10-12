@@ -1,3 +1,4 @@
+const { registerQrAssignments } = require('./qrAssignments');
 const { promediosDiarios } = require('./evaluationDaily');
 
 // Comunicación entre Control QR y Evaluación. No modifica el esquema de SQLite.
@@ -73,12 +74,13 @@ function registerEvaluationHandlers({ ipcMain, db, variant = 'primaria', onChang
     }
     return count;
   };
+  const assignments = registerQrAssignments({ ipcMain, all, run, transaction, grupoValido, normalizarCampo, secundaria, onChange });
   const trabajosDelGrupo = async (grupoId, inicio, fin, campo) => {
     const rows = await all(`SELECT t.*, al.nombre AS alumno_nombre FROM trabajos_qr t
       JOIN alumnos al ON al.id = t.alumno_id
       WHERE al.grupo_id = ? AND (t.grupo_id = ? OR t.grupo_id IS NULL)
         AND t.fecha >= ? AND t.fecha <= ? ORDER BY t.fecha DESC, t.id DESC`, [grupoId, grupoId, inicio, fin]);
-    return rows.filter(t => secundaria || !campo || campo === 'TODOS' || normalizarCampo(t.campo) === normalizarCampo(campo));
+    return assignments.filterWorks(grupoId, rows.filter(t => secundaria || !campo || campo === 'TODOS' || normalizarCampo(t.campo) === normalizarCampo(campo)));
   };
 
   require('./evaluationCycle').registerCycleHandlers({
@@ -205,7 +207,7 @@ function registerEvaluationHandlers({ ipcMain, db, variant = 'primaria', onChang
       return guardarNotas(rows, criterios);
     });
   });
-  return { transaction };
+  return { transaction, beforeQrMutation: assignments.beforeMutation };
 }
 
 module.exports = { normalizarCampo, registerEvaluationHandlers };

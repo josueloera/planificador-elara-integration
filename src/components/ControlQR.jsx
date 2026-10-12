@@ -1,3 +1,5 @@
+import AdecuacionesQR from './AdecuacionesQR';
+import { actividadAsignada } from '../qrAssignments';
 import { rangoDelCiclo } from '../evaluacionAutomatica';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -135,6 +137,27 @@ export default function ControlQR({
   const [asistenciaDia, setAsistenciaDia] = useState({});
   const [trabajosDia, setTrabajosDia] = useState([]);
 
+  const [asignacionesDia, setAsignacionesDia] = useState([]);
+  const [actividadesHist, setActividadesHist] = useState([]);
+  const [asignacionesListas, setAsignacionesListas] = useState(false);
+  const diaRequestRef = useRef(0);
+  const scopeRef = useRef('');
+  const scope = `${grupoActual?.id}:${fechaActualQR}`;
+  scopeRef.current = scope;
+  const cargarAsignaciones = async () => {
+    const current = scope;
+    const rows = await ipcRenderer.invoke('get-qr-actividades', grupoActual?.id, fechaActualQR, fechaActualQR);
+    if (scopeRef.current === current) {
+      setAsignacionesDia(rows.map(a => esSecundaria ? { ...a, campo: camposDisponibles[0] } : a));
+      setAsignacionesListas(true);
+    }
+  };
+  useEffect(() => {
+    setAsignacionesDia([]); setAsignacionesListas(false); setTrabajosDia([]);
+    setCreandoNuevaActividad(false); setEditandoActividad(null);
+    if (ipcRenderer && grupoActual?.id) cargarAsignaciones().catch(e => showToast?.(e.message));
+  }, [ipcRenderer, grupoActual?.id, fechaActualQR]);
+
   // Perfiles / Fotos de alumnos
   const [perfilesMap, setPerfilesMap] = useState({});
 
@@ -184,6 +207,7 @@ export default function ControlQR({
 
   // Cargar IP local, Asistencias, Trabajos y Perfiles guardados en SQLite para la fecha actual
   const cargarDatosDia = () => {
+    const request = ++diaRequestRef.current;
     if (ipcRenderer) {
       ipcRenderer.invoke('get-ws-info').then(info => {
         if (info) {
@@ -203,6 +227,7 @@ export default function ControlQR({
       }).catch(console.error);
 
       ipcRenderer.invoke('get-trabajos-qr', fechaActualQR, grupoActual?.id).then(rows => {
+        if (request !== diaRequestRef.current) return;
         setTrabajosDia((rows || []).map(t => esSecundaria ? { ...t, campo: camposDisponibles[0] } : t));
       }).catch(console.error);
 
@@ -305,18 +330,30 @@ export default function ControlQR({
       }
     });
 
-    // 3. Si no hay nada registrado aún hoy, asegurar la tarea activa actual o 'Tarea 1'
-    if (map.size === 0) {
-      const nomDefecto = (tituloTrabajo && tituloTrabajo.trim()) ? tituloTrabajo.trim() : 'Tarea 1';
-      map.set(nomDefecto, {
-        nombre: nomDefecto,
-        campo: campoSeleccionado || camposDisponibles[0],
-        entregas: 0
-      });
-    }
+    for (const act of asignacionesDia) map.set(act.nombre, { ...map.get(act.nombre), ...act });
 
     return Array.from(map.values());
-  }, [trabajosDia, actividadesCreadas, tituloTrabajo, campoSeleccionado, esSecundaria, camposDisponibles]);
+  }, [trabajosDia, actividadesCreadas, tituloTrabajo, campoSeleccionado, esSecundaria, camposDisponibles, asignacionesDia]);
+
+  const tareaAplica = (nombre, id) => actividadAsignada(actividadesDelDia.find(a => a.nombre === nombre), id);
+  const crearActividadGeneral = async (nombre, campo) => {
+    const ids = fechaActualQR >= ciclo.inicio && fechaActualQR <= ciclo.fin
+      ? await ipcRenderer.invoke('get-qr-adecuaciones', grupoActual.id, ciclo.inicio, ciclo.fin, campo) : [];
+    return ipcRenderer.invoke('save-qr-actividad', grupoActual.id, fechaActualQR, {
+      nombre, campo, modo: 'GENERAL', alumno_ids: alumnos.filter(a => !ids.includes(a.id)).map(a => a.id)
+    });
+  };
+  const asegurarActividad = async (nombre, campo) => {
+    if (!asignacionesListas) throw new Error('Espera a que carguen las actividades del grupo.');
+    const current = scope;
+    let act = actividadesDelDia.find(a => a.nombre === nombre);
+    if (!act) {
+      act = await crearActividadGeneral(nombre, campo);
+      if (scopeRef.current === current) await cargarAsignaciones();
+    }
+    if (scopeRef.current !== current) throw new Error('Cambió el grupo o la fecha. Vuelve a seleccionar la actividad.');
+    return act;
+  };
 
   // Nombres de tareas disponibles (mantiene compatibilidad total con Matriz y componentes existentes)
   const tareasDisponibles = useMemo(() => {
@@ -336,12 +373,13 @@ export default function ControlQR({
         }
       }
     }
-  }, [fechaActualQR, trabajosDia, actividadesCreadas]);
+  }, [fechaActualQR, trabajosDia, actividadesCreadas, asignacionesDia]);
 
   // Cambiar de actividad activa con 1 clic (sincronizando nombre y su materia correspondiente)
   const seleccionarActividad = (act) => {
     if (!act || !act.nombre) return;
     const nombre = act.nombre.trim();
+    if (act.campo) setCampoSeleccionado(act.campo);
     if (nombre !== tituloTrabajo) {
       setTareaAnterior(tituloTrabajo);
       setTituloTrabajo(nombre);
@@ -380,12 +418,17 @@ export default function ControlQR({
   };
 
   // Confirmar creación de nueva actividad
-  const handleConfirmarNuevaActividad = () => {
+  const handleConfirmarNuevaActividad = async () => {
     const nomTrim = (nuevoNombreActividad || '').trim();
     if (!nomTrim) {
       if (showToast) showToast('⚠️ Escribe un nombre para la actividad');
       return;
     }
+    try {
+      if (actividadesDelDia.some(a => a.nombre === nomTrim)) throw new Error('Ya existe una actividad con ese nombre.');
+      await crearActividadGeneral(nomTrim, nuevoCampoActividad);
+      await cargarAsignaciones();
+    } catch (e) { showToast?.(e.message); return; }
     guardarActividadCreada(nomTrim, nuevoCampoActividad);
     if (nomTrim !== tituloTrabajo) {
       setTareaAnterior(tituloTrabajo);
@@ -427,7 +470,7 @@ export default function ControlQR({
       try {
         await ipcRenderer.invoke('update-actividad-fecha', fechaActualQR, nombreOrig, nuevoNom, nuevoCmp, grupoActual?.id);
       } catch (err) {
-        console.error("Error actualizando actividad en SQLite:", err);
+        showToast?.(err.message); return;
       }
     }
 
@@ -438,6 +481,7 @@ export default function ControlQR({
       return t;
     }));
 
+    await cargarAsignaciones();
     removerActividadCreada(nombreOrig);
     guardarActividadCreada(nuevoNom, nuevoCmp);
 
@@ -463,10 +507,11 @@ export default function ControlQR({
         await ipcRenderer.invoke('delete-actividad-fecha', fechaActualQR, nombreActividad, grupoActual?.id);
         setTrabajosDia(prev => prev.filter(t => t.nombre_trabajo !== nombreActividad));
       } catch (err) {
-        console.error("Error eliminando actividad de la fecha:", err);
+        showToast?.(err.message); return;
       }
     }
 
+    await cargarAsignaciones();
     removerActividadCreada(nombreActividad);
 
     const restantes = actividadesDelDia.filter(a => a.nombre !== nombreActividad);
@@ -484,20 +529,24 @@ export default function ControlQR({
   };
 
   const registrarTrabajoAlumnoDirecto = async (alumnoId, alumnoNombre, nombreTarea, nota) => {
-    const valNota = parseFloat(nota) || 10;
+    const valNota = Number(nota);
+    if (!Number.isFinite(valNota) || valNota < 0 || valNota > 10) return;
     const nombreT = nombreTarea || tituloTrabajo;
     const actObj = actividadesDelDia.find(a => a.nombre === nombreT);
     const campoFinal = actObj?.campo || campoSeleccionado;
     
     if (ipcRenderer) {
       try {
+        const assigned = await asegurarActividad(nombreT, campoFinal);
+        if (!actividadAsignada(assigned, alumnoId)) throw new Error('Esta actividad no está asignada al alumno. Selecciona una de sus actividades.');
         const resTrabajo = await ipcRenderer.invoke('save-trabajo-qr', alumnoId, campoFinal, nombreT, fechaActualQR, valNota, grupoActual?.id);
+        if (scopeRef.current !== scope) return;
         setTrabajosDia(prev => {
           const sinEste = prev.filter(t => !(String(t.alumno_id) === String(alumnoId) && t.nombre_trabajo === nombreT));
           return [resTrabajo, ...sinEste];
         });
       } catch (err) {
-        console.error("Error guardando trabajo QR en SQLite:", err);
+        showToast?.(err.message); return;
       }
     }
 
@@ -531,21 +580,24 @@ export default function ControlQR({
       setAsistenciaRangoDetalle([]);
       setResumenTrabajosHist([]);
       setTrabajosRangoDetalle([]);
+      setActividadesHist([]);
       setCargandoHistorial(false);
       return;
     }
     setCargandoHistorial(true);
     try {
-      const [resAsis, detAsis, resTrab, detTrab] = await Promise.all([
+      const [resAsis, detAsis, resTrab, detTrab, acts] = await Promise.all([
         ipcRenderer.invoke('get-resumen-asistencia', grupoActual?.id, fechaInicioHistorial, fechaFinHistorial),
         ipcRenderer.invoke('get-asistencia-rango', grupoActual?.id, fechaInicioHistorial, fechaFinHistorial),
         ipcRenderer.invoke('get-resumen-trabajos', grupoActual?.id, fechaInicioHistorial, fechaFinHistorial, campoFiltroHistorial),
-        ipcRenderer.invoke('get-trabajos-rango', grupoActual?.id, fechaInicioHistorial, fechaFinHistorial, campoFiltroHistorial)
+        ipcRenderer.invoke('get-trabajos-rango', grupoActual?.id, fechaInicioHistorial, fechaFinHistorial, campoFiltroHistorial),
+        ipcRenderer.invoke('get-qr-actividades', grupoActual?.id, fechaInicioHistorial, fechaFinHistorial, campoFiltroHistorial)
       ]);
       if (requestId !== historialRequestRef.current) return;
       setResumenAsistenciaHist(resAsis || []);
       setAsistenciaRangoDetalle(detAsis || []);
       setResumenTrabajosHist(resTrab || []);
+      setActividadesHist((acts || []).map(a => esSecundaria ? { ...a, campo: camposDisponibles[0] } : a));
       setTrabajosRangoDetalle((detTrab || []).map(t => esSecundaria ? { ...t, campo: camposDisponibles[0] } : t));
     } catch (err) {
       if (requestId === historialRequestRef.current) {
@@ -612,7 +664,7 @@ export default function ControlQR({
     return () => {
       ipcRenderer.removeListener('qr-scanned', handleQrScanned);
     };
-  }, [ipcRenderer, modoEscaneo, subtipoAsistencia, campoSeleccionado, criterioSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo]);
+  }, [ipcRenderer, modoEscaneo, subtipoAsistencia, campoSeleccionado, criterioSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo, asignacionesDia, asignacionesListas, actividadesDelDia]);
 
   // Soporte directo Plug & Play para Pistolas / Lectores USB de Códigos QR y Barras (HID)
   useEffect(() => {
@@ -647,7 +699,7 @@ export default function ControlQR({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [modoEscaneo, subtipoAsistencia, campoSeleccionado, criterioSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo]);
+  }, [modoEscaneo, subtipoAsistencia, campoSeleccionado, criterioSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo, asignacionesDia, asignacionesListas, actividadesDelDia]);
 
   // Recargar una vez al cambiar de grupo o abrir un modal, sin depender de la lista recibida.
   useEffect(() => {
@@ -766,7 +818,7 @@ export default function ControlQR({
       activo = false;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [camaraActiva, modoEscaneo, subtipoAsistencia, campoSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo]);
+  }, [camaraActiva, modoEscaneo, subtipoAsistencia, campoSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo, asignacionesDia, asignacionesListas, actividadesDelDia]);
 
   // Detener cámara al desmontar el componente
   useEffect(() => () => detenerCamara(), []);
@@ -867,33 +919,7 @@ export default function ControlQR({
     if (modoEscaneo === 'ASISTENCIA') {
       await registrarAsistenciaDirecta(targetAlumnoId, nombreMostrar, subtipoAsistencia);
     } else {
-      let resTrabajo = null;
-      if (ipcRenderer) {
-        try {
-          resTrabajo = await ipcRenderer.invoke('save-trabajo-qr', targetAlumnoId, campoSeleccionado, tituloTrabajo, fechaActualQR, gradeVal, grupoActual?.id);
-          setTrabajosDia(prev => {
-            const sinEste = prev.filter(t => !(String(t.alumno_id) === String(targetAlumnoId) && t.nombre_trabajo === tituloTrabajo));
-            return [resTrabajo, ...sinEste];
-          });
-        } catch (err) {
-          console.error("Error guardando trabajo QR en SQLite:", err);
-        }
-      }
-
-      const nuevoLog = {
-        id: Date.now(),
-        tipo: 'TRABAJO',
-        alumnoId: targetAlumnoId,
-        alumno: nombreMostrar,
-        campo: campoSeleccionado,
-        actividad: tituloTrabajo,
-        nota: gradeVal,
-        hora: new Date().toLocaleTimeString()
-      };
-
-      setUltimoEscaneado(nuevoLog);
-      setHistorialEscaneos(prev => [nuevoLog, ...prev.slice(0, 19)]);
-      if (showToast) showToast(`🌟 Trabajo Registrado (${gradeVal}): ${nombreMostrar} - ${tituloTrabajo}`);
+      await registrarTrabajoAlumnoDirecto(targetAlumnoId, nombreMostrar, tituloTrabajo, gradeVal);
     }
   };
 
@@ -960,6 +986,7 @@ export default function ControlQR({
       fechaFin: fechaFinHistorial,
       campo: campoFiltroHistorial,
       trabajos: trabajosRangoDetalle,
+      actividades: actividadesHist,
       resumenAlumnos: resumenTrabajosHist
     });
     if (showToast) showToast('📥 Archivo Excel de Trabajos generado con éxito');
@@ -1110,11 +1137,12 @@ export default function ControlQR({
         </div>
 
         {/* PESTAÑAS DE NAVEGACIÓN QR */}
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
           {[
             { id: 'ESCANER', label: '📷 Escáner y Móvil' },
             { id: 'ASISTENCIA', label: '📋 Lista de Asistencia' },
             { id: 'EVALUACION', label: '📝 Evaluación Trabajos' },
+            { id: 'ADECUACIONES', label: '🧩 Adecuaciones curriculares' },
             { id: 'HISTORIAL', label: '📊 Historial y Reportes' },
             { id: 'GAFETES', label: '🎫 Gafetes QR' }
           ].map(tab => (
@@ -1138,6 +1166,13 @@ export default function ControlQR({
           ))}
         </div>
       </div>
+
+      {activeTab === 'ADECUACIONES' && grupoActual?.id && ipcRenderer && (
+        <AdecuacionesQR key={scope} alumnos={alumnos} campos={camposDisponibles} fecha={fechaActualQR}
+          ciclo={ciclo} grupoId={grupoActual.id} ipcRenderer={ipcRenderer} actividades={actividadesDelDia}
+          onSaved={cargarAsignaciones} showToast={showToast}
+          onSelect={(act, calificar) => { seleccionarActividad(act); if (calificar) { setModoEscaneo('TRABAJO'); setActiveTab('ESCANER'); } }} />
+      )}
 
       {/* VISTA 1: ESCÁNER Y VINCULACIÓN MÓVIL */}
       {activeTab === 'ESCANER' && (
@@ -1623,7 +1658,7 @@ export default function ControlQR({
                               borderRadius: '10px',
                               marginLeft: '2px'
                             }}>
-                              {entregas}/{alumnos.length}
+                              {entregas}/{alumnos.filter(a => actividadAsignada(act, a.id)).length}
                             </span>
 
                             {/* Botón Editar Actividad */}
@@ -1760,7 +1795,7 @@ export default function ControlQR({
                 (ultimoEscaneado.alumno && a.nombre.toLowerCase().trim() === ultimoEscaneado.alumno.toLowerCase().trim())
               );
               const trabajosEsteAlumno = aluActual ? (trabajosDia || []).filter(t => String(t.alumno_id) === String(aluActual.id)) : [];
-              const tareasPendientes = aluActual ? tareasDisponibles.filter(td => !trabajosEsteAlumno.some(t => t.nombre_trabajo === td)) : [];
+              const tareasPendientes = aluActual ? tareasDisponibles.filter(td => tareaAplica(td, aluActual.id) && !trabajosEsteAlumno.some(t => t.nombre_trabajo === td)) : [];
 
               return (
                 <div style={{ backgroundColor: '#ebf8ff', padding: '16px', borderRadius: '10px', borderLeft: '6px solid #3182ce', marginBottom: '20px' }}>
@@ -2150,7 +2185,7 @@ export default function ControlQR({
                           {tar}
                         </div>
                         <small style={{ color: '#38bdf8', fontSize: '10px', fontWeight: 'bold' }}>
-                          {(trabajosDia || []).filter(t => t.nombre_trabajo === tar).length}/{alumnos.length} entregas
+                          {(trabajosDia || []).filter(t => t.nombre_trabajo === tar && tareaAplica(tar, t.alumno_id)).length}/{alumnos.filter(a => tareaAplica(tar, a.id)).length} entregas
                         </small>
                       </th>
                     ))}
@@ -2162,8 +2197,9 @@ export default function ControlQR({
                   {alumnos.map((a, idx) => {
                     const trabajosEsteAlu = (trabajosDia || []).filter(t => String(t.alumno_id) === String(a.id));
                     const prom = calcularPromedioAlumno(a.id);
-                    const totalEntregas = trabajosEsteAlu.length;
-                    const esAdelantado = totalEntregas >= tareasDisponibles.length && tareasDisponibles.length > 1;
+                    const totalAsignadas = tareasDisponibles.filter(t => tareaAplica(t, a.id)).length;
+                    const totalEntregas = trabajosEsteAlu.filter(t => tareaAplica(t.nombre_trabajo, a.id)).length;
+                    const esAdelantado = totalEntregas >= totalAsignadas && totalAsignadas > 0;
                     const filaBg = esAdelantado ? '#f0fff4' : (idx % 2 === 0 ? '#ffffff' : '#f8fafc');
 
                     return (
@@ -2178,6 +2214,7 @@ export default function ControlQR({
 
                         {/* CELDAS POR CADA TAREA */}
                         {tareasDisponibles.map(tar => {
+                          if (!tareaAplica(tar, a.id)) return <td key={tar} style={{ textAlign: 'center', color: '#64748b', background: '#f1f5f9' }}>No aplica</td>;
                           const reg = trabajosEsteAlu.find(t => t.nombre_trabajo === tar);
                           return (
                             <td key={tar} style={{ padding: '8px', textAlign: 'center' }}>
@@ -2238,15 +2275,15 @@ export default function ControlQR({
                         <td style={{ padding: '10px', textAlign: 'center' }}>
                           {esAdelantado ? (
                             <span style={{ backgroundColor: '#e9d8fd', color: '#553c9e', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>
-                              🚀 ¡Adelantado!
+                              ✓ Completo (100%)
                             </span>
                           ) : totalEntregas > 0 ? (
                             <span style={{ backgroundColor: '#feebc8', color: '#744210', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>
-                              {totalEntregas}/{tareasDisponibles.length} tareas
+                              {totalEntregas}/{totalAsignadas} tareas ({Math.round(totalEntregas / totalAsignadas * 100)}%)
                             </span>
                           ) : (
                             <span style={{ backgroundColor: '#edf2f7', color: '#a0aec0', padding: '2px 8px', borderRadius: '10px', fontSize: '11px' }}>
-                              Pendiente
+                              {totalAsignadas ? `0/${totalAsignadas} tareas (0%)` : 'Sin tareas asignadas'}
                             </span>
                           )}
                         </td>
@@ -2791,7 +2828,7 @@ export default function ControlQR({
                     const sumasTarea = {};
                     const cuentasTarea = {};
 
-                    (trabajosRangoDetalle || []).forEach(t => {
+                    [...actividadesHist.map(a => ({ ...a, nombre_trabajo: a.nombre })), ...(trabajosRangoDetalle || [])].forEach(t => {
                       const nombre = (t.nombre_trabajo || 'Actividad').trim();
                       const f = t.fecha || '';
                       const cpo = t.campo || 'GENERAL';
@@ -2799,11 +2836,12 @@ export default function ControlQR({
 
                       if (!mapaTareas.has(key)) {
                         const sem = calcularSemanaEscolar(f);
-                        const item = { key, nombre, fecha: f, campo: cpo, semana: sem };
+                        const item = { key, nombre, fecha: f, campo: cpo, semana: sem, alumno_ids: t.alumno_ids };
                         mapaTareas.set(key, item);
                         tareasUnicas.push(item);
                       }
 
+                      if (t.alumno_id == null) return;
                       if (!matriz[t.alumno_id]) matriz[t.alumno_id] = {};
                       const valNum = Number(t.valor);
                       matriz[t.alumno_id][key] = !isNaN(valNum) ? valNum : t.valor;
@@ -2873,6 +2911,7 @@ export default function ControlQR({
                                   {alu.alumno_nombre}
                                 </td>
                                 {tareasUnicas.map(t => {
+                                  if (!actividadAsignada(t, alu.alumno_id)) return <td key={t.key} style={{ textAlign: 'center', color: '#64748b' }}>No aplica</td>;
                                   const val = notas[t.key];
                                   if (val !== undefined && val !== null && val !== '') {
                                     const nVal = Number(val);
@@ -2905,7 +2944,7 @@ export default function ControlQR({
                                   );
                                 })}
                                 <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 'bold', color: '#4a5568', background: '#f8fafc' }}>
-                                  {entregas}/{tareasUnicas.length}
+                                  {entregas}/{tareasUnicas.filter(t => actividadAsignada(t, alu.alumno_id)).length}
                                 </td>
                                 <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 'bold', background: '#f0fff4' }}>
                                   {entregas > 0 ? (
