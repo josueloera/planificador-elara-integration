@@ -1,3 +1,12 @@
+# Planificador Docente 1.0.11
+
+- Planeación de Primaria: catálogo completo de PDAs de los seis grados y cuatro campos formativos; cada aprendizaje identifica su campo y contenido.
+- Proyectos didácticos: selección de PDAs de varios campos formativos en un mismo proyecto.
+- Planeación semanal y proyectos incluyen los apartados del formato institucional, con guardado de la información.
+- Ventanas de diálogo y selectores más amplios para facilitar la captura.
+- Exportación de planeaciones y proyectos a Word editable o PDF.
+
+Windows descarga la actualización y la instala al cerrar. macOS requiere instalación manual.
 # Planificador Docente 1.0.10
 
 - Bitácora: formulario con fecha, hora, lugar, involucrados, descripción de los hechos, acciones y compromisos.

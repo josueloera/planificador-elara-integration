@@ -123,7 +123,8 @@ db.serialize(() => {
   db.run(`ALTER TABLE perfil_alumno ADD COLUMN foto_url TEXT`, () => {});
   db.run(`CREATE TABLE IF NOT EXISTS trabajos_qr (id INTEGER PRIMARY KEY AUTOINCREMENT, alumno_id INTEGER, campo TEXT, nombre_trabajo TEXT, fecha TEXT, valor REAL, grupo_id INTEGER)`);
   db.run(`CREATE TABLE IF NOT EXISTS incidencias (id INTEGER PRIMARY KEY AUTOINCREMENT, alumno_id INTEGER, fecha TEXT, situacion TEXT, medidas TEXT, grupo_id INTEGER)`);
-  db.run(`CREATE TABLE IF NOT EXISTS proyectos (id INTEGER PRIMARY KEY AUTOINCREMENT, grado INTEGER, nombre TEXT, metodologia TEXT, escenario TEXT, temporalidad TEXT, problemática TEXT, pdas_seleccionados TEXT, fases_contenido TEXT, grupo_id INTEGER)`);
+  db.run(`CREATE TABLE IF NOT EXISTS proyectos (id INTEGER PRIMARY KEY AUTOINCREMENT, grado INTEGER, nombre TEXT, metodologia TEXT, escenario TEXT, temporalidad TEXT, problemática TEXT, pdas_seleccionados TEXT, fases_contenido TEXT, grupo_id INTEGER, apartados TEXT)`);
+  db.run("ALTER TABLE proyectos ADD COLUMN apartados TEXT", () => {});
   
   db.run(`CREATE TABLE IF NOT EXISTS planeacion (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,8 +136,9 @@ db.serialize(() => {
     miercoles_inicio TEXT, miercoles_desarrollo TEXT, miercoles_cierre TEXT,
     jueves_inicio TEXT, jueves_desarrollo TEXT, jueves_cierre TEXT,
     viernes_inicio TEXT, viernes_desarrollo TEXT, viernes_cierre TEXT,
-    recursos TEXT, evaluacion TEXT, adecuaciones TEXT
+    recursos TEXT, evaluacion TEXT, adecuaciones TEXT, apartados TEXT
   )`);
+  db.run("ALTER TABLE planeacion ADD COLUMN apartados TEXT", () => {});
   
   db.run(`CREATE TABLE IF NOT EXISTS comisiones (id INTEGER PRIMARY KEY, descripcion TEXT, fecha TEXT, tipo TEXT)`);
   db.run(`CREATE TABLE IF NOT EXISTS eventos_oficiales (fecha TEXT PRIMARY KEY, tipo TEXT)`);
@@ -538,18 +540,19 @@ ipcMain.handle('get-proyectos', async (e, grupo_id, grado) => new Promise(r => {
 }));
 
 ipcMain.handle('save-proyecto', async (e, p) => new Promise((resolve, reject) => {
-  const { id, grado, grupo_id, nombre, metodologia, escenario, temporalidad, problemática, pdas_seleccionados, fases_contenido } = p;
+  const { id, grado, grupo_id, nombre, metodologia, escenario, temporalidad, problemática, pdas_seleccionados, fases_contenido, apartados } = p;
   const g = grado ? Number(grado) : null;
   const gid = grupo_id ? Number(grupo_id) : (g || 1);
   const pdaStr = JSON.stringify(pdas_seleccionados || []);
   const fasesStr = JSON.stringify(fases_contenido || {});
+  const apartadosStr = JSON.stringify(apartados || {});
 
   if (id) {
-    db.run("UPDATE proyectos SET nombre=?, metodologia=?, escenario=?, temporalidad=?, problemática=?, pdas_seleccionados=?, fases_contenido=?, grado=?, grupo_id=? WHERE id=?",
-      [nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr, g, gid, id], () => resolve(true));
+    db.run("UPDATE proyectos SET nombre=?, metodologia=?, escenario=?, temporalidad=?, problemática=?, pdas_seleccionados=?, fases_contenido=?, grado=?, grupo_id=?, apartados=? WHERE id=?",
+      [nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr, g, gid, apartadosStr, id], () => resolve(true));
   } else {
-    db.run("INSERT INTO proyectos (grado, grupo_id, nombre, metodologia, escenario, temporalidad, problemática, pdas_seleccionados, fases_contenido) VALUES (?,?,?,?,?,?,?,?,?)",
-      [g, gid, nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr], () => resolve(true));
+    db.run("INSERT INTO proyectos (grado, grupo_id, nombre, metodologia, escenario, temporalidad, problemática, pdas_seleccionados, fases_contenido, apartados) VALUES (?,?,?,?,?,?,?,?,?,?)",
+      [g, gid, nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr, apartadosStr], () => resolve(true));
   }
 }));
 
@@ -613,8 +616,8 @@ ipcMain.handle('save-planeacion', async (e, d) => new Promise((resolve, reject) 
         miercoles_inicio, miercoles_desarrollo, miercoles_cierre,
         jueves_inicio, jueves_desarrollo, jueves_cierre,
         viernes_inicio, viernes_desarrollo, viernes_cierre,
-        recursos, evaluacion, adecuaciones, confidence_score
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        recursos, evaluacion, adecuaciones, confidence_score, apartados
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         g, gid, sem,
         d.lunes_inicio || '', d.lunes_desarrollo || '', d.lunes_cierre || '',
@@ -623,7 +626,8 @@ ipcMain.handle('save-planeacion', async (e, d) => new Promise((resolve, reject) 
         d.jueves_inicio || '', d.jueves_desarrollo || '', d.jueves_cierre || '',
         d.viernes_inicio || '', d.viernes_desarrollo || '', d.viernes_cierre || '',
         d.recursos || '', d.evaluacion || '', d.adecuaciones || '',
-        d.confidence_score ?? 1.0
+        d.confidence_score ?? 1.0,
+        typeof d.apartados === 'string' ? d.apartados : JSON.stringify(d.apartados || {})
       ],
       function(insErr) {
         if (insErr) {

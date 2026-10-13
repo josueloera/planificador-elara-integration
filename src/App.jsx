@@ -12,6 +12,8 @@ import Alumno from './components/Alumno';
 import ControlQR from './components/ControlQR';
 import { EstadoEvaluacionQR, VincularEvaluacionQR } from './components/EvaluacionAutomatica';
 import { mezclarNotasAutomaticas, promedioPeriodo } from './evaluacionAutomatica';
+import PlaneacionApartados from './components/PlaneacionApartados';
+import { exportarPlanoWord } from './utils/planeacionDocument';
 
 const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
 
@@ -120,9 +122,9 @@ function App() {
   const [procesando, setProcesando] = useState(false);
   const [listaProyectos, setListaProyectos] = useState([]);
   const [modoEdicionProy, setModoEdicionProy] = useState(false);
-  const [proyectoActual, setProyectoActual] = useState({ id: null, nombre: '', metodologia: 'COMUNITARIOS', escenario: 'AULA', temporalidad: '2 Semanas', problemática: '', pdas_seleccionados: [], fases_contenido: {} });
+  const [proyectoActual, setProyectoActual] = useState({ id: null, nombre: '', metodologia: 'COMUNITARIOS', escenario: 'AULA', temporalidad: '2 Semanas', problemática: '', pdas_seleccionados: [], fases_contenido: {}, apartados: {} });
   const [semanaPlan, setSemanaPlan] = useState(1); 
-  const [planData, setPlanData] = useState({ lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', confidence_score: 1.0 });
+  const [planData, setPlanData] = useState({ lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', apartados: {}, confidence_score: 1.0 });
   const [planDosif, setPlanDosif] = useState([]);
   const [pdasDisponibles, setPdasDisponibles] = useState([]);
   const [pdasSemana, setPdasSemana] = useState([]);
@@ -360,7 +362,7 @@ function App() {
         if (ipcRenderer && planData.id) {
           ipcRenderer.invoke('trigger-curiosity-rewrite', planData.id, nuevoTexto).then(() => {
             ipcRenderer.invoke('get-planeacion', grupoActual?.id, semanaPlan, grado).then(res => {
-              setPlanData(res && res.id ? res : { lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', confidence_score: 1.0 });
+              setPlanData(res && res.id ? { ...res, apartados: safeParse(res.apartados, {}) } : { lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', apartados: {}, confidence_score: 1.0 });
               setConsolaCompletada(true);
               showToast("✅ Planificación reescrita con éxito");
             }).catch(console.error);
@@ -383,7 +385,25 @@ function App() {
 
   useEffect(() => {
     if (ipcRenderer) {
-      ipcRenderer.invoke('get-pdas-disciplina', 0, grado).then(res => {
+      import('./data_curriculo_primaria.json').then(({ default: curriculoCompletoPrimaria }) => ipcRenderer.invoke('get-pdas-disciplina', 0, grado).then(pdasBase => {
+        const normalizarClaveCurricular = texto => String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+        const idsBasePorContenido = new Map((pdasBase || []).map(item => [`${normalizarClaveCurricular(item.campo)}|${normalizarClaveCurricular(item.contenido)}`, item.id]));
+        const res = Object.entries(curriculoCompletoPrimaria).flatMap(([campo, contenidos], campoIndex) => contenidos.flatMap((registro, contenidoIndex) => {
+          const textoPda = String(registro.pda?.[grado] || '');
+          const aprendizajes = [];
+          textoPda.split(/\r?\n/).forEach(linea => {
+            const texto = linea.replace(/^\s*[•·▪◦*-]\s*/, '').trim();
+            if (!texto) return;
+            if (/^\s*[•·▪◦*-]\s*/.test(linea) || aprendizajes.length === 0) aprendizajes.push(texto);
+            else aprendizajes[aprendizajes.length - 1] += ` ${texto}`;
+          });
+          const idBase = idsBasePorContenido.get(`${normalizarClaveCurricular(campo)}|${normalizarClaveCurricular(registro.contenido)}`);
+          return aprendizajes.map((pda, pdaIndex) => ({
+            id: pdaIndex === 0 && idBase ? idBase : `curr-${grado}-${campoIndex}-${contenidoIndex}-${pdaIndex}`,
+            grado, campo, contenido: registro.contenido, pda,
+            proyecto_sugerido: registro.contenido
+          }));
+        }));
         const filePdas = (res || []).map((item, idx) => {
           const semanaCorrespondiente = Math.min(42, Math.floor((idx / res.length) * 42) + 1);
           let nombreProyecto = 'Proyecto: ' + item.contenido;
@@ -405,7 +425,7 @@ function App() {
 
         if(vista === 'PROYECTOS') {
           ipcRenderer.invoke('get-proyectos', grupoActual?.id, grado).then(guardadosRes => {
-            const guardados = (guardadosRes || []).map(p => ({ ...p, pdas_seleccionados: safeParse(p.pdas_seleccionados, []), fases_contenido: safeParse(p.fases_contenido, {}) }));
+            const guardados = (guardadosRes || []).map(p => ({ ...p, pdas_seleccionados: safeParse(p.pdas_seleccionados, []), fases_contenido: safeParse(p.fases_contenido, {}), apartados: safeParse(p.apartados, {}) }));
             // Reparado pdasDb ReferenceError redirigiéndolo a filePdas
             const sugeridos = filePdas.map((p) => ({
               id: `sug-${p.id}`, nombre: p.proyecto_sugerido, metodologia: detectarMetodologia(p.campo),
@@ -475,11 +495,11 @@ function App() {
             }
             setPdasSemana(pdasSemanaAct.length > 0 ? pdasSemanaAct : [{ proyecto: "Repaso", pda: "Periodo de fortalecimiento de aprendizajes." }]);
         }
-      });
+      })).catch(error => console.error('No se pudo cargar el catálogo curricular de Primaria:', error));
     }
 
     if(ipcRenderer && vista === 'PLANNER') {
-        ipcRenderer.invoke('get-planeacion', grupoActual?.id, semanaPlan, grado).then(res => setPlanData(res && res.id ? res : { lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', confidence_score: 1.0 }));
+        ipcRenderer.invoke('get-planeacion', grupoActual?.id, semanaPlan, grado).then(res => setPlanData(res && res.id ? { ...res, apartados: safeParse(res.apartados, {}) } : { lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', apartados: {}, confidence_score: 1.0 }));
     }
   }, [vista, semanaPlan, grado, grupoActual, configCiclo]);
 
@@ -644,7 +664,8 @@ function App() {
       setProyectoActual({ 
           ...p, 
           pdas_seleccionados: safeParse(p.pdas_seleccionados, []), 
-          fases_contenido: safeParse(p.fases_contenido, {}) 
+          fases_contenido: safeParse(p.fases_contenido, {}),
+          apartados: safeParse(p.apartados, {})
       }); 
       setModoEdicionProy(true); 
   };
@@ -697,10 +718,11 @@ function App() {
       }
   };
   const borrarAlumno = (id) => { if(confirm("¿Borrar?")) ipcRenderer.invoke('delete-alumno', id).then(()=>ipcRenderer.invoke('get-alumnos', grupoActual?.id).then(setAlumnos)); };
-  const savePlan = () => ipcRenderer.invoke('save-planeacion', {...planData, grado, grupo_id: grupoActual?.id, semana:semanaPlan}).then(()=>showToast("✅ Planeación guardada"));
+  const savePlan = () => ipcRenderer.invoke('save-planeacion', {...planData, apartados: JSON.stringify(planData.apartados || {}), grado, grupo_id: grupoActual?.id, semana:semanaPlan}).then(()=>showToast("✅ Planeación guardada"));
   
   const pdasFiltrados = useMemo(() => {
-    return pdasDisponibles.filter(p => !busquedaPda || p.descripcion.toLowerCase().includes(busquedaPda.toLowerCase()) || (p.proyecto_sugerido && p.proyecto_sugerido.toLowerCase().includes(busquedaPda.toLowerCase())));
+    const consulta = busquedaPda.trim().toLocaleLowerCase('es-MX');
+    return pdasDisponibles.filter(p => !consulta || [p.descripcion, p.proyecto_sugerido, p.campo, p.contenido].some(texto => String(texto || '').toLocaleLowerCase('es-MX').includes(consulta)));
   }, [pdasDisponibles, busquedaPda]);
 
   const selAlumnoBitacora = (a) => { setAlumnoBitacora(a); if(a && ipcRenderer) { ipcRenderer.invoke('get-perfil', a.id).then(r => setPerfil(r || {})); } };
@@ -1359,7 +1381,16 @@ function App() {
                     {toast}
                 </div>
             )}
-            <div className="header-dosificador"> <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>🚀 Proyectos</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #00CEC9', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select></div> <div> {!modoEdicionProy && <button className="btn-guardar" onClick={()=>{setProyectoActual({id:null, nombre:'', metodologia:'COMUNITARIOS', escenario:'AULA', temporalidad:'', pdas_seleccionados:[], fases_contenido:{}}); setBusquedaPda(""); setModoEdicionProy(true);}}>+ Nuevo</button>} <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button> </div> </div> {modoEdicionProy ? ( <div key={proyectoActual.id || 'nuevo'} className="hoja-planeacion" style={{ background: `linear-gradient(to bottom, ${calcularColorSemaforo(proyectoActual)} 0%, #ffffff 350px)` }}> <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}> <h3 className="titulo-edicion">✏️ Editar Proyecto</h3> <div className="botones-edicion"><button className="btn-guardar" onClick={()=>window.print()} style={{marginRight:10}}>🖨️ Imprimir</button><button className="btn-volver" onClick={()=>setModoEdicionProy(false)}>🔙 Volver</button></div> </div> <div className="grid-dos"> <div className="grupo-input grupo-nombre"> <label>Nombre:</label> <input defaultValue={proyectoActual.nombre} onBlur={e => actualizarDatoProyecto('nombre', e.target.value)} style={{padding:'8px'}} placeholder="Nombre..." /> </div> <div className="grupo-input"><label>Metodología:</label><select value={proyectoActual.metodologia} onChange={e=>actualizarDatoProyecto('metodologia', e.target.value)} style={{padding:10}}> {Object.keys(METODOLOGIAS).map(k=><option key={k} value={k}>{METODOLOGIAS[k].nombre}</option>)} </select></div> </div> <div className="seccion-plan" style={{marginTop:20, borderLeft:`6px solid ${METODOLOGIAS[proyectoActual.metodologia].borde}`}}> <h4>Fases ({METODOLOGIAS[proyectoActual.metodologia].nombre})</h4> {METODOLOGIAS[proyectoActual.metodologia].fases.map((fase, i) => ( <div key={i} className="momento" style={{flexDirection:'column', marginBottom:15}}> <span className="label-momento" style={{fontSize:'0.9rem'}}>{fase}</span> <textarea style={{width:"100%", minHeight:80}} value={(safeParse(proyectoActual.fases_contenido, {}))[i] || ""} onChange={e => actualizarFaseProyecto(i, e.target.value)} placeholder="Desarrollo..." /> </div> ))} </div> <div className="pdas-print-view" style={{display:'none'}}> <h4 style={{marginTop:20, textTransform:'uppercase', borderBottom:'1px solid black'}}>Vinculación de Aprendizajes (PDAs)</h4> <ul style={{listStyle:'none', padding:0}}> {pdasSeleccionadosParaImprimir.length === 0 && <li>Sin aprendizajes vinculados.</li>} {pdasSeleccionadosParaImprimir.map(p => ( <li key={p.id} style={{marginBottom:10, fontSize:'11pt', fontFamily:'Times New Roman'}}> <b>• {p.proyecto_sugerido}:</b> {p.descripcion} </li> ))} </ul> </div> <div className="seccion-plan no-print" style={{marginTop:20, background:'rgba(0,0,0,0.03)'}}> <h4>Vincular PDAs</h4> <input placeholder="Buscar tema..." value={busquedaPda} onChange={e=>setBusquedaPda(e.target.value)} style={{width:'100%', padding:8, marginBottom:10}}/> <div style={{maxHeight:150, overflowY:'auto'}}> {pdasFiltrados.length === 0 && <p style={{fontStyle:'italic', color:'#999'}}>No hay PDAs.</p>} {pdasFiltrados.map(p=>( <div key={p.id} style={{display:'flex', gap:5, marginBottom:5}}> <input type="checkbox" checked={(Array.isArray(proyectoActual.pdas_seleccionados) ? proyectoActual.pdas_seleccionados : []).includes(p.id)} onChange={()=>togglePdaProyecto(p.id)} /> <span><b>{p.proyecto_sugerido}</b>: {p.descripcion}</span> </div> ))} </div> </div> <button className="btn-guardar botones-edicion" onClick={guardarProyecto} style={{marginTop:20, width:'100%', padding:15}}>💾 GUARDAR</button> </div> ) : ( <div className="grid-proyectos-scroll" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:20, alignContent:'start'}}> {listaProyectos.map(p => { const estilo = METODOLOGIAS[p.metodologia] || {color:'#fff', borde:'#ccc'}; const isVisto = (vistos.proyecto || []).includes(String(p.id)); return ( <div key={p.id} className="tarjeta-proyecto" onClick={() => editarProyectoSafe(p)} style={{ cursor:'pointer', borderLeft:`8px solid ${estilo.borde}`, background: estilo.color, padding: 15, borderRadius: 8, height: '140px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', opacity: isVisto ? 0.6 : 1, transition: 'opacity 0.3s' }}> <div> <h3 style={{margin:'0 0 5px 0', fontSize:'1.1rem', color:'#333'}}>{p.nombre}</h3> <span style={{fontSize:'0.8rem', background:'rgba(255,255,255,0.6)', padding:'2px 6px', borderRadius:4, fontWeight:'bold', color:estilo.borde}}> {estilo.nombre} {p.es_sugerido && '⭐'} </span> </div> <div style={{alignSelf: 'flex-end', marginTop: 10}}><button className="no-print" onClick={(e)=>{e.stopPropagation(); toggleVisto('proyecto', p.id)}} style={{padding: '5px 10px', fontSize: '0.8rem', cursor: 'pointer', background: isVisto ? '#2ecc71' : 'rgba(255,255,255,0.8)', color: isVisto ? 'white' : '#333', border: 'none', borderRadius: 5, fontWeight:'bold'}}> {isVisto ? '✅ Terminado' : 'Marcar Terminado'} </button></div> </div> ); })} </div> )} </div> 
+            <div className="header-dosificador"> <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>🚀 Proyectos</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #00CEC9', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select></div> <div> {!modoEdicionProy && <button className="btn-guardar" onClick={()=>{setProyectoActual({id:null, nombre:'', metodologia:'COMUNITARIOS', escenario:'AULA', temporalidad:'', pdas_seleccionados:[], fases_contenido:{}, apartados:{}}); setBusquedaPda(""); setModoEdicionProy(true);}}>+ Nuevo</button>} <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button> </div> </div> {modoEdicionProy ? (<div key={proyectoActual.id || 'nuevo'} className="hoja-planeacion editor-documento" style={{background:`linear-gradient(to bottom, ${calcularColorSemaforo(proyectoActual)} 0%, #ffffff 350px)`}}>
+  <header className="editor-documento-header no-print"><h3>Editar proyecto didáctico</h3><div className="acciones-exportacion"><button onClick={()=>exportarPlanoWord({tipo:'Proyecto didáctico',nombre:proyectoActual.nombre,datos:{...proyectoActual,grado,escuela:configCiclo.nombreEscuela,cct:configCiclo.cct,docente:configCiclo.nombreDocente,ciclo:new Date(configCiclo.fechaInicioStr).getFullYear()+'-'+(new Date(configCiclo.fechaInicioStr).getFullYear()+1)},apartados:{...proyectoActual.apartados,campos_formativos:[...new Set(pdasSeleccionadosParaImprimir.map(p=>p.campo))].join(', ')},pdas:pdasSeleccionadosParaImprimir,fases:METODOLOGIAS[proyectoActual.metodologia].fases.map((label,index)=>({label,value:(safeParse(proyectoActual.fases_contenido,{}))[index]}))})}>Exportar Word editable</button><button onClick={()=>window.print()}>Exportar PDF</button><button className="btn-volver" onClick={()=>setModoEdicionProy(false)}>Volver</button></div></header>
+  <h1 className="titulo-documento only-print-text">Plano didáctico: {proyectoActual.nombre || 'Proyecto'}</h1>
+  <div className="grid-dos editor-proyecto-basico"><label className="grupo-input grupo-nombre">Nombre del proyecto<input value={proyectoActual.nombre} onChange={e=>actualizarDatoProyecto('nombre',e.target.value)} placeholder="Nombre del proyecto"/><span className="only-print-text">{proyectoActual.nombre || 'Sin título'}</span></label><label className="grupo-input">Metodología<select value={proyectoActual.metodologia} onChange={e=>actualizarDatoProyecto('metodologia',e.target.value)}>{Object.keys(METODOLOGIAS).map(k=><option key={k} value={k}>{METODOLOGIAS[k].nombre}</option>)}</select><span className="only-print-text">{METODOLOGIAS[proyectoActual.metodologia].nombre}</span></label><label className="grupo-input">Escenario<input value={proyectoActual.escenario || ''} onChange={e=>actualizarDatoProyecto('escenario',e.target.value)}/><span className="only-print-text">{proyectoActual.escenario || 'Sin especificación.'}</span></label><label className="grupo-input">Temporalidad<input value={proyectoActual.temporalidad || ''} onChange={e=>actualizarDatoProyecto('temporalidad',e.target.value)}/><span className="only-print-text">{proyectoActual.temporalidad || 'Sin especificación.'}</span></label><label className="grupo-input grupo-nombre">Descripción de la problemática<textarea value={proyectoActual.problemática || ''} onChange={e=>actualizarDatoProyecto('problemática',e.target.value)}/><span className="only-print-text">{proyectoActual.problemática || 'Sin especificación.'}</span></label></div>
+  <section className="seccion-plan pda-selector no-print"><h3>PDAs de todos los campos formativos</h3><p>Catálogo completo del grado {grado}: {pdasDisponibles.length} PDAs. Busca por campo, contenido o aprendizaje y selecciona los que integrará el proyecto.</p><input aria-label="Buscar PDAs por campo, contenido o descripción" placeholder="Buscar campo, contenido o PDA..." value={busquedaPda} onChange={e=>setBusquedaPda(e.target.value)}/><div className="pda-lista-amplia">{pdasFiltrados.length === 0 && <p>No hay coincidencias en el catálogo del grado.</p>}{Object.entries(pdasFiltrados.reduce((grupos,p)=>{const campo=p.campo || 'Campo formativo sin nombre';(grupos[campo] ||= []).push(p);return grupos;},{})).map(([campo,pdas])=><section className="pda-grupo-campo" key={campo}><h4>{campo} <span>{pdas.length} PDAs</span></h4>{pdas.map(p=><label className="pda-opcion" key={p.id}><input type="checkbox" checked={(Array.isArray(proyectoActual.pdas_seleccionados)?proyectoActual.pdas_seleccionados:[]).includes(p.id)} onChange={()=>togglePdaProyecto(p.id)}/><span><strong>{p.proyecto_sugerido || 'Aprendizaje'}</strong>{p.contenido && <small>Contenido: {p.contenido}</small>}<span>{p.descripcion}</span></span></label>)}</section>)}</div><p className="pda-seleccionados">Seleccionados: {pdasSeleccionadosParaImprimir.length} PDAs de {new Set(pdasSeleccionadosParaImprimir.map(p=>p.campo)).size} campos formativos</p></section>
+  <section className="seccion-plan fases-proyecto"><h3>Metodología y fases: {METODOLOGIAS[proyectoActual.metodologia].nombre}</h3>{METODOLOGIAS[proyectoActual.metodologia].fases.map((fase,i)=><label className="momento" key={i}><strong>{fase}</strong><textarea rows={4} value={(safeParse(proyectoActual.fases_contenido,{}))[i] || ''} onChange={e=>actualizarFaseProyecto(i,e.target.value)} placeholder="Describe lo que se realizará en esta fase"/><span className="only-print-text">{(safeParse(proyectoActual.fases_contenido,{}))[i] || 'Sin especificación.'}</span></label>)}</section>
+  <div className="pdas-print-view seccion-plan"><h3>Vinculación de aprendizajes (PDAs)</h3><p>{pdasSeleccionadosParaImprimir.length} PDAs seleccionados</p><ul>{pdasSeleccionadosParaImprimir.map(p=><li key={p.id}><strong>{p.campo} · {p.proyecto_sugerido}</strong><br/><span>Contenido: {p.contenido}</span><br/>{p.descripcion}</li>)}</ul></div>
+  <PlaneacionApartados tipo="proyecto" value={proyectoActual.apartados || {}} onChange={(key,value)=>actualizarDatoProyecto('apartados',{...(proyectoActual.apartados || {}),[key]:value})}/>
+  <button className="btn-guardar no-print" onClick={guardarProyecto} style={{marginTop:20,width:'100%',padding:15}}>Guardar proyecto</button>
+  </div> ) : ( <div className="grid-proyectos-scroll" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:20, alignContent:'start'}}> {listaProyectos.map(p => { const estilo = METODOLOGIAS[p.metodologia] || {color:'#fff', borde:'#ccc'}; const isVisto = (vistos.proyecto || []).includes(String(p.id)); return ( <div key={p.id} className="tarjeta-proyecto" onClick={() => editarProyectoSafe(p)} style={{ cursor:'pointer', borderLeft:`8px solid ${estilo.borde}`, background: estilo.color, padding: 15, borderRadius: 8, height: '140px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', opacity: isVisto ? 0.6 : 1, transition: 'opacity 0.3s' }}> <div> <h3 style={{margin:'0 0 5px 0', fontSize:'1.1rem', color:'#333'}}>{p.nombre}</h3> <span style={{fontSize:'0.8rem', background:'rgba(255,255,255,0.6)', padding:'2px 6px', borderRadius:4, fontWeight:'bold', color:estilo.borde}}> {estilo.nombre} {p.es_sugerido && '⭐'} </span> </div> <div style={{alignSelf: 'flex-end', marginTop: 10}}><button className="no-print" onClick={(e)=>{e.stopPropagation(); toggleVisto('proyecto', p.id)}} style={{padding: '5px 10px', fontSize: '0.8rem', cursor: 'pointer', background: isVisto ? '#2ecc71' : 'rgba(255,255,255,0.8)', color: isVisto ? 'white' : '#333', border: 'none', borderRadius: 5, fontWeight:'bold'}}> {isVisto ? '✅ Terminado' : 'Marcar Terminado'} </button></div> </div> ); })} </div> )} </div>
       );
     }
 
@@ -1383,7 +1414,8 @@ function App() {
               )}
               <button onClick={()=>toggleVisto('plan', semanaPlan)} style={{padding: '10px 15px', fontWeight:'bold', cursor: 'pointer', background: isVisto ? '#2ecc71' : '#bdc3c7', color: 'white', border: 'none', borderRadius: 5, marginRight: 10}} className="no-print"> {isVisto ? '✅ Completada' : 'Marcar Completada'} </button>
               <button className="btn-guardar" onClick={savePlan}>💾 Guardar</button>
-              <button className="btn-volver" onClick={()=>window.print()}>🖨️</button>
+              <button className="btn-volver" onClick={()=>exportarPlanoWord({tipo:'Planeación semanal',nombre:planData.apartados?.nombre_proyecto || `Semana ${semanaPlan}`,datos:{grado,temporalidad:obtenerFechasSemana(semanaPlan),escuela:configCiclo.nombreEscuela,cct:configCiclo.cct,docente:configCiclo.nombreDocente,ciclo:`${new Date(`${configCiclo.fechaInicioStr}T00:00:00`).getFullYear()}-${new Date(`${configCiclo.fechaInicioStr}T00:00:00`).getFullYear()+1}`},apartados:planData.apartados,pdas:pdasDisponibles.filter(p=>pdasSemana.some(s=>s.pda===p.descripcion)),dias:['lunes','martes','miercoles','jueves','viernes'].map(label=>({label:label.toUpperCase(),inicio:planData[`${label}_inicio`],desarrollo:planData[`${label}_desarrollo`],cierre:planData[`${label}_cierre`]})),extras:{recursos:planData.recursos,evaluacion:planData.evaluacion,adecuaciones:planData.adecuaciones}})}>Word editable</button>
+              <button className="btn-volver" onClick={()=>window.print()}>PDF</button>
               <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button>
             </div> 
           </div> 
@@ -1417,8 +1449,10 @@ function App() {
 
             <div className="seccion-plan" style={{marginBottom:20}}> 
               <h3>🎯 Aprendizajes (PDA)</h3> 
-              {pdasSemana.length === 0 ? <p style={{color:'#999'}}>Sin contenido.</p> : <ul>{pdasSemana.map((p,i)=><li key={i}><b>{p.proyecto}</b>: {p.pda}</li>)}</ul>} 
+              {pdasSemana.length === 0 ? <p style={{color:'#999'}}>Sin contenido.</p> : <ul>{pdasSemana.map((p,i)=>{const detalle=pdasDisponibles.find(candidato=>candidato.descripcion===p.pda);return <li key={i}><b>{detalle?.campo || 'Campo formativo'} · {p.proyecto}</b>: {p.pda}</li>})}</ul>}
             </div> 
+            <div className="editor-proyecto-basico seccion-plan"><label className="grupo-input">Nombre del proyecto<input value={planData.apartados?.nombre_proyecto || ''} onChange={e=>setPlanData(prev=>({...prev,apartados:{...(prev.apartados || {}),nombre_proyecto:e.target.value}}))}/><span className="only-print-text">{planData.apartados?.nombre_proyecto || 'Sin especificación.'}</span></label></div>
+            <PlaneacionApartados tipo="planeacion" value={planData.apartados || {}} onChange={(key,value)=>setPlanData(prev=>({...prev,apartados:{...(prev.apartados || {}),[key]:value}}))}/>
             
             <div className="grid-semanal">
               {['lunes','martes','miercoles','jueves','viernes'].map(d=>(
