@@ -1,3 +1,12 @@
+# Planificador Docente 1.0.10
+
+- Bitácora: formulario con fecha, hora, lugar, involucrados, descripción de los hechos, acciones y compromisos.
+- Edición de incidencias y eliminación con confirmación.
+- Historial ordenado por fecha, con registro de creación y última modificación.
+- Conservación de las incidencias anteriores y validación de alumno, fecha y hora.
+
+Windows descarga la actualización y la instala al cerrar. macOS requiere instalación manual.
+
 # Planificador Docente 1.0.9
 
 - Corregida la escritura del nombre al crear o editar una actividad en Control QR: se recupera el foco de la ventana y del campo de texto.

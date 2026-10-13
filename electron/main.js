@@ -516,8 +516,6 @@ ipcMain.handle('check-hay-datos', async () => new Promise(r => db.get("SELECT co
 // -- PERFIL --
 ipcMain.handle('get-perfil', async (e, id) => new Promise(r => db.get("SELECT * FROM perfil_alumno WHERE alumno_id = ?", [id], (err, row) => r(row || {}))));
 ipcMain.handle('save-perfil', (_event, data) => alumnoService.savePerfil(data));
-ipcMain.handle('get-incidencias', async (e, id) => new Promise(r => db.all("SELECT * FROM incidencias WHERE alumno_id = ?", [id], (err, rows) => r(rows || []))));
-ipcMain.handle('save-incidencia', async (e, d) => new Promise(r => db.run("INSERT INTO incidencias (alumno_id, fecha, situacion, medidas) VALUES (?,?,?,?)", [d.alumno_id, d.fecha, d.situacion, d.medidas], () => r(true))));
 
 // -- PROYECTOS --
 ipcMain.handle('get-proyectos', async (e, grupo_id, grado) => new Promise(r => {
@@ -916,3 +914,5 @@ ipcMain.handle('generate-ai-material', async (e, { prompt, systemPrompt }) => {
 
 // Perfil y expediente: datos locales compartidos con Bitácora.
 const alumnoService = require('./studentRecord.js').installStudentRecord({ db, ipcMain, variante: 'primaria' });
+
+require('./incidencias.js').installIncidencias({ db, ipcMain });

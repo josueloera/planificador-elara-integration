@@ -1,3 +1,4 @@
+import Incidencias from './components/Incidencias';
 import { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import './App.css';
 
@@ -129,9 +130,6 @@ function App() {
   const [alumnoBitacora, setAlumnoBitacora] = useState(null); 
   const [tabBitacora, setTabBitacora] = useState('PERFIL'); 
   const [perfil, setPerfil] = useState({}); 
-  const [incidencias, setIncidencias] = useState([]); 
-  const [fechaInc, setFechaInc] = useState(new Date().toISOString().split('T')[0]); 
-  const [formInc, setFormInc] = useState({ situacion: '', involucrados: '', medidas: '' });
   
   // CALENDARIO ESTADOS
   const [mesCal, setMesCal] = useState(new Date().getMonth()+1); 
@@ -705,9 +703,9 @@ function App() {
     return pdasDisponibles.filter(p => !busquedaPda || p.descripcion.toLowerCase().includes(busquedaPda.toLowerCase()) || (p.proyecto_sugerido && p.proyecto_sugerido.toLowerCase().includes(busquedaPda.toLowerCase())));
   }, [pdasDisponibles, busquedaPda]);
 
-  const selAlumnoBitacora = (a) => { setAlumnoBitacora(a); if(a && ipcRenderer) { ipcRenderer.invoke('get-perfil', a.id).then(r => setPerfil(r || {})); ipcRenderer.invoke('get-incidencias', a.id).then(setIncidencias); } };
+  const selAlumnoBitacora = (a) => { setAlumnoBitacora(a); if(a && ipcRenderer) { ipcRenderer.invoke('get-perfil', a.id).then(r => setPerfil(r || {})); } };
   const savePerfil = (e) => { e.preventDefault(); const d = new FormData(e.target); const obj = Object.fromEntries(d.entries()); obj.alumno_id = alumnoBitacora.id; ipcRenderer.invoke('save-perfil', obj).then(() => showToast("✅ Ficha guardada")); };
-  const saveInc = () => { const d={...formInc, alumno_id:alumnoBitacora.id, fecha:fechaInc}; ipcRenderer.invoke('save-incidencia', d).then(()=>{ ipcRenderer.invoke('get-incidencias', alumnoBitacora.id).then(setIncidencias); setFormInc({situacion:'', involucrados:'', medidas:''}); showToast("✅ Reporte guardado"); }); };
+
   const toggleEventoCalendario = (f) => { if (!modoConfigCalendario) { setFechaEval(f); setVista('EVAL'); cargarEval(); return; } const e = eventosSEP[f]; let n = herramientaSeleccionada; if (e === herramientaSeleccionada) n = 'BORRAR'; if(ipcRenderer) ipcRenderer.invoke('save-evento-oficial', f, n).then(() => { const c = {...eventosSEP}; if(n === 'BORRAR') delete c[f]; else c[f] = n; setEventosSEP(c); }); };
   const renderCal = () => {
     const dias=new Date(anioCal, mesCal, 0).getDate(), ini=new Date(anioCal, mesCal-1, 1).getDay();
@@ -1264,15 +1262,7 @@ function App() {
                     <button className="btn-guardar">💾 Guardar Ficha</button> 
                   </form> 
                 ) : ( 
-                  <div className="panel-incidencias">
-                    <div className="nueva-incidencia">
-                      <input type="date" value={fechaInc} onChange={e=>setFechaInc(e.target.value)}/>
-                      <input placeholder="Situación" value={formInc.situacion} onChange={e=>setFormInc({...formInc, situacion:e.target.value})} style={{width:'100%'}}/>
-                      <input placeholder="Acuerdos / Medidas" value={formInc.medidas} onChange={e=>setFormInc({...formInc, medidas:e.target.value})} style={{width:'100%'}}/>
-                      <button onClick={saveInc} className="btn-guardar">Agregar</button>
-                    </div>
-                    <div className="lista-reportes">{incidencias.map(i=><div key={i.id} className="tarjeta-incidencia"><b>{i.fecha}</b>: {i.situacion}<br/><small>{i.medidas}</small></div>)}</div>
-                  </div> 
+                  <Incidencias key={alumnoBitacora.id} ipcRenderer={ipcRenderer} alumnoId={alumnoBitacora.id} />
                 )} 
               </> 
             )} 

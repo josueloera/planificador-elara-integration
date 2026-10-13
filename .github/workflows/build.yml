@@ -55,6 +55,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Verify incident records
+        run: node --test scripts/test-incidencias.cjs
       - name: Verify individualized QR assignments
         run: npm run test:qr
       - name: Verify daily QR evaluation
@@ -89,6 +91,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Verify incident records
+        run: node --test scripts/test-incidencias.cjs
       - name: Verify individualized QR assignments
         run: npm run test:qr
       - name: Verify daily QR evaluation
