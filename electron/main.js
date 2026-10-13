@@ -386,13 +386,14 @@ ipcMain.handle('start-trial', () => {
 });
 
 // --- TRUCO MAESTRO: FORZAR FOCO AUNQUE SE PIERDA ---
-ipcMain.handle('app-focus', () => {
-    // Intenta obtener la ventana enfocada, si no hay (que es el problema), agarra la primera
-    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
-    if (win) {
-        win.show(); // Asegura que esté visible
-        win.focus(); // Fuerza el foco del sistema
-    }
+ipcMain.handle('app-focus', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win.isDestroyed()) return false;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+    // El foco nativo de la ventana no garantiza el foco del contenido editable.
+    win.webContents.focus();
     return true;
 });
 

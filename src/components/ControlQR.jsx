@@ -134,6 +134,29 @@ export default function ControlQR({
   const [destinatariosActividad, setDestinatariosActividad] = useState([]);
   const [cargandoAlumnosAdecuacion, setCargandoAlumnosAdecuacion] = useState(false);
   const [editandoActividad, setEditandoActividad] = useState(null); // { nombreOriginal, nombre, campo }
+  const nombreActividadInputRef = useRef(null);
+  const editandoNombreActividad = creandoNuevaActividad || Boolean(editandoActividad);
+
+  // Recuperar tanto el foco de Electron como el del campo al abrir el formulario.
+  useEffect(() => {
+    if (!editandoNombreActividad || activeTab !== 'ESCANER' || modoEscaneo !== 'TRABAJO') return;
+    let vigente = true;
+    const enfocar = async () => {
+      try {
+        if (ipcRenderer) await ipcRenderer.invoke('app-focus');
+      } catch (error) {
+        console.warn('No se pudo recuperar el foco de la ventana:', error);
+      }
+      if (!vigente) return;
+      const input = nombreActividadInputRef.current;
+      // No quitar el foco si el usuario ya pasó a otro control del formulario.
+      if (document.activeElement !== document.body && document.activeElement !== input) return;
+      input?.focus();
+      input?.select();
+    };
+    enfocar();
+    return () => { vigente = false; };
+  }, [creandoNuevaActividad, editandoNombreActividad, activeTab, modoEscaneo, ipcRenderer]);
 
   useEffect(() => {
     if (!creandoNuevaActividad || !grupoActual?.id || !ipcRenderer) return undefined;
@@ -698,12 +721,16 @@ export default function ControlQR({
 
   // Soporte directo Plug & Play para Pistolas / Lectores USB de Códigos QR y Barras (HID)
   useEffect(() => {
+    if (editandoNombreActividad) return;
     let buffer = '';
     let lastKeyTime = Date.now();
 
     const handleKeyDown = (e) => {
       // Si el usuario está escribiendo intencionalmente en un input normal, no interferir
-      if (['INPUT', 'TEXTAREA'].includes(e.target?.tagName) && e.target?.id !== 'scannerUsbInput') {
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.altKey || e.metaKey ||
+          (e.target?.id !== 'scannerUsbInput' &&
+           (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName) || e.target?.isContentEditable))) {
+        buffer = '';
         return;
       }
 
@@ -729,7 +756,7 @@ export default function ControlQR({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [modoEscaneo, subtipoAsistencia, campoSeleccionado, criterioSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo, asignacionesDia, asignacionesListas, actividadesDelDia]);
+  }, [editandoNombreActividad, modoEscaneo, subtipoAsistencia, campoSeleccionado, criterioSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo, asignacionesDia, asignacionesListas, actividadesDelDia]);
 
   // Recargar una vez al cambiar de grupo o abrir un modal, sin depender de la lista recibida.
   useEffect(() => {
@@ -1446,11 +1473,18 @@ export default function ControlQR({
                           <input
                             type="text"
                             list="listaSugerenciasTareas"
+                            ref={nombreActividadInputRef}
                             value={nuevoNombreActividad}
                             onChange={(e) => setNuevoNombreActividad(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmarNuevaActividad(); }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                                e.preventDefault();
+                                handleConfirmarNuevaActividad();
+                              }
+                            }}
                             placeholder="Ej. Resumen de lectura, Desafíos matemáticos..."
                             autoFocus
+                            aria-label="Nombre de la actividad"
                             style={{
                               width: '100%',
                               padding: '8px 10px',
@@ -1560,10 +1594,17 @@ export default function ControlQR({
                           </label>
                           <input
                             type="text"
+                            ref={nombreActividadInputRef}
                             value={editandoActividad.nombre}
                             onChange={(e) => setEditandoActividad({ ...editandoActividad, nombre: e.target.value })}
-                            onKeyDown={(e) => { if (e.key === 'Enter') handleGuardarEdicionActividad(); }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                                e.preventDefault();
+                                handleGuardarEdicionActividad();
+                              }
+                            }}
                             autoFocus
+                            aria-label="Nombre de la actividad"
                             style={{
                               width: '100%',
                               padding: '8px 10px',

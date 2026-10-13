@@ -1,3 +1,12 @@
+# Planificador Docente 1.0.9
+
+- Corregida la escritura del nombre al crear o editar una actividad en Control QR: se recupera el foco de la ventana y del campo de texto.
+- El lector USB pausa la captura de teclas mientras se crea o edita una actividad.
+- El nombre inicial queda seleccionado para reemplazarlo al escribir; Enter confirma la actividad sin interferir con la composición de texto.
+- Se conservan las actividades generales y NEE, sus destinatarios y la separación por grupo, materia y ciclo escolar.
+
+Windows instala la actualización al cerrar después de descargarla. macOS requiere instalación manual.
+
 # Planificador Docente 1.0.8
 
 - Control QR: al crear una actividad desde Modo de Captura, se puede asignar a la clase en general o a alumnos NEE seleccionados.
