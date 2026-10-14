@@ -30,6 +30,9 @@
   .editor-documento { max-width: 1280px; margin: 0 auto 32px; padding: clamp(20px, 3vw, 40px); }
   .editor-documento-header { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:20px; }
   .acciones-exportacion { display:flex; flex-wrap:wrap; gap:10px; }
+  .acciones-exportacion .btn-volver { background: #b53225; color: #fff; border-color: #b53225; }
+  .acciones-exportacion .btn-volver:hover { background: #92281e; }
+  .acciones-exportacion .btn-volver:focus-visible { outline: 3px solid #164c73; outline-offset: 3px; }
   .acciones-exportacion button { min-height:44px; padding:10px 16px; border:1px solid #b9c8d2; border-radius:8px; background:#fff; font:inherit; font-weight:600; cursor:pointer; }
   .editor-proyecto-basico { margin-top: 20px; }
   .editor-proyecto-basico .grupo-input { display:flex; flex-direction:column; gap:8px; }

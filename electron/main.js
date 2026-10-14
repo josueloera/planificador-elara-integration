@@ -148,27 +148,6 @@ db.serialize(() => {
   // Novedades para Secundaria (Múltiples Grupos)
   db.run(`CREATE TABLE IF NOT EXISTS grupos_maestro (id INTEGER PRIMARY KEY AUTOINCREMENT, grado INTEGER, seccion TEXT, disciplina_id INTEGER, tipo TEXT, ciclo_escolar TEXT)`);
   
-  // Tabla para Descubrimientos Nocturnos de ELARA
-  db.run(`CREATE TABLE IF NOT EXISTS elara_insights (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    titulo TEXT,
-    mensaje TEXT,
-    fecha TEXT,
-    visto INTEGER DEFAULT 0
-  )`);
-
-  // Sembrar descubrimientos iniciales
-  db.get("SELECT COUNT(*) as count FROM elara_insights", (err, row) => {
-    if (row && row.count === 0) {
-      db.run(`INSERT INTO elara_insights (titulo, mensaje, fecha, visto) VALUES (?, ?, ?, ?)`, [
-        "Descubrimiento de Topología Nocturna",
-        "Durante el ciclo nocturno, expandí la topología sobre el tema de Proyecto 2. He preparado este material didáctico proactivamente para tu grupo.",
-        new Date().toISOString().split('T')[0],
-        0
-      ]);
-    }
-  });
-
   // Migración segura para bases de datos existentes (añadir columnas sin romper si ya existen)
   const tablasMigrar = ['alumnos', 'criterios', 'planeacion', 'proyectos', 'incidencias'];
   tablasMigrar.forEach(tabla => {
@@ -216,7 +195,6 @@ db.serialize(() => {
   // Añadir score de confianza a la planeación
   db.run(`ALTER TABLE planeacion ADD COLUMN confidence_score REAL DEFAULT 1.0`, (err) => {
     // Intentar simular una duda epistémica (score 0.65) en la primera planeación existente para prueba visual
-    db.run(`UPDATE planeacion SET confidence_score = 0.65 WHERE id = (SELECT id FROM planeacion LIMIT 1)`);
   });
 });
 
@@ -642,12 +620,6 @@ ipcMain.handle('save-planeacion', async (e, d) => new Promise((resolve, reject) 
 }));
 
 // -- INTEGRACION ELARA --
-ipcMain.handle('get-elara-insights', async () => new Promise(r => db.all("SELECT * FROM elara_insights ORDER BY id DESC", [], (e, rows) => r(rows || []))));
-ipcMain.handle('mark-insight-visto', async (e, id) => new Promise(r => db.run("UPDATE elara_insights SET visto = 1 WHERE id = ?", [id], () => r(true))));
-ipcMain.handle('trigger-curiosity-rewrite', async (e, id, newText) => new Promise(r => {
-  db.run("UPDATE planeacion SET confidence_score = 1.0, lunes_desarrollo = ? WHERE id = ?", [newText, id], () => r(true));
-}));
-
 ipcMain.handle('elara-speak', async (e, text) => {
   return new Promise((resolve, reject) => {
     const { exec } = require('child_process');
@@ -877,7 +849,7 @@ registerQrMutation('delete-trabajo-qr', async (e, id) => new Promise((resolve, r
 }));
 
 // --- 11. GENERACIÓN DE MATERIALES CON IA (CLOUD TRANSPARENTE) ---
-ipcMain.handle('generate-ai-material', async (e, { prompt, systemPrompt }) => {
+ipcMain.handle('generate-ai-material', async (e, { prompt, systemPrompt, advisor = false }) => {
   try {
     // Ensamblado dinámico por XOR en memoria: Cero cadenas base64, cero tokens reconocibles por analizadores estáticos de Mac / Apple Gatekeeper
     const _encKey = [26,78,100,51,57,39,24,60,109,84,12,48,110,124,123,3,22,125,122,75,2,47,103,38,8,109,124,52,60,92,34,35,61,39,4,30,63,110,18,10,22,116,46,43,42,80,51,25,16,42,11,3,60];
@@ -885,6 +857,7 @@ ipcMain.handle('generate-ai-material', async (e, { prompt, systemPrompt }) => {
     const key = _encKey.map((c, i) => String.fromCharCode(c ^ _maskKey[i % _maskKey.length])).join('');
     const _host = ['https://generative', 'language.', 'googleapis.com'].join('');
     const _m = ['gemini', '3.6', 'flash'].join('-');
+    if (advisor) return require('./teacherAi.cjs').generateTeacherResponse({ key, model: process.env.ELARA_GEMINI_MODEL || _m, groqKey: require('./providerCredentials.cjs').groqKey(), prompt, systemPrompt });
     const url = `${_host}/v1beta/models/${_m}:generateContent?key=${key}`;
 
     const contents = [{

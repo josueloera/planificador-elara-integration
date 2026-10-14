@@ -1,3 +1,4 @@
+import { APARTADOS_PLANEACION, FORMULARIO_PROYECTO } from './utils/planeacionDocument';
 import Incidencias from './components/Incidencias';
 import { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import './App.css';
@@ -124,7 +125,7 @@ function App() {
   const [modoEdicionProy, setModoEdicionProy] = useState(false);
   const [proyectoActual, setProyectoActual] = useState({ id: null, nombre: '', metodologia: 'COMUNITARIOS', escenario: 'AULA', temporalidad: '2 Semanas', problemática: '', pdas_seleccionados: [], fases_contenido: {}, apartados: {} });
   const [semanaPlan, setSemanaPlan] = useState(1); 
-  const [planData, setPlanData] = useState({ lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', apartados: {}, confidence_score: 1.0 });
+  const [planData, setPlanData] = useState({ lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', apartados: {} });
   const [planDosif, setPlanDosif] = useState([]);
   const [pdasDisponibles, setPdasDisponibles] = useState([]);
   const [pdasSemana, setPdasSemana] = useState([]);
@@ -149,13 +150,6 @@ function App() {
   const [vistos, setVistos] = useState({});
 
   // ESTADOS DE INTEGRACIÓN ELARA
-  const [elaraInsights, setElaraInsights] = useState([]);
-  const [telemetriaState, setTelemetriaState] = useState('listening'); // listening, processing, cooldown
-  const [cooldownCount, setCooldownCount] = useState(1.2);
-  const [mostrarDudaModal, setMostrarDudaModal] = useState(false);
-  const [mostrarConsola, setMostrarConsola] = useState(false);
-  const [consolaLogs, setConsolaLogs] = useState([]);
-  const [consolaCompletada, setConsolaCompletada] = useState(false);
   const [updateStatus, setUpdateStatus] = useState(null); // null | { tipo: 'available'|'downloaded', version: '' }
 
   // ── LISTENER ACTUALIZACIONES AUTOMÁTICAS ──────────────────────────────
@@ -189,6 +183,10 @@ function App() {
   useEffect(() => {
     window.plannerContext = {
       vista,
+      grado, modoEdicionProy, configCiclo, pdasDisponibles,
+      fechasSemana: obtenerFechasSemana(semanaPlan),
+      metodologias: METODOLOGIAS,
+      apartadosAsistente: { planeacion: APARTADOS_PLANEACION, proyecto: FORMULARIO_PROYECTO },
       proyectoActual,
       planData,
       pdasSemana,
@@ -234,6 +232,7 @@ function App() {
       ipcRenderer
     };
   }, [
+    grado, modoEdicionProy, configCiclo, pdasDisponibles,
     vista, proyectoActual, planData, pdasSemana, alumnos, criterios, notas,
     grupoActual, semanaPlan, fechaEval, campoActual, modoConfig, textoPegado, procesando, licenciaInfo
   ]);
@@ -243,7 +242,6 @@ function App() {
     if (ipcRenderer) {
       ipcRenderer.invoke('get-license-status').then(res => {
         setLicenciaInfo(res || { isActivated: true });
-        window.openaiApiKey = (res && res.openaiApiKey) || '';
         setCargandoLicencia(false);
       }).catch(err => {
         console.error("Error al obtener licencia:", err);
@@ -266,18 +264,6 @@ function App() {
     }
   }, []);
 
-  const cargarInsights = useCallback(() => {
-    if (ipcRenderer) {
-      ipcRenderer.invoke('get-elara-insights').then(res => {
-        setElaraInsights(res || []);
-      }).catch(console.error);
-    }
-  }, []);
-
-  useEffect(() => {
-    cargarInsights();
-  }, [vista, cargarInsights]);
-
   // Carga automática del grupo de Primaria (sin seleccionador de grupos)
   useEffect(() => {
     if (ipcRenderer) {
@@ -298,86 +284,6 @@ function App() {
       }).catch(console.error);
     }
   }, []);
-
-  const handleMarcarInsightVisto = (id) => {
-    if (ipcRenderer) {
-      ipcRenderer.invoke('mark-insight-visto', id).then(() => {
-        cargarInsights();
-        showToast("✅ Insight archivado");
-      }).catch(console.error);
-    }
-  };
-
-  const handleTelemetriaClick = () => {
-    if (telemetriaState !== 'listening') return;
-    
-    setTelemetriaState('processing');
-    
-    setTimeout(() => {
-      setTelemetriaState('cooldown');
-      setCooldownCount(1.2);
-      
-      const interval = setInterval(() => {
-        setCooldownCount(c => {
-          if (c <= 0.1) {
-            clearInterval(interval);
-            setTelemetriaState('listening');
-            return 1.2;
-          }
-          return parseFloat((c - 0.1).toFixed(1));
-        });
-      }, 100);
-    }, 1500);
-  };
-
-  const iniciarReescrituraCognitiva = () => {
-    setMostrarDudaModal(false);
-    setMostrarConsola(true);
-    setConsolaLogs([]);
-    setConsolaCompletada(false);
-
-    const logs = [
-      "🚀 INICIANDO CONEXIÓN CON ELARA COGNITIVE CORE...",
-      "📡 ENTRADA EN MODO DE MUTACIÓN COGNITIVA [HOT-SWAP DE MEMORIA]",
-      "🔍 ESCANEANDO TABLA SQLite 'planeacion' (Semana " + semanaPlan + ")...",
-      "⚠️ DETECTADA COHERENCIA DE 0.65 - UMBRAL CRÍTICO (< 0.70)",
-      "🧠 INICIALIZANDO PROCESO DE INFERENCIA EN EL MOTOR DE CURIOSIDAD...",
-      "🤖 REESCRIBIENDO SECUENCIA DIDÁCTICA DÍA LUNES...",
-      "📦 COMPILANDO TOPOLOGÍA CURRICULAR OPTIMIZADA...",
-      "💾 APLICANDO OPERACIÓN WRITE-BACK EN SQLite...",
-      "⚡ HOT-SWAP FINALIZADO CON ÉXITO. NUEVO CONFIDENCE SCORE: 1.0"
-    ];
-
-    let currentLogIndex = 0;
-    const interval = setInterval(() => {
-      if (currentLogIndex < logs.length) {
-        setConsolaLogs(prev => [...prev, logs[currentLogIndex]]);
-        currentLogIndex++;
-      } else {
-        clearInterval(interval);
-        
-        const textoOriginal = planData.lunes_desarrollo || '';
-        const nuevoTexto = textoOriginal + "\n\n✨ [REESCRITURA COGNITIVA ELARA: Se reestructuró la secuencia didáctica integrando un enfoque de indagación científica y pensamiento crítico, alineando los PDAs con problemáticas situacionales del entorno comunitario del alumno.]";
-        
-        if (ipcRenderer && planData.id) {
-          ipcRenderer.invoke('trigger-curiosity-rewrite', planData.id, nuevoTexto).then(() => {
-            ipcRenderer.invoke('get-planeacion', grupoActual?.id, semanaPlan, grado).then(res => {
-              setPlanData(res && res.id ? { ...res, apartados: safeParse(res.apartados, {}) } : { lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', apartados: {}, confidence_score: 1.0 });
-              setConsolaCompletada(true);
-              showToast("✅ Planificación reescrita con éxito");
-            }).catch(console.error);
-          }).catch(console.error);
-        } else {
-          setPlanData(prev => ({
-            ...prev,
-            lunes_desarrollo: nuevoTexto,
-            confidence_score: 1.0
-          }));
-          setConsolaCompletada(true);
-        }
-      }
-    }, 400);
-  };
 
   useEffect(() => { if(ipcRenderer) ipcRenderer.invoke('get-alumnos', grupoActual?.id).then(r => setAlumnos(r || [])).catch(console.error); }, [vista, grupoActual]);
   useEffect(() => { if(ipcRenderer && vista==='CALENDARIO'){ ipcRenderer.invoke('get-eventos-oficiales').then(setEventosSEP); } }, [vista, mesCal, anioCal]);
@@ -499,7 +405,7 @@ function App() {
     }
 
     if(ipcRenderer && vista === 'PLANNER') {
-        ipcRenderer.invoke('get-planeacion', grupoActual?.id, semanaPlan, grado).then(res => setPlanData(res && res.id ? { ...res, apartados: safeParse(res.apartados, {}) } : { lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', apartados: {}, confidence_score: 1.0 }));
+        ipcRenderer.invoke('get-planeacion', grupoActual?.id, semanaPlan, grado).then(res => setPlanData(res && res.id ? { ...res, apartados: safeParse(res.apartados, {}) } : { lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', apartados: {} }));
     }
   }, [vista, semanaPlan, grado, grupoActual, configCiclo]);
 
@@ -753,115 +659,6 @@ function App() {
       return '#c8e6c9';             // Verde (9 a 10)
   };
 
-  // ================= RENDER INTERFACES DE ELARA =================
-  const renderAcousticTelemetry = () => {
-    // No mostrar si está cargando o es la pantalla de activación
-    if (cargandoLicencia || (licenciaInfo && !licenciaInfo.isActivated && !licenciaInfo.isTrialValid)) return null;
-    return (
-      <div className={`elara-acoustic-monitor state-${telemetriaState}`} onClick={handleTelemetriaClick}>
-        <div className="telemetria-glow"></div>
-        <div className="telemetria-content">
-          {telemetriaState === 'listening' && (
-            <>
-              <div className="wave-container">
-                <span className="wave-bar bar-1"></span>
-                <span className="wave-bar bar-2"></span>
-                <span className="wave-bar bar-3"></span>
-                <span className="wave-bar bar-4"></span>
-                <span className="wave-bar bar-5"></span>
-              </div>
-              <span className="telemetria-label">ELARA: ESCUCHANDO</span>
-            </>
-          )}
-          {telemetriaState === 'processing' && (
-            <>
-              <div className="spinner-processing"></div>
-              <span className="telemetria-label">ELARA: PENSANDO...</span>
-            </>
-          )}
-          {telemetriaState === 'cooldown' && (
-            <>
-              <div className="cooldown-dial">{cooldownCount}s</div>
-              <span className="telemetria-label">ELARA: COOLDOWN AEC</span>
-            </>
-          )}
-        </div>
-        <div className="telemetria-tooltip">
-          <strong>Telemetría Acústica ELARA</strong>
-          <p>Estado actual: {telemetriaState.toUpperCase()}</p>
-          <small>Haz clic para simular la monitorización acústica del aula.</small>
-        </div>
-      </div>
-    );
-  };
-
-  const renderConsolaMutacion = () => {
-    if (!mostrarConsola) return null;
-    return (
-      <div className="elara-consola-overlay">
-        <div className="elara-consola-box">
-          <div className="consola-header">
-            <div className="consola-dots">
-              <span className="consola-dot red"></span>
-              <span className="consola-dot yellow"></span>
-              <span className="consola-dot green"></span>
-            </div>
-            <span className="consola-title">CONSOLA DE MUTACIÓN OPERATIVA v1.2.9</span>
-          </div>
-          <div className="consola-body">
-            <div className="consola-terminal-text">
-              {consolaLogs.map((log, idx) => (
-                <div key={idx} className="consola-line">
-                  <span className="consola-prompt">&gt;&gt;</span> {log}
-                </div>
-              ))}
-              {!consolaCompletada && <div className="consola-cursor-pulse">_</div>}
-            </div>
-            
-            {consolaCompletada && (
-              <div className="consola-finalizado-banner">
-                <h4>🧬 MUTACIÓN OPERATIVA COMPLETADA CON ÉXITO</h4>
-                <p>Hot-swap de secuencia didáctica inyectado en SQLite y RAM local sin colisiones.</p>
-                <button className="btn-cerrar-consola" onClick={() => setMostrarConsola(false)}>
-                  CERRAR CONSOLA
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderDudaModal = () => {
-    if (!mostrarDudaModal) return null;
-    return (
-      <div className="elara-modal-overlay">
-        <div className="elara-modal-box">
-          <div className="modal-cyber-header">
-            <h3>⚠️ DUDA EPISTÉMICA DETECTADA: ELARA COGNITIVE CORE</h3>
-          </div>
-          <div className="modal-cyber-body">
-            <p>El motor cognitivo de <strong>ELARA</strong> ha detectado una consistencia didáctica baja (Score: <strong>{planData.confidence_score}</strong>) en la planeación didáctica seleccionada.</p>
-            <p>Esto se debe a recientes modificaciones en la dosificación oficial y a desajustes semánticos con la problemática.</p>
-            <div className="modal-cyber-details">
-              <strong>Acciones correctivas proactivas:</strong>
-              <ul>
-                <li>Ejecutar reescritura semántica de la planeación para el día Lunes.</li>
-                <li>Elevar score de consistencia a 1.0 (Sin inconsistencias detectadas).</li>
-                <li>Inyectar estrategias de pensamiento crítico NEM en el backend de forma segura.</li>
-              </ul>
-            </div>
-          </div>
-          <div className="modal-cyber-footer">
-            <button className="btn-cyber-cancel" onClick={() => setMostrarDudaModal(false)}>Ignorar Alerta</button>
-            <button className="btn-cyber-confirm" onClick={iniciarReescrituraCognitiva}>🧬 Reescribir con ELARA</button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   // ================= SWITCH PRINCIPAL DE VISTAS (React Router alternativo) =================
   const renderVistaContent = () => {
     if (vista === 'GRUPOS') {
@@ -949,30 +746,6 @@ function App() {
             </div>
           </div>
 
-          {/* Feed de Descubrimientos Nocturnos de ELARA */}
-          {elaraInsights.filter(ins => ins.visto === 0).map(ins => (
-            <div key={ins.id} className="feed-descubrimiento-nocturno">
-              <div className="descubrimiento-glow"></div>
-              <div className="descubrimiento-content-wrapper">
-                <div className="descubrimiento-header">
-                  <span className="descubrimiento-icon">🌙</span>
-                  <span className="descubrimiento-badge">Descubrimiento Nocturno ELARA</span>
-                  <span className="descubrimiento-fecha">{ins.fecha}</span>
-                </div>
-                <h3 className="descubrimiento-titulo">{ins.titulo}</h3>
-                <p className="descubrimiento-mensaje">{ins.mensaje}</p>
-                <div className="descubrimiento-acciones">
-                  <button className="btn-descubrimiento-accion" onClick={() => setVista('MATERIALES')}>
-                    🧩 Generar Material didáctico
-                  </button>
-                  <button className="btn-descubrimiento-descartar" onClick={() => handleMarcarInsightVisto(ins.id)}>
-                    Archivar Notificación
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-
           <div className="grid-menu">
               {menuItems.map((item, idx) => (
                   <button key={item.id} className="boton-menu" onClick={item.action} style={{'--card-color': item.color, '--delay': `${idx * 0.06}s`}}>
@@ -1011,7 +784,6 @@ function App() {
           onActivated={() => {
               ipcRenderer.invoke('get-license-status').then(res => {
                   setLicenciaInfo(res);
-                  window.openaiApiKey = res.openaiApiKey || '';
               });
               setVista('MENU');
               showToast("✅ ¡Licencia activada con éxito!");
@@ -1396,22 +1168,12 @@ function App() {
 
     if(vista === 'PLANNER') { 
       const isVisto = (vistos.plan || []).includes(String(semanaPlan)); 
-      const hasDudaEpistemica = planData && planData.confidence_score !== undefined && planData.confidence_score < 0.7;
 
       return ( 
         <div className="pantalla-dosificador"> 
           <div className="header-dosificador no-print"> 
             <div style={{display:'flex', gap:10, alignItems:'center'}}><h2>Planeación</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #0984E3', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select><select value={semanaPlan} onChange={e=>setSemanaPlan(Number(e.target.value))}>{SEMANAS_CLASE.map(s=><option key={s.id} value={s.id}>Sem {s.id} ({obtenerFechasSemana(s.id)})</option>)}</select></div> 
             <div>
-              {hasDudaEpistemica && (
-                <button 
-                  onClick={() => setMostrarDudaModal(true)} 
-                  style={{padding: '10px 15px', fontWeight:'bold', cursor: 'pointer', background: '#e0115f', color: 'white', border: 'none', borderRadius: 5, marginRight: 10}}
-                  className="no-print alert-button-glow"
-                >
-                  🧬 Corregir Coherencia ELARA
-                </button>
-              )}
               <button onClick={()=>toggleVisto('plan', semanaPlan)} style={{padding: '10px 15px', fontWeight:'bold', cursor: 'pointer', background: isVisto ? '#2ecc71' : '#bdc3c7', color: 'white', border: 'none', borderRadius: 5, marginRight: 10}} className="no-print"> {isVisto ? '✅ Completada' : 'Marcar Completada'} </button>
               <button className="btn-guardar" onClick={savePlan}>💾 Guardar</button>
               <button className="btn-volver" onClick={()=>exportarPlanoWord({tipo:'Planeación semanal',nombre:planData.apartados?.nombre_proyecto || `Semana ${semanaPlan}`,datos:{grado,temporalidad:obtenerFechasSemana(semanaPlan),escuela:configCiclo.nombreEscuela,cct:configCiclo.cct,docente:configCiclo.nombreDocente,ciclo:`${new Date(`${configCiclo.fechaInicioStr}T00:00:00`).getFullYear()}-${new Date(`${configCiclo.fechaInicioStr}T00:00:00`).getFullYear()+1}`},apartados:planData.apartados,pdas:pdasDisponibles.filter(p=>pdasSemana.some(s=>s.pda===p.descripcion)),dias:['lunes','martes','miercoles','jueves','viernes'].map(label=>({label:label.toUpperCase(),inicio:planData[`${label}_inicio`],desarrollo:planData[`${label}_desarrollo`],cierre:planData[`${label}_cierre`]})),extras:{recursos:planData.recursos,evaluacion:planData.evaluacion,adecuaciones:planData.adecuaciones}})}>Word editable</button>
@@ -1420,7 +1182,7 @@ function App() {
             </div> 
           </div> 
           
-          <div className={`hoja-planeacion ${hasDudaEpistemica ? 'alert-duda-epistemica' : ''}`} style={{opacity: isVisto ? 0.8 : 1, position: 'relative'}}>
+          <div className="hoja-planeacion" style={{opacity: isVisto ? 0.8 : 1, position: 'relative'}}>
             {/* Encabezado Oficial SEP solo visible al imprimir */}
             <div className="print-header-oficial" style={{display: 'none'}}>
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #004aad', paddingBottom: '10px', marginBottom: '15px'}}>
@@ -1436,17 +1198,6 @@ function App() {
                 </div>
               </div>
             </div> 
-            {hasDudaEpistemica && (
-              <div className="elara-duda-alert-bar" onClick={() => setMostrarDudaModal(true)}>
-                <div className="alert-bar-glow"></div>
-                <span className="alert-bar-icon">⚠️</span>
-                <span className="alert-bar-text">
-                  <strong>DUDA EPISTÉMICA DETECTADA ({planData.confidence_score}):</strong> ELARA ha detectado baja coherencia curricular en esta secuencia. Haz clic aquí para corregir con el Motor de Curiosidad.
-                </span>
-                <button className="btn-alert-bar-trigger">Mutar Plan</button>
-              </div>
-            )}
-
             <div className="seccion-plan" style={{marginBottom:20}}> 
               <h3>🎯 Aprendizajes (PDA)</h3> 
               {pdasSemana.length === 0 ? <p style={{color:'#999'}}>Sin contenido.</p> : <ul>{pdasSemana.map((p,i)=>{const detalle=pdasDisponibles.find(candidato=>candidato.descripcion===p.pda);return <li key={i}><b>{detalle?.campo || 'Campo formativo'} · {p.proyecto}</b>: {p.pda}</li>})}</ul>}
@@ -1651,7 +1402,6 @@ function App() {
     return <Licencia onActivated={() => {
       ipcRenderer.invoke('get-license-status').then(res => {
         setLicenciaInfo(res);
-        window.openaiApiKey = res.openaiApiKey || '';
       });
     }} />;
   }
@@ -1661,8 +1411,6 @@ function App() {
       {renderVistaContent()}
       
       {/* COMPONENTES DE INTERFAZ ELARA GLOBALES */}
-      {renderConsolaMutacion()}
-      {renderDudaModal()}
 
       {/* BANNER DE ACTUALIZACIÓN AUTOMÁTICA */}
       {updateStatus && (

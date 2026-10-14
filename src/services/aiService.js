@@ -48,7 +48,7 @@ export function cleanAndParseJson(rawText) {
 }
 
 // Generación transparente a través del proceso principal de Electron (seguro y sin exponer claves en bundle)
-export async function generateCompletion({ systemPrompt, userPrompt, jsonMode = true }) {
+export async function generateCompletion({ systemPrompt, userPrompt, jsonMode = true, advisor = false }) {
   // 1. En Electron: invocar handler de backend protegido
   if (window.require) {
     try {
@@ -56,7 +56,7 @@ export async function generateCompletion({ systemPrompt, userPrompt, jsonMode = 
       if (electron && electron.ipcRenderer) {
         const res = await electron.ipcRenderer.invoke('generate-ai-material', {
           prompt: userPrompt,
-          systemPrompt: systemPrompt
+          systemPrompt: systemPrompt, advisor
         });
 
         if (res && res.success && res.text) {
