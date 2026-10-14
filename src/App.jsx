@@ -14,7 +14,7 @@ import ControlQR from './components/ControlQR';
 import { EstadoEvaluacionQR, VincularEvaluacionQR } from './components/EvaluacionAutomatica';
 import { mezclarNotasAutomaticas, promedioPeriodo } from './evaluacionAutomatica';
 import PlaneacionApartados from './components/PlaneacionApartados';
-import { exportarPlanoWord } from './utils/planeacionDocument';
+import { exportarPlanoPdf, exportarPlanoWord } from './utils/planeacionDocument';
 
 const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
 
@@ -1146,6 +1146,14 @@ function App() {
 
     if(vista === 'PROYECTOS') {
       const pdasSeleccionadosParaImprimir = pdasDisponibles.filter(p => (Array.isArray(proyectoActual.pdas_seleccionados) ? proyectoActual.pdas_seleccionados : []).includes(p.id));
+      const datosExportacionProyecto = {
+        tipo: 'Proyecto didáctico',
+        nombre: proyectoActual.nombre,
+        datos: { ...proyectoActual, grado, escuela: configCiclo.nombreEscuela, cct: configCiclo.cct, docente: configCiclo.nombreDocente, ciclo: new Date(configCiclo.fechaInicioStr).getFullYear() + '-' + (new Date(configCiclo.fechaInicioStr).getFullYear() + 1) },
+        apartados: { ...proyectoActual.apartados, campos_formativos: [...new Set(pdasSeleccionadosParaImprimir.map(p => p.campo))].join(', ') },
+        pdas: pdasSeleccionadosParaImprimir,
+        fases: METODOLOGIAS[proyectoActual.metodologia].fases.map((label, index) => ({ label, value: (safeParse(proyectoActual.fases_contenido, {}))[index] }))
+      };
       return ( 
         <div className="pantalla-dosificador"> 
             {toast && (
@@ -1154,7 +1162,7 @@ function App() {
                 </div>
             )}
             <div className="header-dosificador"> <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>🚀 Proyectos</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #00CEC9', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select></div> <div> {!modoEdicionProy && <button className="btn-guardar" onClick={()=>{setProyectoActual({id:null, nombre:'', metodologia:'COMUNITARIOS', escenario:'AULA', temporalidad:'', pdas_seleccionados:[], fases_contenido:{}, apartados:{}}); setBusquedaPda(""); setModoEdicionProy(true);}}>+ Nuevo</button>} <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button> </div> </div> {modoEdicionProy ? (<div key={proyectoActual.id || 'nuevo'} className="hoja-planeacion editor-documento" style={{background:`linear-gradient(to bottom, ${calcularColorSemaforo(proyectoActual)} 0%, #ffffff 350px)`}}>
-  <header className="editor-documento-header no-print"><h3>Editar proyecto didáctico</h3><div className="acciones-exportacion"><button onClick={()=>exportarPlanoWord({tipo:'Proyecto didáctico',nombre:proyectoActual.nombre,datos:{...proyectoActual,grado,escuela:configCiclo.nombreEscuela,cct:configCiclo.cct,docente:configCiclo.nombreDocente,ciclo:new Date(configCiclo.fechaInicioStr).getFullYear()+'-'+(new Date(configCiclo.fechaInicioStr).getFullYear()+1)},apartados:{...proyectoActual.apartados,campos_formativos:[...new Set(pdasSeleccionadosParaImprimir.map(p=>p.campo))].join(', ')},pdas:pdasSeleccionadosParaImprimir,fases:METODOLOGIAS[proyectoActual.metodologia].fases.map((label,index)=>({label,value:(safeParse(proyectoActual.fases_contenido,{}))[index]}))})}>Exportar Word editable</button><button onClick={()=>window.print()}>Exportar PDF</button><button className="btn-volver" onClick={()=>setModoEdicionProy(false)}>Volver</button></div></header>
+  <header className="editor-documento-header no-print"><h3>Editar proyecto didáctico</h3><div className="acciones-exportacion"><button onClick={()=>exportarPlanoWord(datosExportacionProyecto)}>Exportar Word editable</button><button onClick={()=>exportarPlanoPdf(datosExportacionProyecto)}>Exportar PDF</button><button className="btn-volver" onClick={()=>setModoEdicionProy(false)}>Volver</button></div></header>
   <h1 className="titulo-documento only-print-text">Plano didáctico: {proyectoActual.nombre || 'Proyecto'}</h1>
   <div className="grid-dos editor-proyecto-basico"><label className="grupo-input grupo-nombre">Nombre del proyecto<input value={proyectoActual.nombre} onChange={e=>actualizarDatoProyecto('nombre',e.target.value)} placeholder="Nombre del proyecto"/><span className="only-print-text">{proyectoActual.nombre || 'Sin título'}</span></label><label className="grupo-input">Metodología<select value={proyectoActual.metodologia} onChange={e=>actualizarDatoProyecto('metodologia',e.target.value)}>{Object.keys(METODOLOGIAS).map(k=><option key={k} value={k}>{METODOLOGIAS[k].nombre}</option>)}</select><span className="only-print-text">{METODOLOGIAS[proyectoActual.metodologia].nombre}</span></label><label className="grupo-input">Escenario<input value={proyectoActual.escenario || ''} onChange={e=>actualizarDatoProyecto('escenario',e.target.value)}/><span className="only-print-text">{proyectoActual.escenario || 'Sin especificación.'}</span></label><label className="grupo-input">Temporalidad<input value={proyectoActual.temporalidad || ''} onChange={e=>actualizarDatoProyecto('temporalidad',e.target.value)}/><span className="only-print-text">{proyectoActual.temporalidad || 'Sin especificación.'}</span></label><label className="grupo-input grupo-nombre">Descripción de la problemática<textarea value={proyectoActual.problemática || ''} onChange={e=>actualizarDatoProyecto('problemática',e.target.value)}/><span className="only-print-text">{proyectoActual.problemática || 'Sin especificación.'}</span></label></div>
   <section className="seccion-plan pda-selector no-print"><h3>PDAs de todos los campos formativos</h3><p>Catálogo completo del grado {grado}: {pdasDisponibles.length} PDAs. Busca por campo, contenido o aprendizaje y selecciona los que integrará el proyecto.</p><input aria-label="Buscar PDAs por campo, contenido o descripción" placeholder="Buscar campo, contenido o PDA..." value={busquedaPda} onChange={e=>setBusquedaPda(e.target.value)}/><div className="pda-lista-amplia">{pdasFiltrados.length === 0 && <p>No hay coincidencias en el catálogo del grado.</p>}{Object.entries(pdasFiltrados.reduce((grupos,p)=>{const campo=p.campo || 'Campo formativo sin nombre';(grupos[campo] ||= []).push(p);return grupos;},{})).map(([campo,pdas])=><section className="pda-grupo-campo" key={campo}><h4>{campo} <span>{pdas.length} PDAs</span></h4>{pdas.map(p=><label className="pda-opcion" key={p.id}><input type="checkbox" checked={(Array.isArray(proyectoActual.pdas_seleccionados)?proyectoActual.pdas_seleccionados:[]).includes(p.id)} onChange={()=>togglePdaProyecto(p.id)}/><span><strong>{p.proyecto_sugerido || 'Aprendizaje'}</strong>{p.contenido && <small>Contenido: {p.contenido}</small>}<span>{p.descripcion}</span></span></label>)}</section>)}</div><p className="pda-seleccionados">Seleccionados: {pdasSeleccionadosParaImprimir.length} PDAs de {new Set(pdasSeleccionadosParaImprimir.map(p=>p.campo)).size} campos formativos</p></section>
@@ -1168,6 +1176,15 @@ function App() {
 
     if(vista === 'PLANNER') { 
       const isVisto = (vistos.plan || []).includes(String(semanaPlan)); 
+       const datosExportacionSemana = {
+         tipo: 'Planeación semanal',
+         nombre: planData.apartados?.nombre_proyecto || `Semana ${semanaPlan}`,
+         datos: { grado, temporalidad: obtenerFechasSemana(semanaPlan), escuela: configCiclo.nombreEscuela, cct: configCiclo.cct, docente: configCiclo.nombreDocente, ciclo: `${new Date(`${configCiclo.fechaInicioStr}T00:00:00`).getFullYear()}-${new Date(`${configCiclo.fechaInicioStr}T00:00:00`).getFullYear() + 1}` },
+         apartados: planData.apartados,
+         pdas: pdasDisponibles.filter(p => pdasSemana.some(s => s.pda === p.descripcion)),
+         dias: ['lunes', 'martes', 'miercoles', 'jueves', 'viernes'].map(label => ({ label: label.toUpperCase(), inicio: planData[`${label}_inicio`], desarrollo: planData[`${label}_desarrollo`], cierre: planData[`${label}_cierre`] })),
+         extras: { recursos: planData.recursos, evaluacion: planData.evaluacion, adecuaciones: planData.adecuaciones }
+       };
 
       return ( 
         <div className="pantalla-dosificador"> 
@@ -1176,8 +1193,8 @@ function App() {
             <div>
               <button onClick={()=>toggleVisto('plan', semanaPlan)} style={{padding: '10px 15px', fontWeight:'bold', cursor: 'pointer', background: isVisto ? '#2ecc71' : '#bdc3c7', color: 'white', border: 'none', borderRadius: 5, marginRight: 10}} className="no-print"> {isVisto ? '✅ Completada' : 'Marcar Completada'} </button>
               <button className="btn-guardar" onClick={savePlan}>💾 Guardar</button>
-              <button className="btn-volver" onClick={()=>exportarPlanoWord({tipo:'Planeación semanal',nombre:planData.apartados?.nombre_proyecto || `Semana ${semanaPlan}`,datos:{grado,temporalidad:obtenerFechasSemana(semanaPlan),escuela:configCiclo.nombreEscuela,cct:configCiclo.cct,docente:configCiclo.nombreDocente,ciclo:`${new Date(`${configCiclo.fechaInicioStr}T00:00:00`).getFullYear()}-${new Date(`${configCiclo.fechaInicioStr}T00:00:00`).getFullYear()+1}`},apartados:planData.apartados,pdas:pdasDisponibles.filter(p=>pdasSemana.some(s=>s.pda===p.descripcion)),dias:['lunes','martes','miercoles','jueves','viernes'].map(label=>({label:label.toUpperCase(),inicio:planData[`${label}_inicio`],desarrollo:planData[`${label}_desarrollo`],cierre:planData[`${label}_cierre`]})),extras:{recursos:planData.recursos,evaluacion:planData.evaluacion,adecuaciones:planData.adecuaciones}})}>Word editable</button>
-              <button className="btn-volver" onClick={()=>window.print()}>PDF</button>
+              <button className="btn-volver" onClick={()=>exportarPlanoWord(datosExportacionSemana)}>Word editable</button>
+              <button className="btn-volver" onClick={()=>exportarPlanoPdf(datosExportacionSemana)}>PDF</button>
               <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button>
             </div> 
           </div> 
