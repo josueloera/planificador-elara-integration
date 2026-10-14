@@ -1,4 +1,4 @@
-async function generateTeacherResponse({ key, model = 'gemini-3.6-flash', groqKey, prompt, systemPrompt, fetchImpl = fetch }) {
+async function generateTeacherResponse({ key, model = 'gemini-3.8-flash', groqKey, prompt, systemPrompt, fetchImpl = fetch }) {
   const providers = [{ name: 'gemini', key }, { name: 'groq', key: groqKey }];
   for (const provider of providers) {
     if (!provider.key) continue;

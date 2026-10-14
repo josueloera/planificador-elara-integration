@@ -856,7 +856,7 @@ ipcMain.handle('generate-ai-material', async (e, { prompt, systemPrompt, advisor
     const _maskKey = [0x5B, 0x1F, 0x4A, 0x72];
     const key = _encKey.map((c, i) => String.fromCharCode(c ^ _maskKey[i % _maskKey.length])).join('');
     const _host = ['https://generative', 'language.', 'googleapis.com'].join('');
-    const _m = ['gemini', '3.6', 'flash'].join('-');
+    const _m = ['gemini', '3.8', 'flash'].join('-');
     if (advisor) return require('./teacherAi.cjs').generateTeacherResponse({ key, model: process.env.ELARA_GEMINI_MODEL || _m, groqKey: require('./providerCredentials.cjs').groqKey(), prompt, systemPrompt });
     const url = `${_host}/v1beta/models/${_m}:generateContent?key=${key}`;
 
