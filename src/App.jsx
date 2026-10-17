@@ -70,7 +70,7 @@ const CeldaNota = memo(({ idAlumno, idCriterio, valorInicial, onGuardar, soloLec
     return ( <input className="input-nota" readOnly={soloLectura} title={soloLectura ? "Calificación automática de esta fecha. Corrige los registros en Control QR." : undefined} type="text" inputMode="decimal" style={{background: 'rgba(255,255,255,0.8)', fontWeight: 'bold', fontSize: '1.2rem', textAlign: 'center', width: '100%', height: '40px', border: '1px solid #eee', borderRadius: '4px', outline: 'none', color: '#333'}} value={valor} onChange={(e) => setValor(e.target.value)} onBlur={handleBlur} placeholder="-" /> );
 });
 
-const safeParse = (data, fallback) => { if (typeof data === 'object' && data !== null) return data; try { return JSON.parse(data); } catch (e) { return fallback; } };
+const safeParse = (data, fallback) => { if (typeof data === 'object' && data !== null) return data; try { return JSON.parse(data) ?? fallback; } catch (e) { return fallback; } };
 
 const SEMANAS_CLASE = Array.from({length: 42}, (_, i) => ({ id: i + 1, rango: `Semana ${i + 1}` }));
 const TIPOS_EVENTO = { 

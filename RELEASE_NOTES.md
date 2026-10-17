@@ -1,3 +1,10 @@
+# Version 1.0.20
+
+- Corregido el bloqueo al abrir Planeaciones cuando sus apartados estan vacios (error al leer proposito).
+- Protegida la exportacion de planeaciones con apartados vacios a Word y PDF.
+- Conservados los contenidos existentes, las tareas, las evaluaciones y los respaldos.
+- Actualizacion disponible para Windows, macOS y Android en Primaria y Secundaria.
+
 # Version 1.0.19
 
 - Restaurado el QR para conectar la app de escaneo del celular en Primaria.

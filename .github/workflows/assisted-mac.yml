@@ -5,7 +5,7 @@ on:
       tag:
         description: 'Release tag to build assisted installer for'
         required: false
-        default: 'v1.0.19'
+        default: 'v1.0.20'
 permissions:
   contents: write
 jobs:
@@ -26,7 +26,7 @@ jobs:
       - name: Download and mount original DMG
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag || 'v1.0.19' }}
+          RELEASE_TAG: ${{ inputs.tag || 'v1.0.20' }}
         run: |
           mkdir -p evidence unpacked
           gh release download "$RELEASE_TAG" --repo josueloera/planificador-elara-integration --pattern 'Planificador-Docente-Primaria-*-universal.dmg' --dir download
@@ -89,7 +89,7 @@ jobs:
         if: success() && matrix.signing == 'adhoc' && matrix.runner == 'macos-14'
         shell: bash
         env:
-          RELEASE_TAG: ${{ inputs.tag || 'v1.0.19' }}
+          RELEASE_TAG: ${{ inputs.tag || 'v1.0.20' }}
         run: |
           mkdir -p manual-installer
           ln -s /Applications unpacked/Applications
@@ -106,7 +106,7 @@ jobs:
         if: success() && matrix.signing == 'adhoc' && matrix.runner == 'macos-14'
         uses: actions/github-script@v8
         env:
-          RELEASE_TAG: ${{ inputs.tag || 'v1.0.19' }}
+          RELEASE_TAG: ${{ inputs.tag || 'v1.0.20' }}
         with:
           script: |
             const fs = require('node:fs');

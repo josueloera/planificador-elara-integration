@@ -9,9 +9,9 @@ export default function PlaneacionApartados({ tipo, value = {}, onChange }) {
       {fields.map(field => <label className="apartado-campo" key={field.key}>
         <span>{field.label}</span>
         {field.multiline
-          ? <textarea rows={3} value={value[field.key] || ''} onChange={event => onChange(field.key, event.target.value)} />
-          : <input value={value[field.key] || ''} onChange={event => onChange(field.key, event.target.value)} />}
-        <span className="only-print-text">{value[field.key] || 'Sin especificación.'}</span>
+          ? <textarea rows={3} value={value?.[field.key] || ''} onChange={event => onChange(field.key, event.target.value)} />
+          : <input value={value?.[field.key] || ''} onChange={event => onChange(field.key, event.target.value)} />}
+        <span className="only-print-text">{value?.[field.key] || 'Sin especificación.'}</span>
       </label>)}
     </div>
   </section>;

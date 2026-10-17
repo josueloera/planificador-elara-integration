@@ -186,7 +186,7 @@ const makeSession = ({ label, date, items, pdas, phases, extras, day }) => {
 };
 
 export function buildPlanoDidacticoHtml({ tipo, nombre, datos = {}, apartados = {}, pdas = [], fases = [], dias = [], extras = {} } = {}) {
-  const items = { ...(apartados || {}), recursos: extras.recursos ?? apartados.recursos };
+  const items = { ...(apartados || {}), recursos: extras.recursos ?? apartados?.recursos };
   const method = selectedMethod(items.metodologia || datos.metodologia || '');
   const title = text(nombre) || 'Sin nombre';
   const rawGrade = text(datos.grado);
