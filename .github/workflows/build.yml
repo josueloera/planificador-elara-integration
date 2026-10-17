@@ -60,7 +60,7 @@ jobs:
       - name: Verify individualized QR assignments
         run: npm run test:qr
       - name: Verify daily QR evaluation
-        run: npm run test:daily && node --test scripts/test-task-categories.cjs scripts/test-backups.cjs
+        run: npm run test:daily && node --test scripts/test-task-categories.cjs scripts/test-backups.cjs scripts/test-document-pdf-controller.cjs
       - name: Verify student profiles and records
         run: npm run test:alumno
       - name: Prepare clean distribution databases
@@ -96,7 +96,7 @@ jobs:
       - name: Verify individualized QR assignments
         run: npm run test:qr
       - name: Verify daily QR evaluation
-        run: npm run test:daily && node --test scripts/test-task-categories.cjs scripts/test-backups.cjs
+        run: npm run test:daily && node --test scripts/test-task-categories.cjs scripts/test-backups.cjs scripts/test-document-pdf-controller.cjs
       - name: Verify student profiles and records
         run: npm run test:alumno
       - name: Prepare clean distribution databases
@@ -196,8 +196,8 @@ jobs:
             }
             if (release && !release.draft) throw new Error('Refusing to overwrite a published release');
             const body = fs.readFileSync('RELEASE_NOTES.md', 'utf8') +
-              (process.env.MAC_SIGNED === 'true' ? '\nmacOS: aplicación firmada.\n' :
-              '\nmacOS: instaladores sin firma; requieren instalación manual.\n');
+              (process.env.MAC_SIGNED === 'true' ? '\nmacOS: aplicaciÃ³n firmada.\n' :
+              '\nmacOS: instaladores sin firma; requieren instalaciÃ³n manual.\n');
             if (!release) {
               release = (await github.rest.repos.createRelease({ ...context.repo, tag_name: tag,
                 target_commitish: context.sha, name: process.env.RELEASE_NAME + ' ' + manifest.version,
@@ -229,4 +229,4 @@ jobs:
               body, draft: false, prerelease: false, make_latest: 'true' });
             core.summary.addHeading('Published stable update ' + tag)
               .addLink('GitHub Release', release.html_url);
-            await core.summary.write();
+            await core.summary.write();\n

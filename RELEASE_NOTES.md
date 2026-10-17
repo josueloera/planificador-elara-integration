@@ -1,4 +1,5 @@
-# Versión 1.0.17
+# Versión 1.0.18
+- Corrección de exportación PDF de gafetes con fotografías y códigos QR en escritorio.
 
 - Ajustes: respaldo completo e importación compatibles entre Windows, Mac y Android de la misma edición; copia automática antes de restaurar.
 - Gafetes en Word (.docx) y PDF con foto y QR incrustados, tamaño de 54 × 85 mm y nueve gafetes por página A4.

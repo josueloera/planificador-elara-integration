@@ -31,22 +31,22 @@ for(const edition of ['primaria','secundaria'])test(edition+': copia completa, c
  await run(db,'INSERT INTO backup_blob_probe VALUES(1,?,?)',[blob,'María Ñ á']);
  await run(db,"INSERT OR REPLACE INTO configuracion VALUES('qr_actividades:7:2026-10-17',?)",[JSON.stringify([{nombre:'Tarea',categoria:'TAREA',alumno_ids:[1,2]}])]);
  await run(target,"INSERT OR REPLACE INTO configuracion VALUES('before-import','preserve me')");
- await snapshot({db,sqlite3,edition,version:'1.0.17'},backup);
+ await snapshot({db,sqlite3,edition,version:'1.0.18'},backup);
  await validateBackup(sqlite3,backup,edition);
  await assert.rejects(validateBackup(sqlite3,backup,edition==='primaria'?'secundaria':'primaria'),/pertenece/);
  const before=await all(target,'SELECT * FROM configuracion ORDER BY llave');
- await assert.rejects(restore({db:target,sqlite3,edition:edition==='primaria'?'secundaria':'primaria',version:'1.0.17'},backup,path.join(dir,'preserved')),/pertenece/);
+ await assert.rejects(restore({db:target,sqlite3,edition:edition==='primaria'?'secundaria':'primaria',version:'1.0.18'},backup,path.join(dir,'preserved')),/pertenece/);
  assert.deepEqual(await all(target,'SELECT * FROM configuracion ORDER BY llave'),before);
- const result=await restore({db:target,sqlite3,edition,version:'1.0.17'},backup,path.join(dir,'preserved'));
+ const result=await restore({db:target,sqlite3,edition,version:'1.0.18'},backup,path.join(dir,'preserved'));
  assert.equal(result.restartRequired,true);
  const rows=await all(target,'SELECT * FROM backup_blob_probe');assert.deepEqual(rows[0].bytes,blob);assert.equal(rows[0].label,'María Ñ á');
  const saved=await open(result.backupPath);
  assert.equal((await all(saved,"SELECT valor FROM configuracion WHERE llave='before-import'"))[0].valor,'preserve me');await close(saved);
  // Re-export the restored DB (Android-compatible marker) and restore back to desktop.
- const returned=path.join(dir,'returned.sqlite');await snapshot({db:target,sqlite3,edition,version:'1.0.17'},returned);
- await restore({db,sqlite3,edition,version:'1.0.17'},returned,path.join(dir,'preserved-again'));
+ const returned=path.join(dir,'returned.sqlite');await snapshot({db:target,sqlite3,edition,version:'1.0.18'},returned);
+ await restore({db,sqlite3,edition,version:'1.0.18'},returned,path.join(dir,'preserved-again'));
  assert.deepEqual((await all(db,'SELECT * FROM backup_blob_probe'))[0].bytes,blob);
  const corrupt=path.join(dir,'corrupt.sqlite');await fs.writeFile(corrupt,'not a database');
- await assert.rejects(restore({db:target,sqlite3,edition,version:'1.0.17'},corrupt,path.join(dir,'preserved')));
+ await assert.rejects(restore({db:target,sqlite3,edition,version:'1.0.18'},corrupt,path.join(dir,'preserved')));
  assert.deepEqual((await all(target,'SELECT * FROM backup_blob_probe'))[0].bytes,blob);
 });
