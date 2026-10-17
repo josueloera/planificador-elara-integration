@@ -107,11 +107,11 @@ jobs:
         uses: actions/github-script@v8
         env:
           RELEASE_TAG: ${{ inputs.tag || 'v1.0.19' }}
-          INSTALLER: Planificador-Primaria-1.0.18-instalacion-asistida-universal.dmg
         with:
           script: |
             const fs = require('node:fs');
+            const installer = 'Planificador-Primaria-' + process.env.RELEASE_TAG.replace(/^v/, '') + '-instalacion-asistida-universal.dmg';
             const release = (await github.rest.repos.getReleaseByTag({ ...context.repo, tag: process.env.RELEASE_TAG })).data;
-            if (release.assets.some(asset => asset.name === process.env.INSTALLER)) throw new Error('Assisted Mac installer already exists in this release.');
-            const file = 'manual-installer/' + process.env.INSTALLER;
-            await github.rest.repos.uploadReleaseAsset({ ...context.repo, release_id: release.id, name: process.env.INSTALLER, data: fs.readFileSync(file), headers: { 'content-type': 'application/x-apple-diskimage', 'content-length': fs.statSync(file).size } });
+            if (release.assets.some(asset => asset.name === installer)) throw new Error('Assisted Mac installer already exists in this release.');
+            const file = 'manual-installer/' + installer;
+            await github.rest.repos.uploadReleaseAsset({ ...context.repo, release_id: release.id, name: installer, data: fs.readFileSync(file), headers: { 'content-type': 'application/x-apple-diskimage', 'content-length': fs.statSync(file).size } });
