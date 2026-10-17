@@ -196,8 +196,8 @@ jobs:
             }
             if (release && !release.draft) throw new Error('Refusing to overwrite a published release');
             const body = fs.readFileSync('RELEASE_NOTES.md', 'utf8') +
-              (process.env.MAC_SIGNED === 'true' ? '\nmacOS: aplicaciÃ³n firmada.\n' :
-              '\nmacOS: instaladores sin firma; requieren instalaciÃ³n manual.\n');
+              (process.env.MAC_SIGNED === 'true' ? '\nmacOS: aplicación firmada.\n' :
+              '\nmacOS: instaladores sin firma; requieren instalación manual.\n');
             if (!release) {
               release = (await github.rest.repos.createRelease({ ...context.repo, tag_name: tag,
                 target_commitish: context.sha, name: process.env.RELEASE_NAME + ' ' + manifest.version,
@@ -229,4 +229,4 @@ jobs:
               body, draft: false, prerelease: false, make_latest: 'true' });
             core.summary.addHeading('Published stable update ' + tag)
               .addLink('GitHub Release', release.html_url);
-            await core.summary.write();\n
+            await core.summary.write();
