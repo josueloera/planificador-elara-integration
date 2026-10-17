@@ -1,3 +1,4 @@
+import { badgeImages, badgePdfHtml, badgeDocx } from './badgeExport';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const filename = name => String(name || 'Documento').replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').slice(0, 120);
 
@@ -66,6 +67,11 @@ export async function exportHtmlPdf(html, title = 'Documento') {
 }
 
 export async function exportDocument(root, title, format) {
+  if (root?.matches('.gafetes-print-grid')) {
+    const images = await badgeImages(root);
+    if (format === 'pdf') return exportHtmlPdf(badgePdfHtml(images, title), title);
+    return saveDocument(badgeDocx(images), filename(title) + '.docx');
+  }
   if (format === 'excel') {
     if (!root) throw new Error('No hay un documento para exportar.');
     const tables = [...root.querySelectorAll('table')].filter(t => t.getClientRects().length);

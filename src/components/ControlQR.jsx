@@ -1307,7 +1307,7 @@ export default function ControlQR({
               return (
                 <div style={{ backgroundColor: '#fffaf0', padding: '16px', borderRadius: '12px', border: '1px solid #feebc8', marginBottom: '20px', boxShadow: '0 2px 6px rgba(221, 107, 32, 0.08)' }}>
                   
-                  {modoEscaneo === 'TAREA' && <button type="button" onClick={() => { setTipoVinculoTrab('tareas'); setShowModalExportTrab(true); }} style={{ padding: 10, marginBottom: 12 }}>Vincular Tareas al evaluador</button>}
+                  {modoEscaneo === 'TAREA' && <button type="button" onClick={() => { setTipoVinculoTrab('tareas'); setCriterioDestinoTrab(''); setShowModalExportTrab(true); }} style={{ padding: 10, marginBottom: 12 }}>Vincular Tareas al evaluador</button>}
                   {/* BARRA SUPERIOR: RESUMEN DE ACTIVIDAD ACTIVA Y ACCIONES */}
                   <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                     
@@ -2604,7 +2604,7 @@ export default function ControlQR({
                     📥 Descargar Excel de Trabajos (.xls)
                   </button>
                   <button className="android-qr-row"
-                    onClick={() => { setTipoVinculoTrab('trabajos'); setShowModalExportTrab(true); }}
+                    onClick={() => { setTipoVinculoTrab('trabajos'); setCriterioDestinoTrab(''); setShowModalExportTrab(true); }}
                     disabled={!grupoActual?.id || !ciclo.inicio || !ciclo.fin}
                     style={{
                       padding: '10px 18px',
@@ -3173,6 +3173,9 @@ export default function ControlQR({
                 <div
                   key={a.id}
                   className="gafete-card"
+                  data-badge-name={a.nombre}
+                  data-badge-id={`ALU-${a.id}`}
+                  data-badge-group={grupoActual ? `${grupoActual.grado}° Grado Grupo "${grupoActual.seccion}"` : 'Educación Básica'}
                   style={{
                     backgroundColor: '#ffffff',
                     border: '2px solid #2b6cb0',
@@ -3357,7 +3360,7 @@ export default function ControlQR({
           <div className="android-dialog" role="dialog" aria-modal="true" style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', width: '480px', maxWidth: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
             <h3 style={{ margin: '0 0 10px 0', color: '#1a365d' }}>🔗 Vincular Trabajos con Evaluación</h3>
             <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#718096' }}>
-              Vincula los trabajos de esta materia durante todo el ciclo (<strong>{ciclo.inicio} al {ciclo.fin}</strong>). Cada promedio diario se mostrará en su fecha y se actualizará al registrar, corregir o eliminar un trabajo.
+              Vincula {tipoVinculoTrab === 'tareas' ? 'las tareas' : 'los trabajos de clase'} de esta materia durante todo el ciclo (<strong>{ciclo.inicio} al {ciclo.fin}</strong>). Cada promedio diario se mostrará en su fecha y se actualizará al registrar, corregir o eliminar un trabajo.
             </p>
 
             <div style={{ marginBottom: '14px' }}>

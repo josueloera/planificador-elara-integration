@@ -1,3 +1,4 @@
+require('./documentExport.cjs');
 const { app, BrowserWindow, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
@@ -98,6 +99,7 @@ if (app.isPackaged) {
 
 console.log(`\n📂 BASE DE DATOS DE INTEGRACION ELARA: ${dbPath}`);
 const db = new sqlite3.Database(dbPath);
+require('./databaseBackup.cjs').registerBackupHandlers({ db, dbPath, sqlite3, ipcMain, dialog: require('electron').dialog, BrowserWindow, app, edition: 'primaria', version: app.getVersion() });
 
 // --- 1.B GESTIÓN DE LA BASE DE DATOS UNIVERSAL (SEP) ---
 let universalDbPath;

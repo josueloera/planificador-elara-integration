@@ -50,11 +50,11 @@ export function VincularEvaluacionQR({ criterios, grupoId, ipcRenderer, automati
   };
   const anterior = automatica?.enlaces?.find(e => e.criterio_id === Number(criterioId));
   return (
-    <div className="android-dialog-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="android-dialog" role="dialog" aria-modal="true" aria-labelledby="titulo-vincular-qr" style={{ background: 'white', borderRadius: 12, padding: 24, width: 480, maxWidth: '90%', color: '#334155' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="titulo-vincular-qr" style={{ background: 'white', borderRadius: 12, padding: 24, width: 480, maxWidth: '90%', color: '#334155' }}>
         <h3 id="titulo-vincular-qr" style={{ marginTop: 0 }}>Vincular Control QR con Evaluación</h3>
         <p>Se utilizará todo el ciclo escolar: <strong>{automatica?.inicio} al {automatica?.fin}</strong>.</p>
-        <p style={{ fontSize: 13 }}>Cada nota se mostrará en la fecha de su registro y se recalculará al registrar, corregir o eliminar asistencias y trabajos. El vínculo queda guardado aunque todavía no existan registros.</p>
+        <p style={{ fontSize: 13 }}>Cada nota se mostrará en la fecha de su registro y se recalculará al registrar, corregir o eliminar asistencias, trabajos y tareas. El vínculo queda guardado aunque todavía no existan registros.</p>
         <label style={{ display: 'block', marginBottom: 12 }}>
           Registros que alimentarán el criterio
           <select value={tipo} disabled={ocupado} onChange={e => { setTipo(e.target.value); const sugerido = criterios.find(c => (e.target.value === 'tareas' ? /tarea/i : e.target.value === 'asistencia' ? /asist/i : /trabaj|activid/i).test(c.nombre)); if (sugerido) setCriterioId(String(sugerido.id)); }} style={{ display: 'block', padding: 10, width: '100%', marginTop: 5 }}>
@@ -72,7 +72,7 @@ export function VincularEvaluacionQR({ criterios, grupoId, ipcRenderer, automati
         {anterior && anterior.tipo !== tipo && <p>Este criterio cambiará de {anterior.tipo} a {tipo}.</p>}
         <p style={{ fontSize: 12 }}>Puedes ajustar las fechas en Configuración del ciclo escolar y desvincular el criterio desde Evaluación.</p>
         {error && <p role="alert" style={{ color: '#b91c1c' }}>{error}</p>}
-        <div className="android-dialog-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <button type="button" style={boton} disabled={ocupado} onClick={onClose}>Cancelar</button>
           <button type="button" style={{ ...boton, background: '#27ae60', color: 'white' }} disabled={ocupado || !criterioId} onClick={guardar}>
             {ocupado ? 'Guardando…' : 'Guardar vinculación automática'}

@@ -32,7 +32,7 @@ function registerCycleHandlers({
     if (!Array.isArray(enlaces)) throw new Error('La configuración de Control QR de este grupo no es válida.');
     const criterios = await all('SELECT id FROM criterios WHERE grupo_id = ?', [grupoId]);
     const ids = new Set(criterios.map(c => c.id));
-    return enlaces.filter(e => ids.has(e.criterio_id) && ['trabajos', 'asistencia'].includes(e.tipo));
+    return enlaces.filter(e => ids.has(e.criterio_id) && ['trabajos', 'tareas', 'asistencia'].includes(e.tipo));
   };
   const guardarEnlaces = (grupoId, ciclo, enlaces) => run(
     'INSERT OR REPLACE INTO configuracion (llave, valor) VALUES (?, ?)',
@@ -59,13 +59,14 @@ function registerCycleHandlers({
     for (const enlace of enlaces) {
       const criterio = criterios.find(c => c.id === enlace.criterio_id);
       if (!criterio) continue;
-      if (enlace.tipo === 'trabajos') {
+      if (enlace.tipo !== 'asistencia') {
         const campo = secundaria ? 'TODOS' : normalizarCampo(criterio.campo);
-        if (!cacheTrabajos.has(campo)) {
+        const key = campo + ':' + enlace.tipo;
+        if (!cacheTrabajos.has(key)) {
           const trabajos = await trabajosDelGrupo(grupoId, inicio, fin, campo);
-          cacheTrabajos.set(campo, promediosDiarios(trabajos));
+          cacheTrabajos.set(key, promediosDiarios(trabajos.filter(t => enlace.tipo === 'tareas' ? t.categoria === 'TAREA' : t.categoria !== 'TAREA')));
         }
-        notas.push(...cacheTrabajos.get(campo).map(n => ({ ...n, criterio_id: criterio.id })));
+        notas.push(...cacheTrabajos.get(key).map(n => ({ ...n, criterio_id: criterio.id })));
       } else {
         if (!asistencia) asistencia = await all(`SELECT al.id AS alumno_id, a.fecha, COUNT(a.id) AS total_dias,
           SUM(CASE WHEN a.estado = 'PRESENTE' THEN 1 ELSE 0 END) AS presentes,
@@ -94,12 +95,12 @@ function registerCycleHandlers({
   });
   ipcMain.handle('configurar-evaluacion-automatica', async (_, opciones = {}) => {
     const grupoId = grupoValido(opciones.grupo_id);
-    if (!['trabajos', 'asistencia'].includes(opciones.tipo)) throw new Error('Selecciona trabajos o asistencia.');
+    if (!['trabajos', 'tareas', 'asistencia'].includes(opciones.tipo)) throw new Error('Selecciona trabajos, tareas o asistencia.');
     const escala = opciones.escala == null ? 10 : Number(opciones.escala);
     if (!Number.isFinite(escala) || escala <= 0) throw new Error('La escala debe ser mayor que cero.');
     const result = await transaction(async () => {
       const criterios = await criteriosDestino(opciones.criterio_ids, grupoId);
-      if (opciones.tipo === 'trabajos' && criterios.length !== 1) {
+      if (opciones.tipo !== 'asistencia' && criterios.length !== 1) {
         throw new Error('Selecciona un solo criterio para los trabajos de la materia.');
       }
       const ciclo = await leerCiclo();

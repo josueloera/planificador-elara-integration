@@ -1,3 +1,12 @@
+# Versión 1.0.17
+
+- Ajustes: respaldo completo e importación compatibles entre Windows, Mac y Android de la misma edición; copia automática antes de restaurar.
+- Gafetes en Word (.docx) y PDF con foto y QR incrustados, tamaño de 54 × 85 mm y nueve gafetes por página A4.
+- Tareas separadas de trabajos de clase; cada categoría se vincula a su propio criterio de evaluación y se actualiza por día.
+- Compatibilidad con actividades generales, adaptadas y compartidas con alumnos NEE, conservando datos y notas cero.
+- Exportación PDF de escritorio conectada al controlador nativo.
+- Mac: instalador asistido con firma local, respaldo de la aplicación anterior y conservación de datos.
+
 # Planificador Docente 1.0.16
 
 - Control QR: exportación de hojas de asistencia y listas de trabajos a PDF y Excel desde cualquier pestaña activa.

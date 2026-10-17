@@ -1,3 +1,4 @@
+import RespaldoDatos from './RespaldoDatos';
 import React, { useState } from 'react';
 import PreferenciasElara from './PreferenciasElara';
 
@@ -54,6 +55,7 @@ const ConfiguracionCiclo = ({ onVolver, currentConfig, defaultConfig }) => {
                         Ajuste Manual
                     </h3>
                     <PreferenciasElara />
+                    <RespaldoDatos />
                     
                     <div style={{ marginBottom: '20px' }}>
                         <div style={{ marginBottom: '15px' }}>

@@ -1,7 +1,7 @@
 {
   "name": "planificador-docente-elara-integration",
   "private": true,
-  "version": "1.0.16",
+  "version": "1.0.17",
   "description": "Herramienta de Gestión Docente NEM - Integración ELARA",
   "author": "Josue Loera",
   "main": "electron/main.js",
@@ -15,7 +15,8 @@
     "preview": "vite preview",
     "electron": "electron .",
     "dist": "vite build && electron-builder",
-    "dist:mac": "vite build && electron-builder --mac --universal"
+    "dist:mac": "vite build && electron-builder --mac --universal",
+    "test:backup": "node --test scripts/test-backups.cjs"
   },
   "build": {
     "appId": "com.josue.planificador.elara",

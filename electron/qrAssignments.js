@@ -67,7 +67,9 @@ function registerQrAssignments({ ipcMain, all, run, transaction, grupoValido, no
       const entregas = await all(`SELECT t.alumno_id FROM trabajos_qr t JOIN alumnos a ON a.id = t.alumno_id
         WHERE a.grupo_id = ? AND (t.grupo_id = ? OR t.grupo_id IS NULL) AND t.fecha = ? AND t.nombre_trabajo = ?`, [g, g, fecha, nombre]);
       if (entregas.some(t => !ids.includes(t.alumno_id))) throw new Error('Un alumno que intentas excluir ya tiene una entrega. Elimina primero esa calificación si no le corresponde.');
-      const saved = { nombre, campo: previous?.campo || actividad.campo || 'LENGUAJES', modo: actividad.modo, alumno_ids: ids };
+      const categoria = actividad.categoria ?? previous?.categoria ?? 'TRABAJO';
+      if (!['TRABAJO', 'TAREA'].includes(categoria)) throw new Error('Selecciona trabajos o tareas.');
+      const saved = { categoria, nombre, campo: previous?.campo || actividad.campo || 'LENGUAJES', modo: actividad.modo, alumno_ids: ids };
       const stored = await read(dayKey(g, fecha), []);
       await write(dayKey(g, fecha), [...stored.filter(a => a.nombre !== nombre), saved]);
       return { ...saved, fecha };
@@ -100,7 +102,8 @@ function registerQrAssignments({ ipcMain, all, run, transaction, grupoValido, no
   const filterWorks = async (g, rows) => {
     const days = [...new Set(rows.map(t => t.fecha))];
     const plans = new Map(await Promise.all(days.map(async day => [day, await read(dayKey(g, day), [])])));
-    return rows.filter(t => applies(plans.get(t.fecha)?.find(a => a.nombre === t.nombre_trabajo), t.alumno_id));
+    return rows.filter(t => applies(plans.get(t.fecha)?.find(a => a.nombre === t.nombre_trabajo), t.alumno_id))
+      .map(t => ({ ...t, categoria: plans.get(t.fecha)?.find(a => a.nombre === t.nombre_trabajo)?.categoria || 'TRABAJO' }));
   };
   return { beforeMutation, filterWorks };
 }
