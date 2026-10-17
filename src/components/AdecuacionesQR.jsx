@@ -8,6 +8,7 @@ export default function AdecuacionesQR({ alumnos, campos, fecha, ciclo, grupoId,
   const [campo, setCampo] = useState(campos[0]);
   const [marcados, setMarcados] = useState([]);
   const [nombre, setNombre] = useState('');
+  const [categoria, setCategoria] = useState('TRABAJO');
   const [modo, setModo] = useState('ADAPTADA');
   const [destinatarios, setDestinatarios] = useState([]);
   const [editando, setEditando] = useState(false);
@@ -48,6 +49,7 @@ export default function AdecuacionesQR({ alumnos, campos, fecha, ciclo, grupoId,
     <fieldset disabled={busy || !ready} style={box}>
       <legend><strong>2. {editando ? 'Editar destinatarios' : 'Crear actividad'}</strong></legend>
       <label>Nombre de la actividad <input aria-label="Nombre de actividad adaptada" disabled={editando} value={nombre} onChange={e => setNombre(e.target.value)} style={{ padding: 8, margin: 8 }} /></label>
+      <label>Apartado <select value={categoria} onChange={e => setCategoria(e.target.value)}><option value="TRABAJO">Trabajos de clase</option><option value="TAREA">Tareas</option></select></label>
       <label>Tipo <select aria-label="Tipo de actividad" value={modo} onChange={e => { setModo(e.target.value); setDestinatarios(defaults(e.target.value)); }} style={{ padding: 8, margin: 8 }}>
         <option value="ADAPTADA">Adaptada para alumnos seleccionados</option><option value="GENERAL">General (sin alumnos con adecuaciones)</option><option value="TODOS">Compartida con todo el grupo</option>
       </select></label>
@@ -56,7 +58,7 @@ export default function AdecuacionesQR({ alumnos, campos, fecha, ciclo, grupoId,
         {alumnos.map(a => <label key={a.id}><input type="checkbox" checked={destinatarios.includes(a.id)} onChange={() => setDestinatarios(toggle(destinatarios, a.id))} /> {a.nombre}{marcados.includes(a.id) ? ' · Adecuaciones' : ''}</label>)}
       </div>
       <button style={{ ...button, marginTop: 16, background: '#1d4ed8', color: 'white' }} onClick={() => execute(async () => {
-        const saved = await ipcRenderer.invoke('save-qr-actividad', grupoId, fecha, { nombre, campo, modo, alumno_ids: destinatarios, editar: editando });
+        const saved = await ipcRenderer.invoke('save-qr-actividad', grupoId, fecha, { nombre, campo, modo, categoria, alumno_ids: destinatarios, editar: editando });
         await onSaved(); onSelect(saved); setNombre(''); setEditando(false); showToast?.('Actividad y destinatarios guardados.');
       })}>{editando ? 'Guardar destinatarios' : 'Crear actividad'}</button>
       {editando && <button style={{ ...button, marginLeft: 8 }} onClick={() => { setEditando(false); setNombre(''); setDestinatarios(defaults(modo)); }}>Cancelar edición</button>}
@@ -65,9 +67,9 @@ export default function AdecuacionesQR({ alumnos, campos, fecha, ciclo, grupoId,
       <h4>3. Actividades y alumnos asignados</h4>
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}><thead><tr><th>Actividad</th><th>Tipo</th><th>Alumnos</th><th>Acciones</th></tr></thead><tbody>
         {actividades.filter(a => campos.length === 1 || a.campo === campo).map(a => <tr key={a.nombre} style={{ borderTop: '1px solid #e2e8f0' }}>
-          <td style={{ padding: 10 }}>{a.nombre}</td><td>{a.modo === 'ADAPTADA' ? 'Adaptada' : a.modo === 'GENERAL' ? 'General' : 'Compartida'}</td>
+          <td style={{ padding: 10 }}>{a.nombre} · {a.categoria === 'TAREA' ? 'Tarea' : 'Trabajo'}</td><td>{a.modo === 'ADAPTADA' ? 'Adaptada' : a.modo === 'GENERAL' ? 'General' : 'Compartida'}</td>
           <td>{alumnos.filter(al => actividadAsignada(a, al.id)).map(al => al.nombre).join(', ') || 'Sin destinatarios'}</td>
-          <td><button disabled={busy || !ready} style={button} onClick={() => { setNombre(a.nombre); setModo(a.modo || 'TODOS'); setDestinatarios(alumnos.filter(al => actividadAsignada(a, al.id)).map(al => al.id)); setEditando(true); }}>Editar destinatarios</button>{' '}<button style={button} onClick={() => onSelect(a, true)}>Calificar</button></td>
+          <td><button disabled={busy || !ready} style={button} onClick={() => { setNombre(a.nombre); setCategoria(a.categoria || 'TRABAJO'); setModo(a.modo || 'TODOS'); setDestinatarios(alumnos.filter(al => actividadAsignada(a, al.id)).map(al => al.id)); setEditando(true); }}>Editar destinatarios</button>{' '}<button style={button} onClick={() => onSelect(a, true)}>Calificar</button></td>
         </tr>)}
       </tbody></table></div>
     </div>

@@ -1,11 +1,104 @@
-name: Test Runner
-on: [push]
+name: Verify assisted Primaria Mac installation
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build assisted installer for'
+        required: false
+        default: 'v1.0.16'
+permissions:
+  contents: read
 jobs:
-  test-mac:
-    runs-on: macos-latest
+  diagnose:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-14, macos-15-intel]
+        signing: [adhoc]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 12
     steps:
-      - run: echo "Mac is working"
-  test-win:
-    runs-on: windows-latest
-    steps:
-      - run: echo "Windows is working"
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - name: Download and mount original DMG
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || 'v1.0.16' }}
+        run: |
+          mkdir -p evidence unpacked
+          gh release download "$RELEASE_TAG" --repo josueloera/planificador-elara-integration --pattern '*universal.dmg' --dir download
+          shasum -a 256 download/*.dmg > evidence/dmg-sha256.txt
+          hdiutil attach download/*.dmg -readonly -nobrowse -mountpoint "$PWD/mounted"
+          ditto "$PWD/mounted/Planificador Docente ELARA Integration.app" "$PWD/unpacked/Planificador Docente ELARA Integration.app"
+          hdiutil detach "$PWD/mounted"
+      - name: Apply complete local signature
+        if: matrix.signing == 'adhoc'
+        shell: bash
+        run: |
+          node - <<'JS'
+          const { signAsync } = require('@electron/osx-sign');
+          signAsync({app: process.cwd() + '/unpacked/Planificador Docente ELARA Integration.app', identity:'-', identityValidation:false, platform:'darwin', preAutoEntitlements:false, preEmbedProvisioningProfile:false, gatekeeperAssess:false, optionsForFile:()=>({hardenedRuntime:false})}).catch(e=>{console.error(e);process.exitCode=1;});
+          JS
+          codesign --verify --deep --strict --verbose=4 'unpacked/Planificador Docente ELARA Integration.app'
+      - name: Verify assisted installation and launch
+        shell: bash
+        run: |
+          cp 'scripts/mac-manual/Instalar Planificador.command' unpacked/
+          cp scripts/mac-manual/INSTRUCCIONES.txt unpacked/
+          chmod +x 'unpacked/Instalar Planificador.command'
+          export APP="$PWD/unpacked/Planificador Docente ELARA Integration.app"
+          python3 - <<'PY'
+          import os,subprocess,pathlib,time,json,urllib.request
+          source=os.environ['APP']; root=pathlib.Path.home()/'Applications'; dest=root/'Planificador Docente ELARA Integration.app'
+          dest.mkdir(parents=True);(dest/'old-version.txt').write_text('preserve old app')
+          data=pathlib.Path.home()/'Library/Application Support/planificador-elara-integration-userdata'
+          data.mkdir(parents=True,exist_ok=True);sentinel=data/'preservation-test.txt';sentinel.write_text('preserve user data')
+          subprocess.run(['xattr','-w','com.apple.quarantine','0083;'+format(int(time.time()),'x')+';Safari;',source],check=True)
+          with open('evidence/installation.txt','w') as log:
+            result=subprocess.run(['bash','unpacked/Instalar Planificador.command'],env=dict(os.environ,PLANIFICADOR_TEST='1'),stdout=log,stderr=subprocess.STDOUT,timeout=60)
+          assert result.returncode==0,'Installer failed'
+          targets=[]
+          for _ in range(30):
+            try:
+              with urllib.request.urlopen('http://127.0.0.1:9229/json/list',timeout=1) as response:targets=json.load(response)
+            except Exception:pass
+            time.sleep(1)
+          backup=any((p/'old-version.txt').read_text()=='preserve old app' for p in root.glob('Planificador Docente ELARA Integration-respaldo-*.app'))
+          preserved=sentinel.read_text()=='preserve user data'
+          valid=subprocess.run(['codesign','--verify','--deep','--strict',str(dest)],capture_output=True,text=True)
+          quarantine=subprocess.run(['xattr','-p','com.apple.quarantine',str(dest)],capture_output=True,text=True)
+          sourceq=subprocess.run(['xattr','-p','com.apple.quarantine',source],capture_output=True,text=True)
+          pages=[t for t in targets if t.get('type')=='page' and '/Applications/Planificador' in t.get('url','')]
+          report={'arch':os.uname().machine,'launchMethod':'LaunchServices open from installer','installerExit':result.returncode,'validSignature':valid.returncode==0,'previousAppPreserved':backup,'userDataPreserved':preserved,'installedQuarantineRemoved':quarantine.returncode!=0,'sourceQuarantinePreserved':sourceq.returncode==0,'targets':targets}
+          pathlib.Path('evidence/result.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))
+          subprocess.run(['screencapture','-x','evidence/screen.png'],capture_output=True)
+          assert pages and backup and preserved and valid.returncode==0 and quarantine.returncode!=0 and sourceq.returncode==0,'Installation or launch verification failed'
+          # Do not carry the synthetic test attribute into the distributable image.
+          subprocess.run(['xattr','-d','com.apple.quarantine',source],check=True)
+          PY
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: assisted-install-${{ matrix.runner }}
+          path: evidence
+      - name: Package verified manual installer
+        if: success() && matrix.signing == 'adhoc' && matrix.runner == 'macos-14'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag || 'v1.0.16' }}
+        run: |
+          mkdir -p manual-installer
+          ln -s /Applications unpacked/Applications
+          codesign --verify --deep --strict 'unpacked/Planificador Docente ELARA Integration.app'
+          VERSION="${RELEASE_TAG#v}"
+          hdiutil create -volname 'Planificador Primaria' -srcfolder unpacked -ov -format UDZO "manual-installer/Planificador-Primaria-${VERSION}-instalacion-asistida-universal.dmg"
+          shasum -a 256 manual-installer/*.dmg > manual-installer/SHA256.txt
+      - uses: actions/upload-artifact@v4
+        if: success() && matrix.signing == 'adhoc' && matrix.runner == 'macos-14'
+        with:
+          name: manual-mac-installer-primaria
+          path: manual-installer
