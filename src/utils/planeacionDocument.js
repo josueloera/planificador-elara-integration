@@ -1,3 +1,4 @@
+import { exportHtmlPdf } from './documentExport';
 const escapeHtml = value => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -246,18 +247,7 @@ export function exportarPlanoWord(data) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function exportarPlanoPdf(data) {
-  const html = buildPlanoDidacticoHtml(data);
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) {
-    window.alert('Permite la ventana de impresión para exportar el plano en PDF.');
-    return;
-  }
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.addEventListener('load', () => {
-    printWindow.focus();
-    setTimeout(() => printWindow.print(), 150);
-  }, { once: true });
+export async function exportarPlanoPdf(data) {
+  try { return await exportHtmlPdf(buildPlanoDidacticoHtml(data), data?.nombre || 'Plano didáctico'); }
+  catch (error) { window.alert('No se pudo exportar el PDF: ' + error.message); }
 }

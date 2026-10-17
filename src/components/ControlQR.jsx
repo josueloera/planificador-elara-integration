@@ -1,3 +1,4 @@
+import ExportDocument from './ExportDocument';
 import AdecuacionesQR from './AdecuacionesQR';
 import { actividadAsignada } from '../qrAssignments';
 import { rangoDelCiclo } from '../evaluacionAutomatica';
@@ -134,29 +135,6 @@ export default function ControlQR({
   const [destinatariosActividad, setDestinatariosActividad] = useState([]);
   const [cargandoAlumnosAdecuacion, setCargandoAlumnosAdecuacion] = useState(false);
   const [editandoActividad, setEditandoActividad] = useState(null); // { nombreOriginal, nombre, campo }
-  const nombreActividadInputRef = useRef(null);
-  const editandoNombreActividad = creandoNuevaActividad || Boolean(editandoActividad);
-
-  // Recuperar tanto el foco de Electron como el del campo al abrir el formulario.
-  useEffect(() => {
-    if (!editandoNombreActividad || activeTab !== 'ESCANER' || modoEscaneo !== 'TRABAJO') return;
-    let vigente = true;
-    const enfocar = async () => {
-      try {
-        if (ipcRenderer) await ipcRenderer.invoke('app-focus');
-      } catch (error) {
-        console.warn('No se pudo recuperar el foco de la ventana:', error);
-      }
-      if (!vigente) return;
-      const input = nombreActividadInputRef.current;
-      // No quitar el foco si el usuario ya pasó a otro control del formulario.
-      if (document.activeElement !== document.body && document.activeElement !== input) return;
-      input?.focus();
-      input?.select();
-    };
-    enfocar();
-    return () => { vigente = false; };
-  }, [creandoNuevaActividad, editandoNombreActividad, activeTab, modoEscaneo, ipcRenderer]);
 
   useEffect(() => {
     if (!creandoNuevaActividad || !grupoActual?.id || !ipcRenderer) return undefined;
@@ -241,6 +219,7 @@ export default function ControlQR({
   const [showModalExportTrab, setShowModalExportTrab] = useState(false);
   const [criterioDestinoAsis, setCriterioDestinoAsis] = useState('');
   const [criterioDestinoTrab, setCriterioDestinoTrab] = useState('');
+  const [tipoVinculoTrab, setTipoVinculoTrab] = useState('trabajos');
   const [campoDestinoAsis, setCampoDestinoAsis] = useState('TODOS');
   const [escalaDestinoAsis, setEscalaDestinoAsis] = useState(10);
   const [criteriosGrupo, setCriteriosGrupo] = useState([]);
@@ -378,18 +357,28 @@ export default function ControlQR({
     return Array.from(map.values());
   }, [trabajosDia, actividadesCreadas, tituloTrabajo, campoSeleccionado, esSecundaria, camposDisponibles, asignacionesDia]);
 
+  const actividadesCaptura = useMemo(() => actividadesDelDia.filter(a => (a.categoria || 'TRABAJO') === (modoEscaneo === 'TAREA' ? 'TAREA' : 'TRABAJO')), [actividadesDelDia, modoEscaneo]);
+  useEffect(() => {
+    setCreandoNuevaActividad(false); setEditandoActividad(null);
+    const primera = actividadesCaptura[0];
+    setTituloTrabajo(actual => actividadesCaptura.some(a => a.nombre === actual) ? actual : primera?.nombre || '');
+    if (primera?.campo) setCampoSeleccionado(primera.campo);
+  }, [modoEscaneo]);
+
   const tareaAplica = (nombre, id) => actividadAsignada(actividadesDelDia.find(a => a.nombre === nombre), id);
   const crearActividadGeneral = async (nombre, campo) => {
     const ids = fechaActualQR >= ciclo.inicio && fechaActualQR <= ciclo.fin
       ? await ipcRenderer.invoke('get-qr-adecuaciones', grupoActual.id, ciclo.inicio, ciclo.fin, campo) : [];
     return ipcRenderer.invoke('save-qr-actividad', grupoActual.id, fechaActualQR, {
-      nombre, campo, modo: 'GENERAL', alumno_ids: alumnos.filter(a => !ids.includes(a.id)).map(a => a.id)
+      nombre, campo, categoria: modoEscaneo === 'TAREA' ? 'TAREA' : 'TRABAJO', modo: 'GENERAL', alumno_ids: alumnos.filter(a => !ids.includes(a.id)).map(a => a.id)
     });
   };
   const asegurarActividad = async (nombre, campo) => {
     if (!asignacionesListas) throw new Error('Espera a que carguen las actividades del grupo.');
     const current = scope;
     let act = actividadesDelDia.find(a => a.nombre === nombre);
+    if (act && (act.categoria || 'TRABAJO') !== (modoEscaneo === 'TAREA' ? 'TAREA' : 'TRABAJO')) throw new Error('Selecciona una actividad del apartado actual.');
+    if (!nombre?.trim()) throw new Error('Crea o selecciona una actividad antes de calificar.');
     if (!act) {
       act = await crearActividadGeneral(nombre, campo);
       if (scopeRef.current === current) await cargarAsignaciones();
@@ -400,16 +389,16 @@ export default function ControlQR({
 
   // Nombres de tareas disponibles (mantiene compatibilidad total con Matriz y componentes existentes)
   const tareasDisponibles = useMemo(() => {
-    return actividadesDelDia.map(a => a.nombre);
-  }, [actividadesDelDia]);
+    return actividadesCaptura.map(a => a.nombre);
+  }, [actividadesCaptura]);
 
   // Sincronizar tarea activa y su materia al cambiar de fecha o actividades
   useEffect(() => {
-    if (actividadesDelDia.length > 0) {
-      const existe = actividadesDelDia.find(a => a.nombre === tituloTrabajo);
+    if (actividadesCaptura.length > 0) {
+      const existe = actividadesCaptura.find(a => a.nombre === tituloTrabajo);
       if (!existe) {
-        setTituloTrabajo(actividadesDelDia[0].nombre);
-        setCampoSeleccionado(actividadesDelDia[0].campo || camposDisponibles[0]);
+        setTituloTrabajo(actividadesCaptura[0].nombre);
+        setCampoSeleccionado(actividadesCaptura[0].campo || camposDisponibles[0]);
       } else {
         if (existe.campo && existe.campo !== campoSeleccionado) {
           setCampoSeleccionado(existe.campo);
@@ -454,7 +443,7 @@ export default function ControlQR({
   // Abrir formulario para crear una nueva actividad con nombre y materia
   const abrirCreadorActividad = () => {
     const num = actividadesDelDia.length + 1;
-    setNuevoNombreActividad(`Tarea ${num}`);
+    setNuevoNombreActividad(`${modoEscaneo === 'TAREA' ? 'Tarea' : 'Actividad'} ${num}`);
     setNuevoCampoActividad(campoSeleccionado || camposDisponibles[0]);
     setNuevoTipoActividad('GENERAL');
     setCreandoNuevaActividad(true);
@@ -475,7 +464,11 @@ export default function ControlQR({
         if (cargandoAlumnosAdecuacion) throw new Error('Espera a que termine la carga de alumnos NEE.');
         if (!alumnoIds.length) throw new Error('Selecciona al menos un alumno NEE para esta actividad.');
         await ipcRenderer.invoke('save-qr-actividad', grupoActual.id, fechaActualQR, {
-          nombre: nomTrim, campo: nuevoCampoActividad, modo: 'ADAPTADA', alumno_ids: alumnoIds
+          nombre: nomTrim, campo: nuevoCampoActividad, categoria: modoEscaneo === 'TAREA' ? 'TAREA' : 'TRABAJO', modo: 'ADAPTADA', alumno_ids: alumnoIds
+        });
+      } else if (nuevoTipoActividad === 'TODOS') {
+        await ipcRenderer.invoke('save-qr-actividad', grupoActual.id, fechaActualQR, {
+          nombre: nomTrim, campo: nuevoCampoActividad, categoria: modoEscaneo === 'TAREA' ? 'TAREA' : 'TRABAJO', modo: 'TODOS', alumno_ids: alumnos.map(a => a.id)
         });
       } else {
         await crearActividadGeneral(nomTrim, nuevoCampoActividad);
@@ -721,16 +714,12 @@ export default function ControlQR({
 
   // Soporte directo Plug & Play para Pistolas / Lectores USB de Códigos QR y Barras (HID)
   useEffect(() => {
-    if (editandoNombreActividad) return;
     let buffer = '';
     let lastKeyTime = Date.now();
 
     const handleKeyDown = (e) => {
       // Si el usuario está escribiendo intencionalmente en un input normal, no interferir
-      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.altKey || e.metaKey ||
-          (e.target?.id !== 'scannerUsbInput' &&
-           (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName) || e.target?.isContentEditable))) {
-        buffer = '';
+      if (['INPUT', 'TEXTAREA'].includes(e.target?.tagName) && e.target?.id !== 'scannerUsbInput') {
         return;
       }
 
@@ -756,7 +745,7 @@ export default function ControlQR({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [editandoNombreActividad, modoEscaneo, subtipoAsistencia, campoSeleccionado, criterioSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo, asignacionesDia, asignacionesListas, actividadesDelDia]);
+  }, [modoEscaneo, subtipoAsistencia, campoSeleccionado, criterioSeleccionado, calificacionActual, alumnos, fechaActualQR, grupoActual, tituloTrabajo, asignacionesDia, asignacionesListas, actividadesDelDia]);
 
   // Recargar una vez al cambiar de grupo o abrir un modal, sin depender de la lista recibida.
   useEffect(() => {
@@ -789,8 +778,8 @@ export default function ControlQR({
     [criteriosGrupo, esSecundaria, campoFiltroHistorial]);
   useEffect(() => {
     if (showModalExportTrab) setCriterioDestinoTrab(prev => criteriosFiltradosTrab.some(c => String(c.id) === prev)
-      ? prev : String(criteriosFiltradosTrab.find(c => /trabaj|tarea/i.test(c.nombre))?.id || ''));
-  }, [showModalExportTrab, criteriosFiltradosTrab]);
+      ? prev : String(criteriosFiltradosTrab.find(c => (tipoVinculoTrab === 'tareas' ? /tarea/i : /trabaj|activid/i).test(c.nombre))?.id || ''));
+  }, [showModalExportTrab, criteriosFiltradosTrab, tipoVinculoTrab]);
 
   const criteriosFiltradosAsis = useMemo(() => criteriosGrupo.filter(c => esSecundaria ||
     campoDestinoAsis === 'TODOS' || normalizarCampo(c.campo) === normalizarCampo(campoDestinoAsis)),
@@ -1093,7 +1082,7 @@ export default function ControlQR({
     setExportando(true);
     try {
       await ipcRenderer.invoke('configurar-evaluacion-automatica', {
-        grupo_id: grupoActual.id, tipo: 'trabajos', criterio_ids: [destino.id], escala: 10
+        grupo_id: grupoActual.id, tipo: tipoVinculoTrab, criterio_ids: [destino.id], escala: 10
       });
       setShowModalExportTrab(false);
       notificarImportacion(destino);
@@ -1120,7 +1109,7 @@ export default function ControlQR({
     : '-';
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'system-ui, sans-serif', color: '#2d3748' }}>
+    <div className="android-qr" style={{ padding: '20px', fontFamily: 'system-ui, sans-serif', color: '#2d3748' }}>
       {/* ESTILOS DE IMPRESIÓN PARA GAFETES */}
       <style>{`
         @media print {
@@ -1140,18 +1129,19 @@ export default function ControlQR({
         }
       `}</style>
 
+      {activeTab !== 'ESCANER' && <ExportDocument title={`${activeTab === 'GAFETES' ? 'Gafetes' : 'Control QR - ' + activeTab} - ${grupoActual?.grado || ''} ${grupoActual?.seccion || ''} - ${fechaActualQR}`} selector={activeTab === 'GAFETES' ? '.gafetes-print-grid' : '[data-document="qr"]'} table={activeTab !== 'GAFETES'} />}
       {/* HEADER PRINCIPAL DE CONTROL QR */}
-      <div className="no-print" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '14px', backgroundColor: '#ffffff', padding: '16px 24px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', marginBottom: '20px' }}>
-        <div>
-          <h2 style={{ margin: 0, color: '#1a202c', display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div className="no-print android-qr-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '14px', backgroundColor: '#ffffff', padding: '16px 24px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', marginBottom: '20px' }}>
+        <div className="android-qr-heading">
+          <h2 className="android-qr-row" style={{ margin: 0, color: '#1a202c', display: 'flex', alignItems: 'center', gap: '10px' }}>
             📱 Control de Asistencia y Trabajos por Código QR
           </h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px' }}>
+          <div className="android-qr-date-row" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px' }}>
             <span style={{ color: '#718096', fontSize: '14px' }}>
               Grupo Activo: <strong>{grupoActual ? `${grupoActual.grado}° ${grupoActual.seccion}` : 'General'}</strong>
             </span>
             <span style={{ color: '#cbd5e0' }}>|</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div className="android-qr-date-controls" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#2b6cb0' }}>📅 Fecha Activa:</label>
               <input
                 type="date"
@@ -1194,9 +1184,9 @@ export default function ControlQR({
         </div>
 
         {/* PESTAÑAS DE NAVEGACIÓN QR */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', width: '100%', marginTop: '2px' }}>
+        <div className="android-qr-tabs" role="navigation" aria-label="Secciones de Control QR" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', width: '100%', marginTop: '2px' }}>
           {[
-            { id: 'ESCANER', label: '📷 Escáner y Móvil' },
+            { id: 'ESCANER', label: '📷 Cámara QR' },
             { id: 'ASISTENCIA', label: '📋 Lista de Asistencia' },
             { id: 'EVALUACION', label: '📝 Evaluación Trabajos' },
             { id: 'ADECUACIONES', label: '🧩 Adecuaciones curriculares' },
@@ -1228,18 +1218,18 @@ export default function ControlQR({
         <AdecuacionesQR key={scope} alumnos={alumnos} campos={camposDisponibles} fecha={fechaActualQR}
           ciclo={ciclo} grupoId={grupoActual.id} ipcRenderer={ipcRenderer} actividades={actividadesDelDia}
           onSaved={cargarAsignaciones} showToast={showToast}
-          onSelect={(act, calificar) => { seleccionarActividad(act); if (calificar) { setModoEscaneo('TRABAJO'); setActiveTab('ESCANER'); } }} />
+          onSelect={(act, calificar) => { seleccionarActividad(act); if (calificar) { setModoEscaneo(act.categoria === 'TAREA' ? 'TAREA' : 'TRABAJO'); setActiveTab('ESCANER'); } }} />
       )}
 
       {/* VISTA 1: ESCÁNER Y VINCULACIÓN MÓVIL */}
       {activeTab === 'ESCANER' && (
-        <div className="no-print" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+        <div className="no-print android-qr-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           {/* PANEL IZQUIERDO: CONFIGURACIÓN DE MODO Y VINCULACIÓN */}
           <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
             <h3 style={{ marginTop: 0, color: '#2b6cb0' }}>🎯 Modo de Captura Activo</h3>
 
             {/* SELECCIÓN MODO ASISTENCIA VS TRABAJO */}
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <div className="android-qr-row" style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
               <button
                 onClick={() => setModoEscaneo('ASISTENCIA')}
                 style={{
@@ -1270,6 +1260,7 @@ export default function ControlQR({
               >
                 📝 Revisión de Trabajos
               </button>
+              <button type="button" onClick={() => setModoEscaneo('TAREA')} style={{ flex: 1, padding: 12, borderRadius: 8, border: 0, fontWeight: 700, background: modoEscaneo === 'TAREA' ? '#6b46c1' : '#edf2f7', color: modoEscaneo === 'TAREA' ? 'white' : '#4a5568' }}>📚 Tareas</button>
             </div>
 
             {/* OPCIONES DE ASISTENCIA */}
@@ -1278,7 +1269,7 @@ export default function ControlQR({
                 <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px', color: '#22543d' }}>
                   Estado al escanear el QR:
                 </label>
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div className="android-qr-row" style={{ display: 'flex', gap: '10px' }}>
                   {[
                     { id: 'PRESENTE', label: 'Presente (Asistencia)' },
                     { id: 'RETARDO', label: 'Retardo' },
@@ -1308,21 +1299,22 @@ export default function ControlQR({
             )}
 
             {/* OPCIONES DE EVALUACIÓN DE TRABAJO */}
-            {modoEscaneo === 'TRABAJO' && (() => {
-              const actActivaObj = actividadesDelDia.find(a => a.nombre === tituloTrabajo);
+            {modoEscaneo !== 'ASISTENCIA' && (() => {
+              const actActivaObj = actividadesCaptura.find(a => a.nombre === tituloTrabajo);
               const campoActivoInfo = getInfoCampo(actActivaObj?.campo || campoSeleccionado);
               const entregasActivas = (trabajosDia || []).filter(t => t.nombre_trabajo === tituloTrabajo).length;
 
               return (
                 <div style={{ backgroundColor: '#fffaf0', padding: '16px', borderRadius: '12px', border: '1px solid #feebc8', marginBottom: '20px', boxShadow: '0 2px 6px rgba(221, 107, 32, 0.08)' }}>
                   
+                  {modoEscaneo === 'TAREA' && <button type="button" onClick={() => { setTipoVinculoTrab('tareas'); setShowModalExportTrab(true); }} style={{ padding: 10, marginBottom: 12 }}>Vincular Tareas al evaluador</button>}
                   {/* BARRA SUPERIOR: RESUMEN DE ACTIVIDAD ACTIVA Y ACCIONES */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                  <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                     
                     {/* Indicador de Tarea Activa */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <div className="android-qr-row" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#744210' }}>
-                        🎯 Tarea Activa al Escanear:
+                        {modoEscaneo === 'TAREA' ? '📚 Tarea activa:' : '🎯 Actividad activa:'}
                       </span>
                       <div style={{
                         display: 'inline-flex',
@@ -1359,9 +1351,9 @@ export default function ControlQR({
                     </div>
 
                     {/* Acciones de cabecera: Regresar a previa + Botón Nueva Actividad */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <div className="android-qr-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                       {tareaAnterior && tareaAnterior !== tituloTrabajo && (
-                        <button
+                        <button className="android-qr-row"
                           onClick={() => {
                             const actPrev = actividadesDelDia.find(a => a.nombre === tareaAnterior);
                             if (actPrev) seleccionarActividad(actPrev);
@@ -1388,7 +1380,7 @@ export default function ControlQR({
                         </button>
                       )}
 
-                      <button
+                      <button className="android-qr-row"
                         onClick={abrirCreadorActividad}
                         style={{
                           display: 'flex',
@@ -1423,8 +1415,8 @@ export default function ControlQR({
                       marginBottom: '14px',
                       boxShadow: '0 4px 12px rgba(221, 107, 32, 0.12)'
                     }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                        <span style={{ fontWeight: 'bold', fontSize: '13px', color: '#9a3412', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <span className="android-qr-row" style={{ fontWeight: 'bold', fontSize: '13px', color: '#9a3412', display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span>✨</span>
                           <span>Crear Nueva Actividad para este día ({fechaActualQR}):</span>
                         </span>
@@ -1439,7 +1431,8 @@ export default function ControlQR({
                       <div role="tablist" aria-label="Destinatarios de la actividad" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '12px 0' }}>
                         {[
                           { id: 'GENERAL', label: '👥 Clase en general' },
-                          { id: 'NEE', label: '🧩 Alumnos NEE' }
+                          { id: 'NEE', label: '🧩 Alumnos NEE' },
+                          { id: 'TODOS', label: '👥 Ambos: general y NEE' }
                         ].map(tab => (
                           <button key={tab.id} type="button" role="tab" aria-selected={nuevoTipoActividad === tab.id}
                             onClick={() => setNuevoTipoActividad(tab.id)}
@@ -1463,9 +1456,9 @@ export default function ControlQR({
                             </div>
                           ) : <p style={{ margin: 0 }}>Todavía no hay alumnos marcados. Agrégalos en Adecuaciones curriculares.</p>}
                         </fieldset>
-                      ) : <p style={{ margin: '0 0 12px', color: '#52687d', fontSize: 12 }}>La actividad se asignará al grupo general según la configuración de adecuaciones de esta materia.</p>}
+                      ) : <p style={{ margin: '0 0 12px', color: '#52687d', fontSize: 12 }}>{nuevoTipoActividad === 'TODOS' ? 'Una misma actividad para todo el grupo, incluidos los alumnos NEE.' : 'La actividad se asignará al grupo general, sin los alumnos marcados con adecuaciones.'}</p>}
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px', alignItems: 'end' }}>
+                      <div className="android-qr-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px', alignItems: 'end' }}>
                         <div>
                           <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#744210', marginBottom: '4px' }}>
                             Nombre de la Actividad / Tarea:
@@ -1473,18 +1466,11 @@ export default function ControlQR({
                           <input
                             type="text"
                             list="listaSugerenciasTareas"
-                            ref={nombreActividadInputRef}
                             value={nuevoNombreActividad}
                             onChange={(e) => setNuevoNombreActividad(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                                e.preventDefault();
-                                handleConfirmarNuevaActividad();
-                              }
-                            }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmarNuevaActividad(); }}
                             placeholder="Ej. Resumen de lectura, Desafíos matemáticos..."
                             autoFocus
-                            aria-label="Nombre de la actividad"
                             style={{
                               width: '100%',
                               padding: '8px 10px',
@@ -1526,7 +1512,7 @@ export default function ControlQR({
                           </select>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '6px' }}>
+                        <div className="android-qr-row" style={{ display: 'flex', gap: '6px' }}>
                           <button
                             onClick={handleConfirmarNuevaActividad}
                             style={{
@@ -1574,8 +1560,8 @@ export default function ControlQR({
                       marginBottom: '14px',
                       boxShadow: '0 4px 12px rgba(49, 130, 206, 0.15)'
                     }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                        <span style={{ fontWeight: 'bold', fontSize: '13px', color: '#2b6cb0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <span className="android-qr-row" style={{ fontWeight: 'bold', fontSize: '13px', color: '#2b6cb0', display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span>✏️</span>
                           <span>Editar Actividad: <strong>"{editandoActividad.nombreOriginal}"</strong></span>
                         </span>
@@ -1587,24 +1573,17 @@ export default function ControlQR({
                         </button>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr auto', gap: '10px', alignItems: 'flex-end' }}>
+                      <div className="android-qr-form-grid" style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr auto', gap: '10px', alignItems: 'flex-end' }}>
                         <div>
                           <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#2b6cb0', marginBottom: '4px' }}>
                             Nombre de la Actividad:
                           </label>
                           <input
                             type="text"
-                            ref={nombreActividadInputRef}
                             value={editandoActividad.nombre}
                             onChange={(e) => setEditandoActividad({ ...editandoActividad, nombre: e.target.value })}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                                e.preventDefault();
-                                handleGuardarEdicionActividad();
-                              }
-                            }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleGuardarEdicionActividad(); }}
                             autoFocus
-                            aria-label="Nombre de la actividad"
                             style={{
                               width: '100%',
                               padding: '8px 10px',
@@ -1643,7 +1622,7 @@ export default function ControlQR({
                           </select>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '6px' }}>
+                        <div className="android-qr-row" style={{ display: 'flex', gap: '6px' }}>
                           <button
                             onClick={handleGuardarEdicionActividad}
                             style={{
@@ -1683,17 +1662,17 @@ export default function ControlQR({
 
                   {/* SELECTOR RÁPIDO DE ACTIVIDADES (BOTONES / TARJETAS POR TAREA Y MATERIA) */}
                   <div style={{ marginBottom: '14px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <label style={{ fontWeight: 'bold', fontSize: '12px', color: '#975a16', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <label className="android-qr-row" style={{ fontWeight: 'bold', fontSize: '12px', color: '#975a16', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span>⚡ Actividades de Hoy (1 clic para cambiar de tarea y materia):</span>
                       </label>
                       <span style={{ fontSize: '11px', color: '#78350f', fontWeight: 'bold' }}>
-                        {actividadesDelDia.length} {actividadesDelDia.length === 1 ? 'actividad' : 'actividades'}
+                        {actividadesCaptura.length} {actividadesDelDia.length === 1 ? 'actividad' : 'actividades'}
                       </span>
                     </div>
 
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'stretch' }}>
-                      {actividadesDelDia.map(act => {
+                    <div className="android-qr-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'stretch' }}>
+                      {actividadesCaptura.map(act => {
                         const isActiva = act.nombre === tituloTrabajo;
                         const campoInfo = getInfoCampo(act.campo);
                         const entregas = (trabajosDia || []).filter(t => t.nombre_trabajo === act.nombre).length;
@@ -1724,7 +1703,7 @@ export default function ControlQR({
                             </span>
 
                             {/* Nombre y Badge de Materia */}
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                            <div className="android-qr-row" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
                               <span style={{
                                 fontWeight: isActiva ? '800' : '600',
                                 fontSize: '12px',
@@ -1799,7 +1778,7 @@ export default function ControlQR({
                       })}
 
                       {/* Botón Añadir Otra Tarea */}
-                      <button
+                      <button className="android-qr-row"
                         onClick={abrirCreadorActividad}
                         style={{
                           padding: '6px 12px',
@@ -1824,7 +1803,7 @@ export default function ControlQR({
 
                 {/* SELECTOR DE CALIFICACIÓN */}
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                     <label style={{ fontWeight: 'bold', fontSize: '12px', color: '#744210' }}>
                       Calificación a asignar al escanear:
                     </label>
@@ -1832,7 +1811,7 @@ export default function ControlQR({
                       Nota: {calificacionActual}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', gap: '5px' }}>
+                  <div className="android-qr-row" style={{ display: 'flex', gap: '5px' }}>
                     {[10, 9, 8, 7, 6, 5].map(nota => (
                       <button
                         key={nota}
@@ -1860,28 +1839,7 @@ export default function ControlQR({
             })()}
 
             {/* VINCULACIÓN CON LA APP MÓVIL APK */}
-            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '15px', textAlign: 'center' }}>
-              <h4 style={{ margin: '0 0 10px 0', color: '#4a5568' }}>📲 Conectar Celular / App Móvil</h4>
-              <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#718096' }}>
-                Abre la aplicación móvil de escaneo en tu Android o iOS y escanea este código para sincronizar:
-              </p>
-              
-              <div style={{ display: 'inline-block', padding: '10px', backgroundColor: '#ffffff', border: '2px solid #e2e8f0', borderRadius: '10px' }}>
-                <QRCodeSVG value={wsUrl} size={150} />
-              </div>
-              <p style={{ margin: '8px 0 10px 0', fontFamily: 'monospace', fontWeight: 'bold', color: '#2b6cb0', fontSize: '14px' }}>
-                {wsUrl}
-              </p>
-
-              <div style={{ backgroundColor: '#fffaf0', padding: '12px 14px', borderRadius: '8px', border: '1px solid #feebc8', textAlign: 'left', fontSize: '12px', color: '#744210', marginTop: '10px' }}>
-                <strong>⚠️ Si la App APK no conecta:</strong>
-                <ol style={{ margin: '6px 0 0 0', paddingLeft: '16px', lineHeight: '1.4' }}>
-                  <li>Asegúrate de que la PC y el Celular estén en el <strong>mismo Wi-Fi</strong>.</li>
-                  <li>Si cambiaste de red, abre el escáner de la app e ingresa la IP: <strong style={{ background: '#fbd38d', padding: '1px 5px', borderRadius: '3px' }}>{localIp}</strong> y puerto: <strong style={{ background: '#fbd38d', padding: '1px 5px', borderRadius: '3px' }}>{wsPort}</strong>.</li>
-                  <li>Si tu Windows Firewall bloquea la conexión, asegúrate de permitir el acceso a redes Privadas.</li>
-                </ol>
-              </div>
-            </div>
+            <div style={{padding:16,background:"#edf2f7",borderRadius:12}}><h4>Cámara de la tablet</h4><p>Escanea los gafetes directamente con la cámara de esta tablet. Selecciona la fecha, el grupo y el tipo de registro antes de escanear.</p></div>
           </div>
 
           {/* PANEL DERECHO: ULTIMO ESCANEO Y HISTORIAL EN VIVO */}
@@ -1899,7 +1857,7 @@ export default function ControlQR({
 
               return (
                 <div style={{ backgroundColor: '#ebf8ff', padding: '16px', borderRadius: '10px', borderLeft: '6px solid #3182ce', marginBottom: '20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#2b6cb0', textTransform: 'uppercase' }}>
                       Última Lectura Recibida ({ultimoEscaneado.hora})
                     </span>
@@ -1917,12 +1875,12 @@ export default function ControlQR({
                   </div>
 
                   {/* DESGLOSE DE TAREAS ENTREGADAS HOY POR ESTE ALUMNO */}
-                  {modoEscaneo === 'TRABAJO' && aluActual && (
+                  {modoEscaneo !== 'ASISTENCIA' && aluActual && (
                     <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #bee3f8' }}>
                       <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#2b6cb0', marginBottom: '6px' }}>
                         📋 Tareas registradas hoy para este alumno ({trabajosEsteAlumno.length}):
                       </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                      <div className="android-qr-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
                         {trabajosEsteAlumno.length === 0 ? (
                           <span style={{ fontSize: '12px', color: '#718096' }}>Sin tareas registradas hoy</span>
                         ) : (
@@ -1953,11 +1911,11 @@ export default function ControlQR({
                           <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#744210', marginBottom: '6px' }}>
                             ⭐ ¿Este alumno se adelantó con más tareas? Califica con 1 clic:
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div className="android-qr-row" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             {tareasPendientes.map(tp => (
-                              <div key={tp} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fffaf0', padding: '4px 8px', borderRadius: '6px', border: '1px solid #feebc8' }}>
+                              <div className="android-qr-row" key={tp} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fffaf0', padding: '4px 8px', borderRadius: '6px', border: '1px solid #feebc8' }}>
                                 <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#744210' }}>📝 {tp}</span>
-                                <div style={{ display: 'flex', gap: '3px' }}>
+                                <div className="android-qr-row" style={{ display: 'flex', gap: '3px' }}>
                                   {[10, 9, 8, 7, 6, 5].map(n => (
                                     <button
                                       key={n}
@@ -1989,13 +1947,13 @@ export default function ControlQR({
               );
             })() : (
               <div style={{ padding: '20px', backgroundColor: '#f7fafc', borderRadius: '8px', textAlign: 'center', color: '#a0aec0', marginBottom: '20px' }}>
-                Esperando primer escaneo desde la App Móvil o PC...
+                Esperando el primer escaneo con la cámara...
               </div>
             )}
 
             {/* ESCÁNER CON LECTOR USB DE PC O SIMULADOR MANUAL */}
             <div style={{ borderTop: '1px solid #edf2f7', paddingTop: '15px', marginBottom: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                 <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#2d3748' }}>
                   🔌 Lector USB de Códigos de Barras / QR (PC o Laptop):
                 </label>
@@ -2003,7 +1961,7 @@ export default function ControlQR({
                   🟢 Plug & Play Listo
                 </span>
               </div>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+              <div className="android-qr-row" style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                 <input
                   id="scannerUsbInput"
                   type="text"
@@ -2018,7 +1976,7 @@ export default function ControlQR({
                   style={{ flex: 1, padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '13px' }}
                 />
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div className="android-qr-row" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <span style={{ fontSize: '11px', color: '#718096' }}>O selecciona manualmente:</span>
                 <select
                   id="selectSimular"
@@ -2041,7 +1999,7 @@ export default function ControlQR({
 
             {/* CÁMARA WEB */}
             <div style={{ borderTop: '1px solid #edf2f7', paddingTop: '15px', marginBottom: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                 <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#2d3748' }}>
                   📷 Cámara Web de la PC / Laptop
                 </label>
@@ -2111,7 +2069,7 @@ export default function ControlQR({
                 <div style={{ padding: '15px', textAlign: 'center', fontSize: '13px', color: '#a0aec0' }}>Sin lecturas en esta sesión</div>
               ) : (
                 historialEscaneos.map((item) => (
-                  <div key={item.id} style={{ padding: '10px 14px', borderBottom: '1px solid #edf2f7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="android-qr-row" key={item.id} style={{ padding: '10px 14px', borderBottom: '1px solid #edf2f7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <strong>{item.alumno}</strong>
                       <div style={{ fontSize: '12px', color: '#718096' }}>
@@ -2130,14 +2088,14 @@ export default function ControlQR({
       {/* VISTA 2: LISTA DE ASISTENCIA COMPLETA DEL DÍA */}
       {activeTab === 'ASISTENCIA' && (
         <div className="no-print" style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <div>
               <h3 style={{ margin: 0, color: '#2b6cb0' }}>📋 Registro de Asistencia del Día ({fechaActualQR})</h3>
               <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#718096' }}>
                 Marca la asistencia individualmente o mediante escaneo QR. Cambia la fecha en el encabezado para consultar cualquier día.
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div className="android-qr-row" style={{ display: 'flex', gap: '10px' }}>
               <button
                 onClick={() => setActiveTab('HISTORIAL')}
                 style={{ padding: '8px 16px', backgroundColor: '#3182ce', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
@@ -2181,7 +2139,7 @@ export default function ControlQR({
                         {est}
                       </span>
                     </td>
-                    <td style={{ padding: '12px', display: 'flex', gap: '6px' }}>
+                    <td className="android-qr-row" style={{ padding: '12px', display: 'flex', gap: '6px' }}>
                       {['PRESENTE', 'RETARDO', 'FALTA', 'JUSTIFICADO'].map(tipo => {
                         const isSelected = est === tipo;
                         return (
@@ -2219,7 +2177,7 @@ export default function ControlQR({
       {/* VISTA 3: EVALUACIÓN DE TRABAJOS DEL DÍA */}
       {activeTab === 'EVALUACION' && (
         <div className="no-print" style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+          <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
             <div>
               <h3 style={{ margin: 0, color: '#276749' }}>📝 Registro y Promedio de Trabajos del Día ({fechaActualQR})</h3>
               <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#718096' }}>
@@ -2227,9 +2185,9 @@ export default function ControlQR({
               </p>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <div className="android-qr-row" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
               {/* TOGGLE VISTA MATRIZ VS LISTA */}
-              <div style={{ display: 'flex', backgroundColor: '#edf2f7', padding: '2px', borderRadius: '8px', border: '1px solid #cbd5e0' }}>
+              <div className="android-qr-row" style={{ display: 'flex', backgroundColor: '#edf2f7', padding: '2px', borderRadius: '8px', border: '1px solid #cbd5e0' }}>
                 <button
                   onClick={() => setVistaModoEvaluacion('MATRIZ')}
                   style={{
@@ -2273,7 +2231,7 @@ export default function ControlQR({
 
           {vistaModoEvaluacion === 'MATRIZ' ? (
             /* VISTA MATRIZ COMPARATIVA DE TAREAS */
-            <div style={{ overflow: 'auto', maxHeight: '520px', border: '1px solid #cbd5e1', borderRadius: '10px', backgroundColor: '#ffffff', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+            <div className="android-qr-table" style={{ overflow: 'auto', maxHeight: '520px', border: '1px solid #cbd5e1', borderRadius: '10px', backgroundColor: '#ffffff', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#1e293b', borderBottom: '2px solid #334155', textAlign: 'left' }}>
@@ -2395,7 +2353,7 @@ export default function ControlQR({
             </div>
           ) : (
             /* VISTA LISTA INDIVIDUAL ORIGINAL */
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            <div className="android-qr-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
               {/* TABLA DE TRABAJOS INDIVIDUALES ESCANEADOS */}
               <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px' }}>
                 <h4 style={{ margin: '0 0 12px 0', color: '#2b6cb0' }}>📌 Trabajos de esta Fecha ({trabajosDia.length})</h4>
@@ -2479,9 +2437,9 @@ export default function ControlQR({
       {activeTab === 'HISTORIAL' && (
         <div className="no-print" style={{ backgroundColor: '#ffffff', padding: '24px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
           {/* HEADER DEL HISTORIAL Y FILTROS DE FECHAS */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '15px', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px' }}>
+          <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '15px', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px' }}>
             <div>
-              <h3 style={{ margin: 0, color: '#1a365d', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h3 className="android-qr-row" style={{ margin: 0, color: '#1a365d', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 📊 Historiales y Reportes Consolidados
               </h3>
               <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#718096' }}>
@@ -2490,8 +2448,8 @@ export default function ControlQR({
             </div>
 
             {/* SELECTOR DE RANGO DE FECHAS */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', backgroundColor: '#f7fafc', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div className="android-qr-row" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', backgroundColor: '#f7fafc', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <div className="android-qr-row" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#4a5568' }}>Desde:</span>
                 <input
                   type="date"
@@ -2500,7 +2458,7 @@ export default function ControlQR({
                   style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '12px', fontWeight: 'bold' }}
                 />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div className="android-qr-row" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#4a5568' }}>Hasta:</span>
                 <input
                   type="date"
@@ -2511,7 +2469,7 @@ export default function ControlQR({
               </div>
 
               {/* BOTONES PRESET */}
-              <div style={{ display: 'flex', gap: '4px' }}>
+              <div className="android-qr-row" style={{ display: 'flex', gap: '4px' }}>
                 <button
                   onClick={() => setPresetFechas('SEMANA')}
                   style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e0', background: '#edf2f7', fontSize: '11px', cursor: 'pointer' }}
@@ -2546,8 +2504,8 @@ export default function ControlQR({
               Selecciona ambas fechas; la fecha de inicio debe ser anterior o igual a la fecha final.
             </p>
           )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', gap: '10px' }}>
+          <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <div className="android-qr-row" style={{ display: 'flex', gap: '10px' }}>
               <button
                 onClick={() => setSubTabHistorial('ASISTENCIA')}
                 style={{
@@ -2581,10 +2539,10 @@ export default function ControlQR({
             </div>
 
             {/* BOTONES DE ACCIÓN (EXCEL Y EXPORTAR A CRITERIO) */}
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div className="android-qr-row" style={{ display: 'flex', gap: '10px' }}>
               {subTabHistorial === 'ASISTENCIA' ? (
                 <>
-                  <button
+                  <button className="android-qr-row"
                     onClick={handleExportarAsistenciaExcel}
                     style={{
                       padding: '10px 18px',
@@ -2603,7 +2561,7 @@ export default function ControlQR({
                   >
                     📥 Descargar Excel de Asistencia (.xls)
                   </button>
-                  <button
+                  <button className="android-qr-row"
                     onClick={() => setShowModalExportAsis(true)}
                     disabled={!grupoActual?.id || !ciclo.inicio || !ciclo.fin}
                     style={{
@@ -2626,7 +2584,7 @@ export default function ControlQR({
                 </>
               ) : (
                 <>
-                  <button
+                  <button className="android-qr-row"
                     onClick={handleExportarTrabajosExcel}
                     style={{
                       padding: '10px 18px',
@@ -2645,8 +2603,8 @@ export default function ControlQR({
                   >
                     📥 Descargar Excel de Trabajos (.xls)
                   </button>
-                  <button
-                    onClick={() => setShowModalExportTrab(true)}
+                  <button className="android-qr-row"
+                    onClick={() => { setTipoVinculoTrab('trabajos'); setShowModalExportTrab(true); }}
                     disabled={!grupoActual?.id || !ciclo.inicio || !ciclo.fin}
                     style={{
                       padding: '10px 18px',
@@ -2674,7 +2632,7 @@ export default function ControlQR({
           {subTabHistorial === 'ASISTENCIA' && (
             <div>
               {/* TARJETAS DE MÉTRICAS GLOBALES */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', marginBottom: '20px' }}>
+              <div className="android-qr-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', marginBottom: '20px' }}>
                 <div style={{ backgroundColor: '#ebf8ff', padding: '16px', borderRadius: '10px', borderLeft: '5px solid #3182ce' }}>
                   <div style={{ fontSize: '12px', color: '#2b6cb0', fontWeight: 'bold', textTransform: 'uppercase' }}>Total Alumnos</div>
                   <div style={{ fontSize: '24px', fontWeight: '800', color: '#1a365d', marginTop: '4px' }}>{alumnos.length}</div>
@@ -2694,8 +2652,8 @@ export default function ControlQR({
               </div>
 
               {/* SELECTOR ENTRE RESUMEN Y MATRIZ DETALLADA */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <div style={{ display: 'flex', gap: '8px' }}>
+              <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div className="android-qr-row" style={{ display: 'flex', gap: '8px' }}>
                   <button
                     onClick={() => setVistaModoAsistencia('RESUMEN')}
                     style={{
@@ -2860,8 +2818,8 @@ export default function ControlQR({
           {subTabHistorial === 'TRABAJOS' && (
             <div>
               {/* FILTRO DE CAMPO FORMATIVO */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', backgroundColor: '#f0fff4', padding: '12px 16px', borderRadius: '8px', border: '1px solid #c6f6d5' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', backgroundColor: '#f0fff4', padding: '12px 16px', borderRadius: '8px', border: '1px solid #c6f6d5' }}>
+                <div className="android-qr-row" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#22543d' }}>Filtrar por Campo Formativo:</label>
                   <select
                     value={campoFiltroHistorial}
@@ -2878,8 +2836,8 @@ export default function ControlQR({
               </div>
 
               {/* SELECTOR ENTRE SÁBANA / MATRIZ Y BITÁCORA DETALLADA */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                <div style={{ display: 'flex', gap: '8px' }}>
+              <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <div className="android-qr-row" style={{ display: 'flex', gap: '8px' }}>
                   <button
                     onClick={() => setVistaModoTrabajos('MATRIZ')}
                     style={{
@@ -2920,7 +2878,7 @@ export default function ControlQR({
 
               {/* VISTA 1: SÁBANA DE TRABAJOS Y EVALUACIÓN CONTINUA (MATRIZ) */}
               {vistaModoTrabajos === 'MATRIZ' && (
-                <div style={{ border: '1px solid #cbd5e1', borderRadius: '10px', overflow: 'auto', maxHeight: 'calc(100vh - 280px)', backgroundColor: '#ffffff', boxShadow: '0 2px 6px rgba(0,0,0,0.08)' }}>
+                <div className="android-qr-table" style={{ border: '1px solid #cbd5e1', borderRadius: '10px', overflow: 'auto', maxHeight: 'calc(100vh - 280px)', backgroundColor: '#ffffff', boxShadow: '0 2px 6px rgba(0,0,0,0.08)' }}>
                   {(() => {
                     const mapaTareas = new Map();
                     const tareasUnicas = [];
@@ -2971,7 +2929,7 @@ export default function ControlQR({
                             </th>
                             {tareasUnicas.map(t => (
                               <th key={t.key} style={{ padding: '10px 8px', textAlign: 'center', minWidth: '150px', background: '#1e293b', color: '#ffffff', borderLeft: '1px solid #334155', position: 'sticky', top: 0, zIndex: 10 }}>
-                                <div style={{ display: 'flex', justifyContent: 'center', gap: '5px', alignItems: 'center', marginBottom: '5px' }}>
+                                <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'center', gap: '5px', alignItems: 'center', marginBottom: '5px' }}>
                                   <span style={{ backgroundColor: '#2563eb', color: '#ffffff', padding: '2px 8px', borderRadius: '4px', fontWeight: '800', fontSize: '10px' }}>
                                     {t.semana}
                                   </span>
@@ -3098,7 +3056,7 @@ export default function ControlQR({
 
               {/* VISTA 2: RESUMEN Y BITÁCORA INDIVIDUAL */}
               {vistaModoTrabajos === 'BITACORA' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                <div className="android-qr-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                   {/* TABLA 1: RESUMEN DE PROMEDIOS POR ALUMNO */}
                   <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', backgroundColor: '#ffffff' }}>
                     <h4 style={{ margin: '0 0 12px 0', color: '#276749' }}>📊 Promedio Consolidado por Alumno</h4>
@@ -3242,7 +3200,7 @@ export default function ControlQR({
                     {perfil.foto_url ? (
                       <img src={perfil.foto_url} alt={a.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '32px', color: '#a0aec0' }}>
+                      <div className="android-qr-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '32px', color: '#a0aec0' }}>
                         👤
                       </div>
                     )}
@@ -3284,7 +3242,7 @@ export default function ControlQR({
                   </div>
 
                   {/* CÓDIGO QR Y MATRÍCULA */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: '#f7fafc', padding: '10px 16px', borderRadius: '10px', border: '1px solid #e2e8f0', width: '80%' }}>
+                  <div className="android-qr-row" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: '#f7fafc', padding: '10px 16px', borderRadius: '10px', border: '1px solid #e2e8f0', width: '80%' }}>
                     <QRCodeSVG value={`ALU-${a.id}`} size={115} />
                     <div style={{ fontSize: '12px', fontFamily: 'monospace', fontWeight: 'bold', color: '#2b6cb0', marginTop: '6px' }}>
                       ID: ALU-{a.id}
@@ -3299,8 +3257,8 @@ export default function ControlQR({
 
       {/* MODAL 1: EXPORTAR ASISTENCIA A CRITERIO DE EVALUACIÓN */}
       {showModalExportAsis && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', width: '480px', maxWidth: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+        <div className="android-dialog-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="android-dialog" role="dialog" aria-modal="true" style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', width: '480px', maxWidth: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
             <h3 style={{ margin: '0 0 10px 0', color: '#1a365d' }}>🔗 Vincular Asistencia con Evaluación</h3>
             <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#718096' }}>
               Vincula la asistencia de todo el ciclo (<strong>{ciclo.inicio} al {ciclo.fin}</strong>) con los criterios elegidos. La nota se actualizará automáticamente con cada registro o corrección.
@@ -3374,7 +3332,7 @@ export default function ControlQR({
               ℹ️ Los registros diarios de asistencia no se borran; quedan intactos en tu historial para futuras consultas o reportes.
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <div className="android-dialog-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 onClick={() => setShowModalExportAsis(false)}
                 style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #cbd5e0', background: '#edf2f7', cursor: 'pointer', fontWeight: 'bold' }}
@@ -3395,8 +3353,8 @@ export default function ControlQR({
 
       {/* MODAL 2: EXPORTAR PROMEDIO DE TRABAJOS A CRITERIO DE EVALUACIÓN */}
       {showModalExportTrab && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', width: '480px', maxWidth: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+        <div className="android-dialog-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="android-dialog" role="dialog" aria-modal="true" style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', width: '480px', maxWidth: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
             <h3 style={{ margin: '0 0 10px 0', color: '#1a365d' }}>🔗 Vincular Trabajos con Evaluación</h3>
             <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#718096' }}>
               Vincula los trabajos de esta materia durante todo el ciclo (<strong>{ciclo.inicio} al {ciclo.fin}</strong>). Cada promedio diario se mostrará en su fecha y se actualizará al registrar, corregir o eliminar un trabajo.
@@ -3420,6 +3378,7 @@ export default function ControlQR({
               <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#2d3748', marginBottom: '6px' }}>
                 Selecciona el Criterio de Destino:
               </label>
+              <select aria-label="Registros del criterio" value={tipoVinculoTrab} onChange={e => { setTipoVinculoTrab(e.target.value); setCriterioDestinoTrab(''); }}><option value="trabajos">Trabajos de clase</option><option value="tareas">Tareas</option></select>
               <select
                 value={criterioDestinoTrab}
                 onChange={e => setCriterioDestinoTrab(e.target.value)}
@@ -3446,7 +3405,7 @@ export default function ControlQR({
               ℹ️ Cada trabajo registrado individualmente permanece guardado en SQLite. No se sobrescribe ni se pierde ningún detalle histórico.
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <div className="android-dialog-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 onClick={() => setShowModalExportTrab(false)}
                 style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #cbd5e0', background: '#edf2f7', cursor: 'pointer', fontWeight: 'bold' }}

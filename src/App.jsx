@@ -1,7 +1,9 @@
-import { APARTADOS_PLANEACION, FORMULARIO_PROYECTO } from './utils/planeacionDocument';
+import ExportDocument from './components/ExportDocument';
 import Incidencias from './components/Incidencias';
+import { exportarPlanoPdf, exportarPlanoWord, FORMULARIO_PROYECTO } from './utils/planeacionDocument';
 import { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import './App.css';
+import { cargarReporteTrimestral } from './android/quarterlyReport.js';
 
 // --- IMPORTACIONES (Si alguna falla, el código tiene protección) ---
 import { obtenerPlanSemanal } from './planner_logic'; 
@@ -13,8 +15,6 @@ import Alumno from './components/Alumno';
 import ControlQR from './components/ControlQR';
 import { EstadoEvaluacionQR, VincularEvaluacionQR } from './components/EvaluacionAutomatica';
 import { mezclarNotasAutomaticas, promedioPeriodo } from './evaluacionAutomatica';
-import PlaneacionApartados from './components/PlaneacionApartados';
-import { exportarPlanoPdf, exportarPlanoWord } from './utils/planeacionDocument';
 
 const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
 
@@ -123,9 +123,9 @@ function App() {
   const [procesando, setProcesando] = useState(false);
   const [listaProyectos, setListaProyectos] = useState([]);
   const [modoEdicionProy, setModoEdicionProy] = useState(false);
-  const [proyectoActual, setProyectoActual] = useState({ id: null, nombre: '', metodologia: 'COMUNITARIOS', escenario: 'AULA', temporalidad: '2 Semanas', problemática: '', pdas_seleccionados: [], fases_contenido: {}, apartados: {} });
+  const [proyectoActual, setProyectoActual] = useState({ id: null, nombre: '', metodologia: 'COMUNITARIOS', escenario: 'AULA', temporalidad: '2 Semanas', problemática: '', pdas_seleccionados: [], fases_contenido: {} });
   const [semanaPlan, setSemanaPlan] = useState(1); 
-  const [planData, setPlanData] = useState({ lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', apartados: {} });
+  const [planData, setPlanData] = useState({ lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '' });
   const [planDosif, setPlanDosif] = useState([]);
   const [pdasDisponibles, setPdasDisponibles] = useState([]);
   const [pdasSemana, setPdasSemana] = useState([]);
@@ -145,7 +145,8 @@ function App() {
   const [nuevaComision, setNuevaComision] = useState({ descripcion: '', fecha: '', tipo: 'Guardia' });
   const [trimestre, setTrimestre] = useState(1); 
   const [resumen, setResumen] = useState([]); 
-  const [cargandoReporte, setCargandoReporte] = useState(false); 
+  const [cargandoReporte, setCargandoReporte] = useState(false);
+  const [errorReporte, setErrorReporte] = useState(''); 
   const [campoActual, setCampoActual] = useState('LENGUAJES');
   const [vistos, setVistos] = useState({});
 
@@ -183,20 +184,14 @@ function App() {
   useEffect(() => {
     window.plannerContext = {
       vista,
-      grado, modoEdicionProy, configCiclo, pdasDisponibles,
-      fechasSemana: obtenerFechasSemana(semanaPlan),
+      grado, grupoActual, semanaPlan, campoActual, planData, pdasSemana,
+      modoEdicionProy: vista === 'PROYECTOS', configCiclo,
       metodologias: METODOLOGIAS,
-      apartadosAsistente: { planeacion: APARTADOS_PLANEACION, proyecto: FORMULARIO_PROYECTO },
       proyectoActual,
-      planData,
-      pdasSemana,
       alumnos,
       criterios,
       notas,
-      grupoActual,
-      semanaPlan,
       fechaEval,
-      campoActual,
       modoConfig,
       textoPegado,
       procesando,
@@ -232,7 +227,6 @@ function App() {
       ipcRenderer
     };
   }, [
-    grado, modoEdicionProy, configCiclo, pdasDisponibles,
     vista, proyectoActual, planData, pdasSemana, alumnos, criterios, notas,
     grupoActual, semanaPlan, fechaEval, campoActual, modoConfig, textoPegado, procesando, licenciaInfo
   ]);
@@ -291,25 +285,7 @@ function App() {
 
   useEffect(() => {
     if (ipcRenderer) {
-      import('./data_curriculo_primaria.json').then(({ default: curriculoCompletoPrimaria }) => ipcRenderer.invoke('get-pdas-disciplina', 0, grado).then(pdasBase => {
-        const normalizarClaveCurricular = texto => String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
-        const idsBasePorContenido = new Map((pdasBase || []).map(item => [`${normalizarClaveCurricular(item.campo)}|${normalizarClaveCurricular(item.contenido)}`, item.id]));
-        const res = Object.entries(curriculoCompletoPrimaria).flatMap(([campo, contenidos], campoIndex) => contenidos.flatMap((registro, contenidoIndex) => {
-          const textoPda = String(registro.pda?.[grado] || '');
-          const aprendizajes = [];
-          textoPda.split(/\r?\n/).forEach(linea => {
-            const texto = linea.replace(/^\s*[•·▪◦*-]\s*/, '').trim();
-            if (!texto) return;
-            if (/^\s*[•·▪◦*-]\s*/.test(linea) || aprendizajes.length === 0) aprendizajes.push(texto);
-            else aprendizajes[aprendizajes.length - 1] += ` ${texto}`;
-          });
-          const idBase = idsBasePorContenido.get(`${normalizarClaveCurricular(campo)}|${normalizarClaveCurricular(registro.contenido)}`);
-          return aprendizajes.map((pda, pdaIndex) => ({
-            id: pdaIndex === 0 && idBase ? idBase : `curr-${grado}-${campoIndex}-${contenidoIndex}-${pdaIndex}`,
-            grado, campo, contenido: registro.contenido, pda,
-            proyecto_sugerido: registro.contenido
-          }));
-        }));
+      ipcRenderer.invoke('get-pdas-disciplina', 0, grado).then(res => {
         const filePdas = (res || []).map((item, idx) => {
           const semanaCorrespondiente = Math.min(42, Math.floor((idx / res.length) * 42) + 1);
           let nombreProyecto = 'Proyecto: ' + item.contenido;
@@ -331,7 +307,7 @@ function App() {
 
         if(vista === 'PROYECTOS') {
           ipcRenderer.invoke('get-proyectos', grupoActual?.id, grado).then(guardadosRes => {
-            const guardados = (guardadosRes || []).map(p => ({ ...p, pdas_seleccionados: safeParse(p.pdas_seleccionados, []), fases_contenido: safeParse(p.fases_contenido, {}), apartados: safeParse(p.apartados, {}) }));
+            const guardados = (guardadosRes || []).map(p => ({ ...p, pdas_seleccionados: safeParse(p.pdas_seleccionados, []), fases_contenido: safeParse(p.fases_contenido, {}) }));
             // Reparado pdasDb ReferenceError redirigiéndolo a filePdas
             const sugeridos = filePdas.map((p) => ({
               id: `sug-${p.id}`, nombre: p.proyecto_sugerido, metodologia: detectarMetodologia(p.campo),
@@ -401,11 +377,11 @@ function App() {
             }
             setPdasSemana(pdasSemanaAct.length > 0 ? pdasSemanaAct : [{ proyecto: "Repaso", pda: "Periodo de fortalecimiento de aprendizajes." }]);
         }
-      })).catch(error => console.error('No se pudo cargar el catálogo curricular de Primaria:', error));
+      });
     }
 
     if(ipcRenderer && vista === 'PLANNER') {
-        ipcRenderer.invoke('get-planeacion', grupoActual?.id, semanaPlan, grado).then(res => setPlanData(res && res.id ? { ...res, apartados: safeParse(res.apartados, {}) } : { lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '', apartados: {} }));
+        ipcRenderer.invoke('get-planeacion', grupoActual?.id, semanaPlan, grado).then(res => setPlanData(res && res.id ? res : { lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '' }));
     }
   }, [vista, semanaPlan, grado, grupoActual, configCiclo]);
 
@@ -527,51 +503,33 @@ function App() {
   };
 
   // --- REPORTE TRIMESTRAL ---
-  const generarReporteTrimestral = () => {
-      const request = ++cargaReporteRef.current;
-      if (!ipcRenderer || !grupoActual?.id || alumnos.length === 0) {
-        setResumen([]);
-        setCargandoReporte(false);
-        return;
-      }
-      setCargandoReporte(true);
-      const periodo = configCiclo.periodos[trimestre] || { inicio: '2026-08-31', fin: '2026-11-27' };
-      if(ipcRenderer) {
-          Promise.all([ ipcRenderer.invoke('get-criterios', grupoActual?.id), ipcRenderer.invoke('get-notas-rango', periodo.inicio, periodo.fin), ipcRenderer.invoke('get-evaluacion-automatica', grupoActual?.id, { inicio: periodo.inicio, fin: periodo.fin }) ]).then(([todosCriterios, todasNotas, automatica]) => {
-          const camposIds = ['LENGUAJES', 'SABERES', 'ETICA', 'HUMANO'];
-          
-          if (request !== cargaReporteRef.current) return;
-          const reporte = alumnos.map(alumno => {
-              const fila = { id: alumno.id, nombre: alumno.nombre };
-              const promsCampos = [];
-
-              camposIds.forEach(campoKey => {
-                  const criteriosCampo = (todosCriterios || []).filter(c => (c.campo === campoKey) || (!c.campo && campoKey === 'LENGUAJES'));
-                  const promCampo = promedioPeriodo(criteriosCampo, todasNotas, automatica, alumno.id);
-                  fila[campoKey] = promCampo !== null ? promCampo : '-';
-                  if (promCampo !== null) promsCampos.push(promCampo);
-              });
-
-              const promedioFinal = promsCampos.length > 0 ? (promsCampos.reduce((a, b) => a + b, 0) / promsCampos.length).toFixed(1) : '-';
-              fila.promedioFinal = promedioFinal;
-              return fila;
-          });
-          setResumen(reporte); setCargandoReporte(false);
-      }).catch(err => {
-        if (request !== cargaReporteRef.current) return;
-        setCargandoReporte(false);
-        showToast(`❌ No se pudo cargar el reporte: ${err.message}`);
-      });
-  }};
-  useEffect(() => { if (vista === 'TRIMESTRAL') generarReporteTrimestral(); else ++cargaReporteRef.current; }, [vista, trimestre, grupoActual?.id, alumnos, configCiclo]);
+  const generarReporteTrimestral = async () => {
+    const request = ++cargaReporteRef.current;
+    const grupoId = grupoActual?.id;
+    setErrorReporte('');
+    setResumen([]);
+    if (!ipcRenderer || !grupoId) { setCargandoReporte(false); return; }
+    setCargandoReporte(true);
+    const periodo = configCiclo.periodos[trimestre] || { inicio: '2026-08-31', fin: '2026-11-27' };
+    try {
+      const reporte = await cargarReporteTrimestral(ipcRenderer, { grupoId, periodo, variante: 'primaria' });
+      if (request !== cargaReporteRef.current) return;
+      setResumen(reporte);
+    } catch (err) {
+      if (request !== cargaReporteRef.current) return;
+      setErrorReporte('No se pudo cargar el reporte: ' + err.message);
+    } finally {
+      if (request === cargaReporteRef.current) setCargandoReporte(false);
+    }
+  };
+  useEffect(() => { if (vista === 'TRIMESTRAL') generarReporteTrimestral(); else ++cargaReporteRef.current; }, [vista, trimestre, grupoActual?.id, configCiclo]);
 
   // --- HELPERS PROYECTOS ---
   const editarProyectoSafe = (p) => { 
       setProyectoActual({ 
           ...p, 
           pdas_seleccionados: safeParse(p.pdas_seleccionados, []), 
-          fases_contenido: safeParse(p.fases_contenido, {}),
-          apartados: safeParse(p.apartados, {})
+          fases_contenido: safeParse(p.fases_contenido, {}) 
       }); 
       setModoEdicionProy(true); 
   };
@@ -624,11 +582,10 @@ function App() {
       }
   };
   const borrarAlumno = (id) => { if(confirm("¿Borrar?")) ipcRenderer.invoke('delete-alumno', id).then(()=>ipcRenderer.invoke('get-alumnos', grupoActual?.id).then(setAlumnos)); };
-  const savePlan = () => ipcRenderer.invoke('save-planeacion', {...planData, apartados: JSON.stringify(planData.apartados || {}), grado, grupo_id: grupoActual?.id, semana:semanaPlan}).then(()=>showToast("✅ Planeación guardada"));
+  const savePlan = () => ipcRenderer.invoke('save-planeacion', {...planData, grado, grupo_id: grupoActual?.id, semana:semanaPlan}).then(()=>showToast("✅ Planeación guardada"));
   
   const pdasFiltrados = useMemo(() => {
-    const consulta = busquedaPda.trim().toLocaleLowerCase('es-MX');
-    return pdasDisponibles.filter(p => !consulta || [p.descripcion, p.proyecto_sugerido, p.campo, p.contenido].some(texto => String(texto || '').toLocaleLowerCase('es-MX').includes(consulta)));
+    return pdasDisponibles.filter(p => !busquedaPda || p.descripcion.toLowerCase().includes(busquedaPda.toLowerCase()) || (p.proyecto_sugerido && p.proyecto_sugerido.toLowerCase().includes(busquedaPda.toLowerCase())));
   }, [pdasDisponibles, busquedaPda]);
 
   const selAlumnoBitacora = (a) => { setAlumnoBitacora(a); if(a && ipcRenderer) { ipcRenderer.invoke('get-perfil', a.id).then(r => setPerfil(r || {})); } };
@@ -796,13 +753,13 @@ function App() {
       const sumaPorcentajes = (criterios || []).reduce((acc, c) => acc + (parseFloat(c.porcentaje) || 0), 0); 
       
       return (
-      <div className="pantalla-dosificador" style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div className="pantalla-dosificador android-evaluation-screen" style={{ height: 'var(--app-height, 100dvh)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {toast && (
               <div style={{position:'fixed', top:20, left:'50%', transform:'translateX(-50%)', background:'#34495e', color:'white', padding:'10px 20px', borderRadius:20, zIndex:9999, fontWeight:'bold', boxShadow:'0 4px 10px rgba(0,0,0,0.2)'}}>
                   {toast}
               </div>
           )}
-          <div className="header-dosificador" style={{ flexShrink: 0, marginBottom: '12px' }}>
+          <div className="header-dosificador" style={{ flexShrink: 0, marginBottom: '12px' }}>{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />}
               <div style={{display:'flex', gap:15, alignItems:'center'}}>
                 <h2>📝 Evaluación ({grado}º Primaria)</h2>
                 <label style={{fontSize: 12}}>Fecha de evaluación: <input type="date" title="Fecha de las calificaciones del día, tanto QR como manuales." value={fechaEval} onChange={e=>setFechaEval(e.target.value)} style={{fontSize:'1.1rem', padding:'5px', border:'2px solid #004aad', borderRadius:5}} /></label>
@@ -938,16 +895,16 @@ function App() {
             </button>
           </div>
 
-          <div style={{flexGrow:1, display:'flex', flexDirection:'column', minHeight: 0, padding: 0, overflow: 'hidden'}}>
+          <div className="android-evaluation-body" style={{flexGrow:1, display:'flex', flexDirection:'column', minHeight: 0, padding: 0, overflow: 'hidden'}}>
             
             {modoConfig ? (
-                <div className="columna-gestion" style={{maxWidth:700, margin:'10px auto', padding:25, borderRadius:15, boxShadow:'0 4px 15px rgba(0,0,0,0.1)', background:'white', overflowY: 'auto'}}>
+                <div className="columna-gestion android-criteria-panel" style={{maxWidth:700, margin:'10px auto', padding:25, borderRadius:15, boxShadow:'0 4px 15px rgba(0,0,0,0.1)', background:'white', overflowY: 'auto'}}>
                     <h3 style={{textAlign:'center', color:'#004aad'}}>⚙️ Configurar Criterios para {campoActual}</h3>
                     <div style={{background:'#eee', height:25, borderRadius:15, margin:'15px 0', position:'relative', overflow:'hidden'}}><div style={{width:`${Math.min(sumaPorcentajes, 100)}%`, background:sumaPorcentajes===100?'#2ecc71':'#e74c3c', height:'100%', transition:'width 0.5s'}}></div><span style={{position:'absolute', width:'100%', textAlign:'center', top:3, fontWeight:'bold', fontSize:'0.9rem', color:'#333'}}>Suma: {sumaPorcentajes}%</span></div>
                     <div style={{background:'#fafafa', padding:15, borderRadius:10, border:'1px solid #ddd'}}>
                         
                         {(criterios || []).map((c, i)=>(
-                            <div key={`crit-${i}`} style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+                            <div className="android-criterion-row" key={`crit-${i}`} style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
                                 <span style={{fontWeight:'bold', width:30}}>{i+1}.</span>
                                 <input
                                     value={c.nombre}
@@ -968,7 +925,7 @@ function App() {
                             </div>
                         ))}
 
-                        <div style={{display:'flex', gap:20, marginTop:20, justifyContent:'center'}}><button onClick={agregarCriterioNuevo} style={{padding:'10px 20px', background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>+ Criterio</button><button className="btn-guardar" onClick={()=>guardarConfig(criterios)} style={{width:'auto', padding:'10px 30px', background: sumaPorcentajes===100 ? '#2ecc71' : '#95a5a6'}}>💾 GUARDAR CRITERIOS DE {campoActual}</button></div>
+                        <div className="android-criteria-actions" style={{display:'flex', gap:20, marginTop:20, justifyContent:'center'}}><button onClick={agregarCriterioNuevo} style={{padding:'10px 20px', background:'#3498db', color:'white', border:'none', borderRadius:5, cursor:'pointer'}}>+ Criterio</button><button className="btn-guardar" onClick={()=>guardarConfig(criterios)} style={{width:'auto', padding:'10px 30px', background: sumaPorcentajes===100 ? '#2ecc71' : '#95a5a6'}}>💾 GUARDAR CRITERIOS DE {campoActual}</button></div>
                     </div>
                 </div>
             ) : (
@@ -1067,8 +1024,8 @@ function App() {
 
     if(vista==='TRIMESTRAL') {
       return (
-        <div className="pantalla-dosificador">
-          <div className="header-dosificador no-print">
+        <div className="pantalla-dosificador android-quarterly-screen">
+          <div className="header-dosificador no-print">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />}
             <h2>📊 Reporte de Evaluaciones Trimestrales ({grado}º Primaria)</h2>
             <div style={{display:'flex', gap:10}}>
               <button className="btn-guardar" onClick={generarReporteTrimestral}>{cargandoReporte ? '⏳ Calculando...' : '🔄 Recalcular'}</button>
@@ -1076,7 +1033,7 @@ function App() {
               <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button>
             </div>
           </div>
-          <div className="tabs-trimestres no-print">{[1,2,3].map(id=><button key={id} className={`tab-btn ${trimestre===id?'activo':''}`} onClick={()=>setTrimestre(id)}>{configCiclo.periodos[id].nombre}</button>)}</div>
+          <p className="android-quarterly-status" role="status" style={{display: cargandoReporte || errorReporte || resumen.length === 0 ? 'block' : 'none'}}>{cargandoReporte ? 'Cargando alumnos y calificaciones…' : errorReporte || 'No hay alumnos registrados en el grupo seleccionado.'}</p><div className="tabs-trimestres no-print">{[1,2,3].map(id=><button key={id} className={`tab-btn ${trimestre===id?'activo':''}`} onClick={()=>setTrimestre(id)}>{configCiclo.periodos[id].nombre}</button>)}</div>
           <div className="tabla-container">
             <table className="tabla-eval" style={{maxWidth: '1150px', width: '100%'}}>
               <thead>
@@ -1112,7 +1069,7 @@ function App() {
     if(vista === 'DOSIF') {
       return ( 
       <div className="pantalla-dosificador"> 
-        <div className="header-dosificador no-print"> 
+        <div className="header-dosificador no-print">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />} 
           <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>Dosificador Anual</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #FDCB6E', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select></div> 
           <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button> 
         </div> 
@@ -1146,14 +1103,7 @@ function App() {
 
     if(vista === 'PROYECTOS') {
       const pdasSeleccionadosParaImprimir = pdasDisponibles.filter(p => (Array.isArray(proyectoActual.pdas_seleccionados) ? proyectoActual.pdas_seleccionados : []).includes(p.id));
-      const datosExportacionProyecto = {
-        tipo: 'Proyecto didáctico',
-        nombre: proyectoActual.nombre,
-        datos: { ...proyectoActual, grado, escuela: configCiclo.nombreEscuela, cct: configCiclo.cct, docente: configCiclo.nombreDocente, ciclo: new Date(configCiclo.fechaInicioStr).getFullYear() + '-' + (new Date(configCiclo.fechaInicioStr).getFullYear() + 1) },
-        apartados: { ...proyectoActual.apartados, campos_formativos: [...new Set(pdasSeleccionadosParaImprimir.map(p => p.campo))].join(', ') },
-        pdas: pdasSeleccionadosParaImprimir,
-        fases: METODOLOGIAS[proyectoActual.metodologia].fases.map((label, index) => ({ label, value: (safeParse(proyectoActual.fases_contenido, {}))[index] }))
-      };
+      const datosExportacionProyecto = { tipo: 'Proyecto didáctico', nombre: proyectoActual.nombre, datos: { ...proyectoActual, grado }, apartados: safeParse(proyectoActual.apartados, {}), pdas: pdasSeleccionadosParaImprimir, fases: (METODOLOGIAS[proyectoActual.metodologia]?.fases || []).map((label, index) => ({ label, value: safeParse(proyectoActual.fases_contenido, {})[index] })) };
       return ( 
         <div className="pantalla-dosificador"> 
             {toast && (
@@ -1161,40 +1111,21 @@ function App() {
                     {toast}
                 </div>
             )}
-            <div className="header-dosificador"> <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>🚀 Proyectos</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #00CEC9', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select></div> <div> {!modoEdicionProy && <button className="btn-guardar" onClick={()=>{setProyectoActual({id:null, nombre:'', metodologia:'COMUNITARIOS', escenario:'AULA', temporalidad:'', pdas_seleccionados:[], fases_contenido:{}, apartados:{}}); setBusquedaPda(""); setModoEdicionProy(true);}}>+ Nuevo</button>} <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button> </div> </div> {modoEdicionProy ? (<div key={proyectoActual.id || 'nuevo'} className="hoja-planeacion editor-documento" style={{background:`linear-gradient(to bottom, ${calcularColorSemaforo(proyectoActual)} 0%, #ffffff 350px)`}}>
-  <header className="editor-documento-header no-print"><h3>Editar proyecto didáctico</h3><div className="acciones-exportacion"><button onClick={()=>exportarPlanoWord(datosExportacionProyecto)}>Exportar Word editable</button><button onClick={()=>exportarPlanoPdf(datosExportacionProyecto)}>Exportar PDF</button><button className="btn-volver" onClick={()=>setModoEdicionProy(false)}>Volver</button></div></header>
-  <h1 className="titulo-documento only-print-text">Plano didáctico: {proyectoActual.nombre || 'Proyecto'}</h1>
-  <div className="grid-dos editor-proyecto-basico"><label className="grupo-input grupo-nombre">Nombre del proyecto<input value={proyectoActual.nombre} onChange={e=>actualizarDatoProyecto('nombre',e.target.value)} placeholder="Nombre del proyecto"/><span className="only-print-text">{proyectoActual.nombre || 'Sin título'}</span></label><label className="grupo-input">Metodología<select value={proyectoActual.metodologia} onChange={e=>actualizarDatoProyecto('metodologia',e.target.value)}>{Object.keys(METODOLOGIAS).map(k=><option key={k} value={k}>{METODOLOGIAS[k].nombre}</option>)}</select><span className="only-print-text">{METODOLOGIAS[proyectoActual.metodologia].nombre}</span></label><label className="grupo-input">Escenario<input value={proyectoActual.escenario || ''} onChange={e=>actualizarDatoProyecto('escenario',e.target.value)}/><span className="only-print-text">{proyectoActual.escenario || 'Sin especificación.'}</span></label><label className="grupo-input">Temporalidad<input value={proyectoActual.temporalidad || ''} onChange={e=>actualizarDatoProyecto('temporalidad',e.target.value)}/><span className="only-print-text">{proyectoActual.temporalidad || 'Sin especificación.'}</span></label><label className="grupo-input grupo-nombre">Descripción de la problemática<textarea value={proyectoActual.problemática || ''} onChange={e=>actualizarDatoProyecto('problemática',e.target.value)}/><span className="only-print-text">{proyectoActual.problemática || 'Sin especificación.'}</span></label></div>
-  <section className="seccion-plan pda-selector no-print"><h3>PDAs de todos los campos formativos</h3><p>Catálogo completo del grado {grado}: {pdasDisponibles.length} PDAs. Busca por campo, contenido o aprendizaje y selecciona los que integrará el proyecto.</p><input aria-label="Buscar PDAs por campo, contenido o descripción" placeholder="Buscar campo, contenido o PDA..." value={busquedaPda} onChange={e=>setBusquedaPda(e.target.value)}/><div className="pda-lista-amplia">{pdasFiltrados.length === 0 && <p>No hay coincidencias en el catálogo del grado.</p>}{Object.entries(pdasFiltrados.reduce((grupos,p)=>{const campo=p.campo || 'Campo formativo sin nombre';(grupos[campo] ||= []).push(p);return grupos;},{})).map(([campo,pdas])=><section className="pda-grupo-campo" key={campo}><h4>{campo} <span>{pdas.length} PDAs</span></h4>{pdas.map(p=><label className="pda-opcion" key={p.id}><input type="checkbox" checked={(Array.isArray(proyectoActual.pdas_seleccionados)?proyectoActual.pdas_seleccionados:[]).includes(p.id)} onChange={()=>togglePdaProyecto(p.id)}/><span><strong>{p.proyecto_sugerido || 'Aprendizaje'}</strong>{p.contenido && <small>Contenido: {p.contenido}</small>}<span>{p.descripcion}</span></span></label>)}</section>)}</div><p className="pda-seleccionados">Seleccionados: {pdasSeleccionadosParaImprimir.length} PDAs de {new Set(pdasSeleccionadosParaImprimir.map(p=>p.campo)).size} campos formativos</p></section>
-  <section className="seccion-plan fases-proyecto"><h3>Metodología y fases: {METODOLOGIAS[proyectoActual.metodologia].nombre}</h3>{METODOLOGIAS[proyectoActual.metodologia].fases.map((fase,i)=><label className="momento" key={i}><strong>{fase}</strong><textarea rows={4} value={(safeParse(proyectoActual.fases_contenido,{}))[i] || ''} onChange={e=>actualizarFaseProyecto(i,e.target.value)} placeholder="Describe lo que se realizará en esta fase"/><span className="only-print-text">{(safeParse(proyectoActual.fases_contenido,{}))[i] || 'Sin especificación.'}</span></label>)}</section>
-  <div className="pdas-print-view seccion-plan"><h3>Vinculación de aprendizajes (PDAs)</h3><p>{pdasSeleccionadosParaImprimir.length} PDAs seleccionados</p><ul>{pdasSeleccionadosParaImprimir.map(p=><li key={p.id}><strong>{p.campo} · {p.proyecto_sugerido}</strong><br/><span>Contenido: {p.contenido}</span><br/>{p.descripcion}</li>)}</ul></div>
-  <PlaneacionApartados tipo="proyecto" value={proyectoActual.apartados || {}} onChange={(key,value)=>actualizarDatoProyecto('apartados',{...(proyectoActual.apartados || {}),[key]:value})}/>
-  <button className="btn-guardar no-print" onClick={guardarProyecto} style={{marginTop:20,width:'100%',padding:15}}>Guardar proyecto</button>
-  </div> ) : ( <div className="grid-proyectos-scroll" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:20, alignContent:'start'}}> {listaProyectos.map(p => { const estilo = METODOLOGIAS[p.metodologia] || {color:'#fff', borde:'#ccc'}; const isVisto = (vistos.proyecto || []).includes(String(p.id)); return ( <div key={p.id} className="tarjeta-proyecto" onClick={() => editarProyectoSafe(p)} style={{ cursor:'pointer', borderLeft:`8px solid ${estilo.borde}`, background: estilo.color, padding: 15, borderRadius: 8, height: '140px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', opacity: isVisto ? 0.6 : 1, transition: 'opacity 0.3s' }}> <div> <h3 style={{margin:'0 0 5px 0', fontSize:'1.1rem', color:'#333'}}>{p.nombre}</h3> <span style={{fontSize:'0.8rem', background:'rgba(255,255,255,0.6)', padding:'2px 6px', borderRadius:4, fontWeight:'bold', color:estilo.borde}}> {estilo.nombre} {p.es_sugerido && '⭐'} </span> </div> <div style={{alignSelf: 'flex-end', marginTop: 10}}><button className="no-print" onClick={(e)=>{e.stopPropagation(); toggleVisto('proyecto', p.id)}} style={{padding: '5px 10px', fontSize: '0.8rem', cursor: 'pointer', background: isVisto ? '#2ecc71' : 'rgba(255,255,255,0.8)', color: isVisto ? 'white' : '#333', border: 'none', borderRadius: 5, fontWeight:'bold'}}> {isVisto ? '✅ Terminado' : 'Marcar Terminado'} </button></div> </div> ); })} </div> )} </div>
+            <div className="header-dosificador">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />} <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>🚀 Proyectos</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #00CEC9', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select></div> <div> {!modoEdicionProy && <button className="btn-guardar" onClick={()=>{setProyectoActual({id:null, nombre:'', metodologia:'COMUNITARIOS', escenario:'AULA', temporalidad:'', pdas_seleccionados:[], fases_contenido:{}, apartados:{}}); setBusquedaPda(""); setModoEdicionProy(true);}}>+ Nuevo</button>} <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button> </div> </div> {modoEdicionProy ? ( <div key={proyectoActual.id || 'nuevo'} className="hoja-planeacion" style={{ background: `linear-gradient(to bottom, ${calcularColorSemaforo(proyectoActual)} 0%, #ffffff 350px)` }}> <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}> <h3 className="titulo-edicion">✏️ Editar Proyecto</h3> <div className="botones-edicion"><button className="btn-guardar" onClick={()=>exportarPlanoWord(datosExportacionProyecto)} style={{marginRight:10}}>Word</button><button className="btn-guardar" onClick={()=>exportarPlanoPdf(datosExportacionProyecto)}>PDF</button><button className="btn-volver" onClick={()=>setModoEdicionProy(false)}>🔙 Volver</button></div> </div> <div className="grid-dos"> <div className="grupo-input grupo-nombre"> <label>Nombre:</label> <input defaultValue={proyectoActual.nombre} onBlur={e => actualizarDatoProyecto('nombre', e.target.value)} style={{padding:'8px'}} placeholder="Nombre..." /> </div> <div className="grupo-input"><label>Metodología:</label><select value={proyectoActual.metodologia} onChange={e=>actualizarDatoProyecto('metodologia', e.target.value)} style={{padding:10}}> {Object.keys(METODOLOGIAS).map(k=><option key={k} value={k}>{METODOLOGIAS[k].nombre}</option>)} </select></div> </div> <details open className="seccion-plan no-print" style={{marginTop:20}}><summary style={{cursor:'pointer',fontWeight:'bold',fontSize:'1.1rem'}}>Apartados del plano didáctico</summary><div className="grid-dos">{FORMULARIO_PROYECTO.map(campo=><div className="grupo-input" key={campo.key}><label>{campo.label}</label><textarea value={safeParse(proyectoActual.apartados,{})[campo.key] || ''} onChange={e=>actualizarDatoProyecto('apartados',{...safeParse(proyectoActual.apartados,{}),[campo.key]:e.target.value})} style={{width:'100%',minHeight:campo.multiline?90:48}} /></div>)}</div></details> <div className="seccion-plan" style={{marginTop:20, borderLeft:`6px solid ${METODOLOGIAS[proyectoActual.metodologia].borde}`}}> <h4>Fases ({METODOLOGIAS[proyectoActual.metodologia].nombre})</h4> {METODOLOGIAS[proyectoActual.metodologia].fases.map((fase, i) => ( <div key={i} className="momento" style={{flexDirection:'column', marginBottom:15}}> <span className="label-momento" style={{fontSize:'0.9rem'}}>{fase}</span> <textarea style={{width:"100%", minHeight:80}} value={(safeParse(proyectoActual.fases_contenido, {}))[i] || ""} onChange={e => actualizarFaseProyecto(i, e.target.value)} placeholder="Desarrollo..." /> </div> ))} </div> <div className="pdas-print-view" style={{display:'none'}}> <h4 style={{marginTop:20, textTransform:'uppercase', borderBottom:'1px solid black'}}>Vinculación de Aprendizajes (PDAs)</h4> <ul style={{listStyle:'none', padding:0}}> {pdasSeleccionadosParaImprimir.length === 0 && <li>Sin aprendizajes vinculados.</li>} {pdasSeleccionadosParaImprimir.map(p => ( <li key={p.id} style={{marginBottom:10, fontSize:'11pt', fontFamily:'Times New Roman'}}> <b>• {p.proyecto_sugerido}:</b> {p.descripcion} </li> ))} </ul> </div> <div className="seccion-plan no-print" style={{marginTop:20, background:'rgba(0,0,0,0.03)'}}> <h4>Vincular PDAs</h4> <input placeholder="Buscar tema..." value={busquedaPda} onChange={e=>setBusquedaPda(e.target.value)} style={{width:'100%', padding:8, marginBottom:10}}/> <div style={{maxHeight:150, overflowY:'auto'}}> {pdasFiltrados.length === 0 && <p style={{fontStyle:'italic', color:'#999'}}>No hay PDAs.</p>} {pdasFiltrados.map(p=>( <div key={p.id} style={{display:'flex', gap:5, marginBottom:5}}> <input type="checkbox" checked={(Array.isArray(proyectoActual.pdas_seleccionados) ? proyectoActual.pdas_seleccionados : []).includes(p.id)} onChange={()=>togglePdaProyecto(p.id)} /> <span><b>{p.proyecto_sugerido}</b>: {p.descripcion}</span> </div> ))} </div> </div> <button className="btn-guardar botones-edicion" onClick={guardarProyecto} style={{marginTop:20, width:'100%', padding:15}}>💾 GUARDAR</button> </div> ) : ( <div className="grid-proyectos-scroll" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:20, alignContent:'start'}}> {listaProyectos.map(p => { const estilo = METODOLOGIAS[p.metodologia] || {color:'#fff', borde:'#ccc'}; const isVisto = (vistos.proyecto || []).includes(String(p.id)); return ( <div key={p.id} className="tarjeta-proyecto" onClick={() => editarProyectoSafe(p)} style={{ cursor:'pointer', borderLeft:`8px solid ${estilo.borde}`, background: estilo.color, padding: 15, borderRadius: 8, height: '140px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', opacity: isVisto ? 0.6 : 1, transition: 'opacity 0.3s' }}> <div> <h3 style={{margin:'0 0 5px 0', fontSize:'1.1rem', color:'#333'}}>{p.nombre}</h3> <span style={{fontSize:'0.8rem', background:'rgba(255,255,255,0.6)', padding:'2px 6px', borderRadius:4, fontWeight:'bold', color:estilo.borde}}> {estilo.nombre} {p.es_sugerido && '⭐'} </span> </div> <div style={{alignSelf: 'flex-end', marginTop: 10}}><button className="no-print" onClick={(e)=>{e.stopPropagation(); toggleVisto('proyecto', p.id)}} style={{padding: '5px 10px', fontSize: '0.8rem', cursor: 'pointer', background: isVisto ? '#2ecc71' : 'rgba(255,255,255,0.8)', color: isVisto ? 'white' : '#333', border: 'none', borderRadius: 5, fontWeight:'bold'}}> {isVisto ? '✅ Terminado' : 'Marcar Terminado'} </button></div> </div> ); })} </div> )} </div> 
       );
     }
 
     if(vista === 'PLANNER') { 
-      const isVisto = (vistos.plan || []).includes(String(semanaPlan)); 
-       const datosExportacionSemana = {
-         tipo: 'Planeación semanal',
-         nombre: planData.apartados?.nombre_proyecto || `Semana ${semanaPlan}`,
-         datos: { grado, temporalidad: obtenerFechasSemana(semanaPlan), escuela: configCiclo.nombreEscuela, cct: configCiclo.cct, docente: configCiclo.nombreDocente, ciclo: `${new Date(`${configCiclo.fechaInicioStr}T00:00:00`).getFullYear()}-${new Date(`${configCiclo.fechaInicioStr}T00:00:00`).getFullYear() + 1}` },
-         apartados: planData.apartados,
-         pdas: pdasDisponibles.filter(p => pdasSemana.some(s => s.pda === p.descripcion)),
-         dias: ['lunes', 'martes', 'miercoles', 'jueves', 'viernes'].map(label => ({ label: label.toUpperCase(), inicio: planData[`${label}_inicio`], desarrollo: planData[`${label}_desarrollo`], cierre: planData[`${label}_cierre`] })),
-         extras: { recursos: planData.recursos, evaluacion: planData.evaluacion, adecuaciones: planData.adecuaciones }
-       };
+      const isVisto = (vistos.plan || []).includes(String(semanaPlan)); const datosExportacionSemana = { tipo: 'Planeación semanal', nombre: `Semana ${semanaPlan}`, datos: { grado, temporalidad: obtenerFechasSemana(semanaPlan) }, apartados: safeParse(planData.apartados, {}), pdas: pdasSemana, dias: ['lunes','martes','miercoles','jueves','viernes'].map(label => ({ label: label.toUpperCase(), inicio: planData[`${label}_inicio`], desarrollo: planData[`${label}_desarrollo`], cierre: planData[`${label}_cierre`] })), extras: { recursos: planData.recursos, evaluacion: planData.evaluacion, adecuaciones: planData.adecuaciones } }; 
 
       return ( 
         <div className="pantalla-dosificador"> 
-          <div className="header-dosificador no-print"> 
+          <div className="header-dosificador no-print">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />} 
             <div style={{display:'flex', gap:10, alignItems:'center'}}><h2>Planeación</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #0984E3', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select><select value={semanaPlan} onChange={e=>setSemanaPlan(Number(e.target.value))}>{SEMANAS_CLASE.map(s=><option key={s.id} value={s.id}>Sem {s.id} ({obtenerFechasSemana(s.id)})</option>)}</select></div> 
             <div>
               <button onClick={()=>toggleVisto('plan', semanaPlan)} style={{padding: '10px 15px', fontWeight:'bold', cursor: 'pointer', background: isVisto ? '#2ecc71' : '#bdc3c7', color: 'white', border: 'none', borderRadius: 5, marginRight: 10}} className="no-print"> {isVisto ? '✅ Completada' : 'Marcar Completada'} </button>
               <button className="btn-guardar" onClick={savePlan}>💾 Guardar</button>
-              <button className="btn-volver" onClick={()=>exportarPlanoWord(datosExportacionSemana)}>Word editable</button>
-              <button className="btn-volver" onClick={()=>exportarPlanoPdf(datosExportacionSemana)}>PDF</button>
+              <button className="btn-volver" onClick={()=>exportarPlanoWord(datosExportacionSemana)}>Word</button><button className="btn-volver" onClick={()=>exportarPlanoPdf(datosExportacionSemana)}>PDF</button>
               <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button>
             </div> 
           </div> 
@@ -1217,10 +1148,8 @@ function App() {
             </div> 
             <div className="seccion-plan" style={{marginBottom:20}}> 
               <h3>🎯 Aprendizajes (PDA)</h3> 
-              {pdasSemana.length === 0 ? <p style={{color:'#999'}}>Sin contenido.</p> : <ul>{pdasSemana.map((p,i)=>{const detalle=pdasDisponibles.find(candidato=>candidato.descripcion===p.pda);return <li key={i}><b>{detalle?.campo || 'Campo formativo'} · {p.proyecto}</b>: {p.pda}</li>})}</ul>}
+              {pdasSemana.length === 0 ? <p style={{color:'#999'}}>Sin contenido.</p> : <ul>{pdasSemana.map((p,i)=><li key={i}><b>{p.proyecto}</b>: {p.pda}</li>)}</ul>} 
             </div> 
-            <div className="editor-proyecto-basico seccion-plan"><label className="grupo-input">Nombre del proyecto<input value={planData.apartados?.nombre_proyecto || ''} onChange={e=>setPlanData(prev=>({...prev,apartados:{...(prev.apartados || {}),nombre_proyecto:e.target.value}}))}/><span className="only-print-text">{planData.apartados?.nombre_proyecto || 'Sin especificación.'}</span></label></div>
-            <PlaneacionApartados tipo="planeacion" value={planData.apartados || {}} onChange={(key,value)=>setPlanData(prev=>({...prev,apartados:{...(prev.apartados || {}),[key]:value}}))}/>
             
             <div className="grid-semanal">
               {['lunes','martes','miercoles','jueves','viernes'].map(d=>(
@@ -1260,7 +1189,7 @@ function App() {
               ))}
             </div> 
             
-            <div className="footer-plan">
+            <details open className="seccion-plan no-print" style={{marginTop:20}}><summary style={{cursor:'pointer',fontWeight:'bold',fontSize:'1.1rem'}}>Apartados del plano didáctico</summary><div className="grid-dos">{FORMULARIO_PROYECTO.map(campo=><div className="grupo-input" key={campo.key}><label>{campo.label}</label><textarea value={safeParse(planData.apartados,{})[campo.key] || ''} onChange={e=>setPlanData({...planData,apartados:{...safeParse(planData.apartados,{}),[campo.key]:e.target.value}})} style={{width:'100%',minHeight:campo.multiline?90:48}} /></div>)}</div></details> <div className="footer-plan">
               <div className="caja-footer">
                 <h4>Recursos</h4>
                 <textarea className="no-print" value={planData.recursos || ''} onChange={e=>setPlanData({...planData,recursos:e.target.value})}/>
@@ -1299,7 +1228,7 @@ function App() {
     if(vista === 'GRUPO') {
       return (
         <div className="pantalla-dosificador">
-          <div className="header-dosificador"><h2>👥 Mi Grupo ({grado}º Primaria)</h2><button className="btn-volver" onClick={()=>setVista('MENU')}>Volver</button></div>
+          <div className="header-dosificador">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />}<h2>👥 Mi Grupo ({grado}º Primaria)</h2><button className="btn-volver" onClick={()=>setVista('MENU')}>Volver</button></div>
           <div className="config-grid">
             <div className="columna-gestion"><h3>📋 Pegar Lista</h3><textarea value={textoPegado} onChange={e=>setTextoPegado(e.target.value)} style={{width:'95%', height:200}}/><button className="btn-guardar" onClick={procesarListaAlumnos}>{procesando?'...':'Agregar'}</button></div>
             <div className="columna-gestion"><h3>🎓 Alumnos</h3><ul>{alumnos.map(a=><li key={a.id}>{a.nombre} <button onClick={()=>borrarAlumno(a.id)}>🗑️</button></li>)}</ul></div>
@@ -1311,7 +1240,7 @@ function App() {
     if(vista === 'COMISIONES') {
       return ( 
         <div className="pantalla-dosificador"> 
-          <div className="header-dosificador"> 
+          <div className="header-dosificador">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />} 
             <h2>🔔 Comisiones</h2> 
             <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button> 
           </div> 
@@ -1333,7 +1262,7 @@ function App() {
 
     if (vista === 'ASISTENCIA_QR') {
       return (
-        <div style={{ backgroundColor: '#f4f6f8', minHeight: '100vh', padding: '10px 20px' }}>
+        <div className="android-qr-screen" style={{ backgroundColor: '#f4f6f8', minHeight: 'var(--app-height)', padding: '10px 20px' }}>
           {toast && (
             <div role="status" aria-live="polite" style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', background: '#34495e', color: 'white', padding: '10px 20px', borderRadius: 20, zIndex: 10000, fontWeight: 'bold', boxShadow: '0 4px 10px rgba(0,0,0,0.2)' }}>
               {toast}
@@ -1389,7 +1318,7 @@ function App() {
     if(vista === 'CALENDARIO') {
       return (
         <div className="pantalla-dosificador">
-          <div className="header-dosificador">
+          <div className="header-dosificador">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />}
             <div>
               <button onClick={()=>mesCal===1?(setMesCal(12),setAnioCal(anioCal-1)):setMesCal(mesCal-1)}>◀</button> 
               <h2 style={{color:'black'}}>{NOMBRES_MESES[mesCal]} {anioCal}</h2> 

@@ -1,3 +1,12 @@
+# Planificador Docente 1.0.16
+
+- Control QR: exportación de hojas de asistencia y listas de trabajos a PDF y Excel desde cualquier pestaña activa.
+- ALUMNO: botón de exportación en la ficha de seguimiento y calificaciones del alumno.
+- Evaluación automática: mejoras en la vinculación de criterios con trabajos, tareas y asistencia por campo formativo.
+- Planeaciones: exportación mejorada a Word y PDF con todos los apartados del formato institucional.
+- Generador de material: acceso directo al botón de exportación PDF.
+
+Windows descarga la actualización y la instala al cerrar. macOS requiere instalación manual con el asistente incluido en el DMG.
 # Planificador Docente 1.0.11
 
 - Planeación de Primaria: catálogo completo de PDAs de los seis grados y cuatro campos formativos; cada aprendizaje identifica su campo y contenido.
