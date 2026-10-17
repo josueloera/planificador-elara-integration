@@ -1,3 +1,11 @@
+# Version 1.0.19
+
+- Restaurado el QR para conectar la app de escaneo del celular en Primaria.
+- Corregida la consulta del puerto de conexion en Primaria y Secundaria para Windows y macOS, incluido el cambio de puerto cuando el habitual esta ocupado.
+- Conservadas las exportaciones de gafetes a Word/PDF, las tareas independientes y los respaldos completos.
+- Conservado el instalador asistido para Mac Intel y Apple Silicon.
+- Version homologada con Android; se conserva la firma de actualizacion.
+
 # Versión 1.0.18
 - Corrección de exportación PDF de gafetes con fotografías y códigos QR en escritorio.
 
