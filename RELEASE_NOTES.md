@@ -1,5 +1,12 @@
 # Version 1.0.20
 
+- Aviso accesible dentro de la aplicacion sobre datos, servicios de IA y licencia de uso.
+- El instalador de escritorio empaqueta los archivos en ASAR para desalentar la inspeccion casual.
+
+- Prueba gratuita de exactamente 24 horas por instalacion; al vencer, la pantalla de licencia bloquea el acceso a los menus.
+
+- Plano didactico visible al inicio de Planeaciones, con los mismos 25 apartados editables en Windows, macOS y Android.
+
 - Corregido el bloqueo al abrir Planeaciones cuando sus apartados estan vacios (error al leer proposito).
 - Protegida la exportacion de planeaciones con apartados vacios a Word y PDF.
 - Conservados los contenidos existentes, las tareas, las evaluaciones y los respaldos.

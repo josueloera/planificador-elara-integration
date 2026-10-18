@@ -201,24 +201,24 @@ function verifyAgainstMachine(providedKey) {
     return { valid: false };
 }
 
+function calculateTrialStatus(trialStartDate, now = new Date()) {
+    if (!trialStartDate) return { isTrialValid: false, trialDaysRemaining: 0, trialStartDate: null };
+    const start = new Date(trialStartDate);
+    const elapsedMs = now.getTime() - start.getTime();
+    const durationMs = 24 * 60 * 60 * 1000;
+    const isTrialValid = Number.isFinite(start.getTime()) && elapsedMs >= 0 && elapsedMs < durationMs;
+    return { isTrialValid, trialDaysRemaining: isTrialValid ? 1 : 0, trialStartDate };
+}
+
 function getLicenseStatus() {
     const primaryCode = generateInstallationCode();
     const data = readLicenseData();
-    
-    let status = {
-        isActivated: false,
-        isTrialValid: false,
-        trialDaysRemaining: 0,
-        installationCode: primaryCode
-    };
-
-    // 1. Comprobar activación permanente contra todas las identidades del equipo
+    let status = { isActivated: false, isTrialValid: false, trialDaysRemaining: 0, installationCode: primaryCode };
     if (data.licenseKey) {
         const verification = verifyAgainstMachine(data.licenseKey);
         if (verification.valid) {
             status.isActivated = true;
             status.installationCode = data.installationCode || verification.matchingCode || primaryCode;
-            // Asegurar que installationCode coincida con el validado
             if (data.installationCode !== status.installationCode) {
                 data.installationCode = status.installationCode;
                 writeLicenseData(data);
@@ -226,21 +226,7 @@ function getLicenseStatus() {
             return status;
         }
     }
-    
-    // 2. Comprobar periodo de prueba (7 días)
-    if (data.trialStartDate) {
-        const start = new Date(data.trialStartDate);
-        const now = new Date();
-        const diffTime = Math.abs(now - start);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-        
-        if (diffDays <= 7) {
-            status.isTrialValid = true;
-            status.trialDaysRemaining = 7 - diffDays + 1;
-        }
-    }
-    
-    return status;
+    return { ...status, ...calculateTrialStatus(data.trialStartDate) };
 }
 
 function getLicenseProof() {
@@ -285,5 +271,6 @@ module.exports = {
     startTrial,
     generateInstallationCode,
     verifyLicenseKey,
+    calculateTrialStatus,
     getAllPossibleInstallationCodes
 };

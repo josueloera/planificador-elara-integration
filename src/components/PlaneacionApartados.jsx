@@ -1,17 +1,16 @@
-import { FORMULARIO_PROYECTO, APARTADOS_PLANEACION } from '../utils/planeacionDocument';
+import { FORMULARIO_PROYECTO } from '../utils/planeacionDocument';
+import './PlaneacionApartados.css';
 
-export default function PlaneacionApartados({ tipo, value = {}, onChange }) {
-  const fields = tipo === 'proyecto' ? FORMULARIO_PROYECTO : APARTADOS_PLANEACION;
-  return <section className="seccion-plan planeacion-apartados" aria-label="Apartados del plano didáctico">
-    <h3>Apartados del plano didáctico</h3>
-    <p>Estos apartados se conservan al guardar y aparecen al exportar en Word o PDF.</p>
-    <div className="apartados-grid">
-      {fields.map(field => <label className="apartado-campo" key={field.key}>
+export default function PlaneacionApartados({ value, onChange }) {
+  const apartados = value ?? {};
+  return <section className="plano-didactico no-print" aria-label="Plano didáctico">
+    <h3>Plano didáctico</h3>
+    <p>Completa los apartados de tu planeación. Se conservan al guardar y se incluyen al exportar a Word o PDF.</p>
+    <div className="plano-didactico-campos">
+      {FORMULARIO_PROYECTO.map(field => <label className="plano-didactico-campo" key={field.key}>
         <span>{field.label}</span>
-        {field.multiline
-          ? <textarea rows={3} value={value?.[field.key] || ''} onChange={event => onChange(field.key, event.target.value)} />
-          : <input value={value?.[field.key] || ''} onChange={event => onChange(field.key, event.target.value)} />}
-        <span className="only-print-text">{value?.[field.key] || 'Sin especificación.'}</span>
+        <textarea rows={field.multiline ? 3 : 2} value={apartados[field.key] ?? ''}
+          onChange={event => onChange(field.key, event.target.value)} />
       </label>)}
     </div>
   </section>;

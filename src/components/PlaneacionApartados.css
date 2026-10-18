@@ -1,0 +1,8 @@
+.plano-didactico { margin: 0 0 24px; padding: 20px; border: 1px solid #bfd3e4; border-left: 5px solid #0984e3; border-radius: 10px; background: #f5faff; }
+.plano-didactico h3 { margin: 0 0 8px; color: #164c73; }
+.plano-didactico > p { margin: 0 0 18px; line-height: 1.5; color: #526879; }
+.plano-didactico-campos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.plano-didactico-campo { display: flex; flex-direction: column; gap: 7px; min-width: 0; font-weight: 600; color: #253b4e; }
+.plano-didactico-campo textarea { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #b9c8d2; border-radius: 6px; font: inherit; font-weight: 400; resize: vertical; background: white; color: #253b4e; }
+.plano-didactico-campo textarea:focus-visible { outline: 2px solid #0984e3; outline-offset: 2px; }
+@media (max-width: 720px) { .plano-didactico-campos { grid-template-columns: 1fr; } .plano-didactico { padding: 14px; } }

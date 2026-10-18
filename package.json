@@ -22,7 +22,7 @@
     "appId": "com.josue.planificador.elara",
     "productName": "Planificador Docente ELARA Integration",
     "npmRebuild": false,
-    "asar": false,
+    "asar": true,
     "directories": {
       "output": "release"
     },

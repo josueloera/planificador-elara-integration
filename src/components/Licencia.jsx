@@ -159,7 +159,7 @@ const Licencia = ({ onActivated, onVolver }) => {
               onMouseOver={(e) => { e.target.style.background = '#3498db'; e.target.style.color = 'white'; }}
               onMouseOut={(e) => { e.target.style.background = 'transparent'; e.target.style.color = '#3498db'; }}
             >
-              Iniciar Prueba Gratuita de 7 Días
+              Iniciar Prueba Gratuita de 1 Día
             </button>
           </div>
         )}

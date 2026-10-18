@@ -1,3 +1,5 @@
+import LegalInfo from './components/LegalInfo';
+import PlaneacionApartados from './components/PlaneacionApartados';
 import ExportDocument from './components/ExportDocument';
 import Incidencias from './components/Incidencias';
 import { exportarPlanoPdf, exportarPlanoWord, FORMULARIO_PROYECTO } from './utils/planeacionDocument';
@@ -6,7 +8,7 @@ import './App.css';
 import { cargarReporteTrimestral } from './android/quarterlyReport.js';
 
 // --- IMPORTACIONES (Si alguna falla, el código tiene protección) ---
-import { obtenerPlanSemanal } from './planner_logic'; 
+import { obtenerPlanSemanal } from './planner_logic';
 import GeneradorMaterial from './components/GeneradorMaterial';
 import Licencia from './components/Licencia';
 import ConfiguracionCiclo from './components/ConfiguracionCiclo';
@@ -20,10 +22,10 @@ const ipcRenderer = window.require ? window.require('electron').ipcRenderer : nu
 
 export const DEFAULT_FECHA_INICIO = new Date(2026, 7, 31); // 31 Agosto 2026
 
-export const DEFAULT_PERIODOS = { 
-  1: { nombre: '1º Trimestre', inicio: '2026-08-31', fin: '2026-11-27' }, 
-  2: { nombre: '2º Trimestre', inicio: '2026-11-30', fin: '2027-03-19' }, 
-  3: { nombre: '3º Trimestre', inicio: '2027-03-20', fin: '2027-07-21' } 
+export const DEFAULT_PERIODOS = {
+  1: { nombre: '1º Trimestre', inicio: '2026-08-31', fin: '2026-11-27' },
+  2: { nombre: '2º Trimestre', inicio: '2026-11-30', fin: '2027-03-19' },
+  3: { nombre: '3º Trimestre', inicio: '2027-03-20', fin: '2027-07-21' }
 };
 
 const CAMPOS_FORMATIVOS = [
@@ -39,16 +41,16 @@ const obtenerFechasSemana = (numSemana, fechaInicioObj = DEFAULT_FECHA_INICIO) =
   let inicio = new Date(fechaInicioObj);
   inicio.setDate(inicio.getDate() + ((numSemana - 1) * 7));
   let fin = new Date(inicio);
-  fin.setDate(fin.getDate() + 4); 
+  fin.setDate(fin.getDate() + 4);
   const opts = { day: 'numeric', month: 'short' };
   return `${inicio.toLocaleDateString('es-MX', opts)} - ${fin.toLocaleDateString('es-MX', opts)}`;
 };
 
-const METODOLOGIAS = { 
-  'COMUNITARIOS': { nombre: 'Lenguajes (Comunitarios)', fases: ['1. Planeación', '2. Acción', '3. Intervención'], color: '#F3E5F5', borde: '#8E24AA' }, 
-  'STEAM': { nombre: 'Saberes (STEAM)', fases: ['1. Indagación', '2. Diseño', '3. Prototipado', '4. Presentación'], color: '#E0F2F1', borde: '#00897B' }, 
-  'ABP': { nombre: 'Ética (ABP)', fases: ['1. Presentemos', '2. Recolectemos', '3. Problema', '4. Experiencia', '5. Resultados'], color: '#E3F2FD', borde: '#1E88E5' }, 
-  'SERVICIO': { nombre: 'De lo Humano (Servicio)', fases: ['1. Punto de partida', '2. Organización', '3. Creatividad', '4. Evaluación'], color: '#FFEBEE', borde: '#E53935' } 
+const METODOLOGIAS = {
+  'COMUNITARIOS': { nombre: 'Lenguajes (Comunitarios)', fases: ['1. Planeación', '2. Acción', '3. Intervención'], color: '#F3E5F5', borde: '#8E24AA' },
+  'STEAM': { nombre: 'Saberes (STEAM)', fases: ['1. Indagación', '2. Diseño', '3. Prototipado', '4. Presentación'], color: '#E0F2F1', borde: '#00897B' },
+  'ABP': { nombre: 'Ética (ABP)', fases: ['1. Presentemos', '2. Recolectemos', '3. Problema', '4. Experiencia', '5. Resultados'], color: '#E3F2FD', borde: '#1E88E5' },
+  'SERVICIO': { nombre: 'De lo Humano (Servicio)', fases: ['1. Punto de partida', '2. Organización', '3. Creatividad', '4. Evaluación'], color: '#FFEBEE', borde: '#E53935' }
 };
 
 const detectarMetodologia = (campo) => {
@@ -73,18 +75,18 @@ const CeldaNota = memo(({ idAlumno, idCriterio, valorInicial, onGuardar, soloLec
 const safeParse = (data, fallback) => { if (typeof data === 'object' && data !== null) return data; try { return JSON.parse(data) ?? fallback; } catch (e) { return fallback; } };
 
 const SEMANAS_CLASE = Array.from({length: 42}, (_, i) => ({ id: i + 1, rango: `Semana ${i + 1}` }));
-const TIPOS_EVENTO = { 
-    'CLASES': { color: 'white', label: 'Clases', texto: 'black' }, 
-    'CTE': { color: '#e74c3c', label: 'CTE', texto: 'white' }, 
-    'VACACIONES': { color: '#3498db', label: 'Vacaciones', texto: 'white' }, 
-    'DESCARGA': { color: '#f1c40f', label: 'Descarga', texto: 'black' }, 
-    'SUSPENSION': { color: '#95a5a6', label: 'Suspensión', texto: 'white' } 
+const TIPOS_EVENTO = {
+    'CLASES': { color: 'white', label: 'Clases', texto: 'black' },
+    'CTE': { color: '#e74c3c', label: 'CTE', texto: 'white' },
+    'VACACIONES': { color: '#3498db', label: 'Vacaciones', texto: 'white' },
+    'DESCARGA': { color: '#f1c40f', label: 'Descarga', texto: 'black' },
+    'SUSPENSION': { color: '#95a5a6', label: 'Suspensión', texto: 'white' }
 };
 
 function App() {
   const [vista, setVista] = useState('MENU');
   const [grupoActual, setGrupoActual] = useState({ id: 1, grado: 3, seccion: 'A', disciplina_id: 1, nombre_disciplina: 'Primaria', tipo: 'Primaria' });
-  
+
   // LICENCIA
   const [licenciaInfo, setLicenciaInfo] = useState(null);
   const [cargandoLicencia, setCargandoLicencia] = useState(true);
@@ -93,9 +95,9 @@ function App() {
   const [alumnos, setAlumnos] = useState([]);
   const [grado, setGrado] = useState(() => localStorage.getItem('grado') ? parseInt(localStorage.getItem('grado')) : 3);
   const [configCiclo, setConfigCiclo] = useState({ fechaInicioStr: '2026-08-31', periodos: DEFAULT_PERIODOS });
-  
+
   // EVALUACIÓN
-  const [criterios, setCriterios] = useState([]); 
+  const [criterios, setCriterios] = useState([]);
   const criteriosRef = useRef([]);
   const [toast, setToast] = useState('');
   const toastTimeoutRef = useRef(null);
@@ -107,46 +109,46 @@ function App() {
   };
 
   useEffect(() => () => clearTimeout(toastTimeoutRef.current), []);
-  
+
   useEffect(() => {
       criteriosRef.current = criterios;
   }, [criterios]);
 
-  const [notas, setNotas] = useState({}); 
+  const [notas, setNotas] = useState({});
   const [fechaEval, setFechaEval] = useState(new Date().toISOString().split('T')[0]);
   const [modoConfig, setModoConfig] = useState(false);
   const [showModalImportarQR, setShowModalImportarQR] = useState(false);
   const [evaluacionAutomatica, setEvaluacionAutomatica] = useState(null);
-  
+
   // OTROS
   const [textoPegado, setTextoPegado] = useState("");
   const [procesando, setProcesando] = useState(false);
   const [listaProyectos, setListaProyectos] = useState([]);
   const [modoEdicionProy, setModoEdicionProy] = useState(false);
   const [proyectoActual, setProyectoActual] = useState({ id: null, nombre: '', metodologia: 'COMUNITARIOS', escenario: 'AULA', temporalidad: '2 Semanas', problemática: '', pdas_seleccionados: [], fases_contenido: {} });
-  const [semanaPlan, setSemanaPlan] = useState(1); 
+  const [semanaPlan, setSemanaPlan] = useState(1);
   const [planData, setPlanData] = useState({ lunes_inicio: '', lunes_desarrollo: '', lunes_cierre: '', martes_inicio: '', martes_desarrollo: '', martes_cierre: '', miercoles_inicio: '', miercoles_desarrollo: '', miercoles_cierre: '', jueves_inicio: '', jueves_desarrollo: '', jueves_cierre: '', viernes_inicio: '', viernes_desarrollo: '', viernes_cierre: '', recursos: '', evaluacion: '', adecuaciones: '' });
   const [planDosif, setPlanDosif] = useState([]);
   const [pdasDisponibles, setPdasDisponibles] = useState([]);
   const [pdasSemana, setPdasSemana] = useState([]);
   const [busquedaPda, setBusquedaPda] = useState("");
-  const [alumnoBitacora, setAlumnoBitacora] = useState(null); 
-  const [tabBitacora, setTabBitacora] = useState('PERFIL'); 
-  const [perfil, setPerfil] = useState({}); 
-  
+  const [alumnoBitacora, setAlumnoBitacora] = useState(null);
+  const [tabBitacora, setTabBitacora] = useState('PERFIL');
+  const [perfil, setPerfil] = useState({});
+
   // CALENDARIO ESTADOS
-  const [mesCal, setMesCal] = useState(new Date().getMonth()+1); 
-  const [anioCal, setAnioCal] = useState(new Date().getFullYear()); 
-  const [eventosSEP, setEventosSEP] = useState({}); 
-  const [modoConfigCalendario, setModoConfigCalendario] = useState(false); 
+  const [mesCal, setMesCal] = useState(new Date().getMonth()+1);
+  const [anioCal, setAnioCal] = useState(new Date().getFullYear());
+  const [eventosSEP, setEventosSEP] = useState({});
+  const [modoConfigCalendario, setModoConfigCalendario] = useState(false);
   const [herramientaSeleccionada, setHerramientaSeleccionada] = useState('CTE');
-  
-  const [comisiones, setComisiones] = useState([]); 
+
+  const [comisiones, setComisiones] = useState([]);
   const [nuevaComision, setNuevaComision] = useState({ descripcion: '', fecha: '', tipo: 'Guardia' });
-  const [trimestre, setTrimestre] = useState(1); 
-  const [resumen, setResumen] = useState([]); 
+  const [trimestre, setTrimestre] = useState(1);
+  const [resumen, setResumen] = useState([]);
   const [cargandoReporte, setCargandoReporte] = useState(false);
-  const [errorReporte, setErrorReporte] = useState(''); 
+  const [errorReporte, setErrorReporte] = useState('');
   const [campoActual, setCampoActual] = useState('LENGUAJES');
   const [vistos, setVistos] = useState({});
 
@@ -311,7 +313,7 @@ function App() {
             // Reparado pdasDb ReferenceError redirigiéndolo a filePdas
             const sugeridos = filePdas.map((p) => ({
               id: `sug-${p.id}`, nombre: p.proyecto_sugerido, metodologia: detectarMetodologia(p.campo),
-              escenario: 'AULA', temporalidad: p.fecha || 'N/A', problemática: p.descripcion, 
+              escenario: 'AULA', temporalidad: p.fecha || 'N/A', problemática: p.descripcion,
               pdas_seleccionados: [], fases_contenido: {}, es_sugerido: true
             }));
             const nombresGuardados = guardados.map(g => g.nombre);
@@ -322,7 +324,7 @@ function App() {
 
         const [anio, mes, dia] = configCiclo.fechaInicioStr.split('-');
         const fechaInicioObj = new Date(parseInt(anio), parseInt(mes) - 1, parseInt(dia));
-        
+
         const dosif = SEMANAS_CLASE.map(s => {
             const pdasEstaSemana = [];
             if (filePdas.length > 0) {
@@ -448,17 +450,17 @@ function App() {
   const handleDeleteCriterio = (index) => {
       setCriterios(prev => prev.filter((_, i) => i !== index));
   };
-  
+
   const agregarCriterioNuevo = () => {
       setCriterios(prev => [...prev, { frontId: `new-${Date.now()}`, nombre: '', porcentaje: '' }]);
   };
-  
-  const handleSaveNota = useCallback((aid, cid, val) => { 
+
+  const handleSaveNota = useCallback((aid, cid, val) => {
       if (evaluacionAutomatica?.enlaces?.some(e => e.criterio_id === cid)) return;
-      setNotas(prev => ({...prev, [`${aid}-${cid}`]: val})); 
-      if(cid && typeof cid === 'number') { 
-          ipcRenderer.invoke('save-nota', aid, cid, fechaEval, val).catch(console.error); 
-      } 
+      setNotas(prev => ({...prev, [`${aid}-${cid}`]: val}));
+      if(cid && typeof cid === 'number') {
+          ipcRenderer.invoke('save-nota', aid, cid, fechaEval, val).catch(console.error);
+      }
   }, [fechaEval, evaluacionAutomatica]);
 
   const calcularPromedioDiario = (alumnoId) => {
@@ -477,29 +479,29 @@ function App() {
       return (sumaWeighted / totalPorcentaje).toFixed(1);
   };
 
-  const guardarConfig = (customCriterios) => { 
-      if(ipcRenderer) { 
+  const guardarConfig = (customCriterios) => {
+      if(ipcRenderer) {
           const targetGrupoId = grupoActual?.id;
           if (!targetGrupoId) {
               showToast("⚠️ Por favor, selecciona primero un grupo en el menú principal.");
               return;
           }
           const prev = Array.isArray(customCriterios) ? customCriterios : (criterios || []);
-          const total = prev.reduce((acc, c) => acc + (parseFloat(c.porcentaje) || 0), 0); 
-          if (Math.abs(total - 100) > 0.1) showToast(`⚠️ OJO: Los porcentajes suman ${total}%.`); 
-          
-          const validos = prev.filter(c => c.nombre && c.nombre.trim() !== ""); 
-          const paraGuardar = validos.map(c => ({ id: c.id, nombre: c.nombre, porcentaje: parseFloat(c.porcentaje) || 0 })); 
-          
-          ipcRenderer.invoke('save-criterios', paraGuardar, targetGrupoId, campoActual).then(() => { 
-              setModoConfig(false); 
-              showToast(`✅ Criterios guardados para ${campoActual}`); 
-              cargarEval(campoActual); 
+          const total = prev.reduce((acc, c) => acc + (parseFloat(c.porcentaje) || 0), 0);
+          if (Math.abs(total - 100) > 0.1) showToast(`⚠️ OJO: Los porcentajes suman ${total}%.`);
+
+          const validos = prev.filter(c => c.nombre && c.nombre.trim() !== "");
+          const paraGuardar = validos.map(c => ({ id: c.id, nombre: c.nombre, porcentaje: parseFloat(c.porcentaje) || 0 }));
+
+          ipcRenderer.invoke('save-criterios', paraGuardar, targetGrupoId, campoActual).then(() => {
+              setModoConfig(false);
+              showToast(`✅ Criterios guardados para ${campoActual}`);
+              cargarEval(campoActual);
           }).catch(err => {
               console.error(err);
               showToast(`❌ Error al guardar: ${err.message || err}`);
-          }); 
-      } 
+          });
+      }
   };
 
   // --- REPORTE TRIMESTRAL ---
@@ -525,13 +527,13 @@ function App() {
   useEffect(() => { if (vista === 'TRIMESTRAL') generarReporteTrimestral(); else ++cargaReporteRef.current; }, [vista, trimestre, grupoActual?.id, configCiclo]);
 
   // --- HELPERS PROYECTOS ---
-  const editarProyectoSafe = (p) => { 
-      setProyectoActual({ 
-          ...p, 
-          pdas_seleccionados: safeParse(p.pdas_seleccionados, []), 
-          fases_contenido: safeParse(p.fases_contenido, {}) 
-      }); 
-      setModoEdicionProy(true); 
+  const editarProyectoSafe = (p) => {
+      setProyectoActual({
+          ...p,
+          pdas_seleccionados: safeParse(p.pdas_seleccionados, []),
+          fases_contenido: safeParse(p.fases_contenido, {})
+      });
+      setModoEdicionProy(true);
   };
   const guardarProyecto = () => { if(!proyectoActual.nombre) return showToast("Falta nombre"); const proy = { ...proyectoActual, id: (typeof proyectoActual.id === 'string' && proyectoActual.id.startsWith('sug-')) ? null : proyectoActual.id, grado, grupo_id: grupoActual?.id }; ipcRenderer.invoke('save-proyecto', proy).then(()=>{ showToast("✅ Proyecto guardado"); setModoEdicionProy(false); setVista('MENU'); setTimeout(() => setVista('PROYECTOS'), 50); }); };
   const guardarProyectoSilencioso = (proyectoData) => {
@@ -559,23 +561,23 @@ function App() {
   const actualizarDatoProyecto = (campo, valor) => { setProyectoActual(prev => ({ ...prev, [campo]: valor })); };
   const actualizarFaseProyecto = (index, valor) => { setProyectoActual(prev => { const fases = safeParse(prev.fases_contenido, {}); fases[index] = valor; return { ...prev, fases_contenido: fases }; }); };
 
-  const procesarListaAlumnos = async () => { 
+  const procesarListaAlumnos = async () => {
       try {
-          if (!textoPegado.trim()) return showToast("La lista está vacía."); 
-          setProcesando(true); 
-          const lista = textoPegado.split(/[\r\n]+/); 
+          if (!textoPegado.trim()) return showToast("La lista está vacía.");
+          setProcesando(true);
+          const lista = textoPegado.split(/[\r\n]+/);
           let agregados = 0;
-          for (let nombre of lista) { 
-              let limpio = nombre.replace(/^[\d\.\-\)\s]+/, '').trim().toUpperCase(); 
+          for (let nombre of lista) {
+              let limpio = nombre.replace(/^[\d\.\-\)\s]+/, '').trim().toUpperCase();
               if (limpio.length > 1) {
-                  await ipcRenderer.invoke('add-alumno', limpio, grupoActual?.id); 
+                  await ipcRenderer.invoke('add-alumno', limpio, grupoActual?.id);
                   agregados++;
               }
-          } 
-          await ipcRenderer.invoke('get-alumnos', grupoActual?.id).then(setAlumnos); 
-          setProcesando(false); 
-          setTextoPegado(""); 
-          showToast(`✅ ${agregados} alumnos agregados correctamente.`); 
+          }
+          await ipcRenderer.invoke('get-alumnos', grupoActual?.id).then(setAlumnos);
+          setProcesando(false);
+          setTextoPegado("");
+          showToast(`✅ ${agregados} alumnos agregados correctamente.`);
       } catch (error) {
           setProcesando(false);
           showToast("Error al agregar alumnos: " + error.message);
@@ -583,7 +585,7 @@ function App() {
   };
   const borrarAlumno = (id) => { if(confirm("¿Borrar?")) ipcRenderer.invoke('delete-alumno', id).then(()=>ipcRenderer.invoke('get-alumnos', grupoActual?.id).then(setAlumnos)); };
   const savePlan = () => ipcRenderer.invoke('save-planeacion', {...planData, grado, grupo_id: grupoActual?.id, semana:semanaPlan}).then(()=>showToast("✅ Planeación guardada"));
-  
+
   const pdasFiltrados = useMemo(() => {
     return pdasDisponibles.filter(p => !busquedaPda || p.descripcion.toLowerCase().includes(busquedaPda.toLowerCase()) || (p.proyecto_sugerido && p.proyecto_sugerido.toLowerCase().includes(busquedaPda.toLowerCase())));
   }, [pdasDisponibles, busquedaPda]);
@@ -605,12 +607,12 @@ function App() {
     return arr;
   };
 
-  
-  
-  const getColorSemaforo = (promedio) => { 
+
+
+  const getColorSemaforo = (promedio) => {
       if (promedio === null || promedio === undefined || promedio === '' || promedio === '-') return 'transparent';
-      const p = parseFloat(promedio); 
-      if (isNaN(p)) return 'transparent'; 
+      const p = parseFloat(promedio);
+      if (isNaN(p)) return 'transparent';
       if (p < 6.0) return '#ffcdd2'; // Rojo (5 a 6)
       if (p < 9.0) return '#fff9c4'; // Amarillo (6 a 9)
       return '#c8e6c9';             // Verde (9 a 10)
@@ -658,7 +660,7 @@ function App() {
                     <div style={{background: '#f39c12', color: 'white', padding: '5px 15px', borderRadius: '15px', fontSize: '0.9rem', fontWeight: 'bold'}}>
                       Prueba Gratuita: {licenciaInfo.trialDaysRemaining} días restantes
                     </div>
-                    <button 
+                    <button
                       onClick={() => setVista('LICENCIA')}
                       style={{background: '#27ae60', color: 'white', padding: '5px 15px', borderRadius: '15px', border: 'none', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold', boxShadow: '0 2px 5px rgba(0,0,0,0.2)'}}>
                       🔑 Adquirir Licencia
@@ -669,7 +671,7 @@ function App() {
                     <div style={{background: '#e74c3c', color: 'white', padding: '5px 15px', borderRadius: '15px', fontSize: '0.9rem', fontWeight: 'bold'}}>
                       ⚠️ Licencia Expirada
                     </div>
-                    <button 
+                    <button
                       onClick={() => setVista('LICENCIA')}
                       style={{background: '#27ae60', color: 'white', padding: '5px 15px', borderRadius: '15px', border: 'none', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold', boxShadow: '0 2px 5px rgba(0,0,0,0.2)'}}>
                       🔑 Activar Licencia
@@ -682,8 +684,8 @@ function App() {
             <div style={{marginTop: 15, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px'}}>
               <div style={{background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(10px)', padding: '6px 20px', borderRadius: '30px', border: '1px solid rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', gap: '10px'}}>
                 <span style={{color: 'white', fontWeight: 'bold', fontSize: '1.1rem'}}>Grado Activo:</span>
-                <select 
-                  value={grado} 
+                <select
+                  value={grado}
                   onChange={e => {
                     const g = Number(e.target.value);
                     setGrado(g);
@@ -731,27 +733,27 @@ function App() {
                 });
             }
           });
-      }} 
-      currentConfig={configCiclo} 
+      }}
+      currentConfig={configCiclo}
       defaultConfig={{fechaInicioStr: '2026-08-31', periodos: DEFAULT_PERIODOS}} />;
     }
 
     if (vista === 'LICENCIA') {
-      return <Licencia 
+      return <Licencia
           onActivated={() => {
               ipcRenderer.invoke('get-license-status').then(res => {
                   setLicenciaInfo(res);
               });
               setVista('MENU');
               showToast("✅ ¡Licencia activada con éxito!");
-          }} 
+          }}
           onVolver={() => setVista('MENU')}
       />;
     }
 
-            if(vista === 'EVAL') { 
-      const sumaPorcentajes = (criterios || []).reduce((acc, c) => acc + (parseFloat(c.porcentaje) || 0), 0); 
-      
+            if(vista === 'EVAL') {
+      const sumaPorcentajes = (criterios || []).reduce((acc, c) => acc + (parseFloat(c.porcentaje) || 0), 0);
+
       return (
       <div className="pantalla-dosificador android-evaluation-screen" style={{ height: 'var(--app-height, 100dvh)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {toast && (
@@ -821,72 +823,72 @@ function App() {
             <span style={{ fontWeight: 'bold', fontSize: '13px', color: '#2d3748', whiteSpace: 'nowrap', marginRight: '6px' }}>
               📚 Materias / Campos:
             </span>
-            <button 
-              onClick={()=>cambiarCampo('LENGUAJES')} 
+            <button
+              onClick={()=>cambiarCampo('LENGUAJES')}
               style={{
-                padding: '9px 18px', 
-                borderRadius: 20, 
-                border: campoActual==='LENGUAJES' ? '2px solid #6b1784' : '1px solid #cbd5e0', 
-                cursor: 'pointer', 
-                fontWeight: 'bold', 
-                fontSize: '13px', 
-                background: campoActual==='LENGUAJES' ? '#8E24AA' : '#ffffff', 
-                color: campoActual==='LENGUAJES' ? '#ffffff' : '#2d3748', 
-                boxShadow: campoActual==='LENGUAJES' ? '0 3px 8px rgba(142,36,170,0.35)' : 'none', 
+                padding: '9px 18px',
+                borderRadius: 20,
+                border: campoActual==='LENGUAJES' ? '2px solid #6b1784' : '1px solid #cbd5e0',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '13px',
+                background: campoActual==='LENGUAJES' ? '#8E24AA' : '#ffffff',
+                color: campoActual==='LENGUAJES' ? '#ffffff' : '#2d3748',
+                boxShadow: campoActual==='LENGUAJES' ? '0 3px 8px rgba(142,36,170,0.35)' : 'none',
                 whiteSpace: 'nowrap',
                 transition: 'all 0.2s'
               }}
             >
               🟣 Lenguajes
             </button>
-            <button 
-              onClick={()=>cambiarCampo('SABERES')} 
+            <button
+              onClick={()=>cambiarCampo('SABERES')}
               style={{
-                padding: '9px 18px', 
-                borderRadius: 20, 
-                border: campoActual==='SABERES' ? '2px solid #005b52' : '1px solid #cbd5e0', 
-                cursor: 'pointer', 
-                fontWeight: 'bold', 
-                fontSize: '13px', 
-                background: campoActual==='SABERES' ? '#00897B' : '#ffffff', 
-                color: campoActual==='SABERES' ? '#ffffff' : '#2d3748', 
-                boxShadow: campoActual==='SABERES' ? '0 3px 8px rgba(0,137,123,0.35)' : 'none', 
+                padding: '9px 18px',
+                borderRadius: 20,
+                border: campoActual==='SABERES' ? '2px solid #005b52' : '1px solid #cbd5e0',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '13px',
+                background: campoActual==='SABERES' ? '#00897B' : '#ffffff',
+                color: campoActual==='SABERES' ? '#ffffff' : '#2d3748',
+                boxShadow: campoActual==='SABERES' ? '0 3px 8px rgba(0,137,123,0.35)' : 'none',
                 whiteSpace: 'nowrap',
                 transition: 'all 0.2s'
               }}
             >
               🟢 Saberes y Pensamiento C.
             </button>
-            <button 
-              onClick={()=>cambiarCampo('ETICA')} 
+            <button
+              onClick={()=>cambiarCampo('ETICA')}
               style={{
-                padding: '9px 18px', 
-                borderRadius: 20, 
-                border: campoActual==='ETICA' ? '2px solid #1565c0' : '1px solid #cbd5e0', 
-                cursor: 'pointer', 
-                fontWeight: 'bold', 
-                fontSize: '13px', 
-                background: campoActual==='ETICA' ? '#1E88E5' : '#ffffff', 
-                color: campoActual==='ETICA' ? '#ffffff' : '#2d3748', 
-                boxShadow: campoActual==='ETICA' ? '0 3px 8px rgba(30,136,229,0.35)' : 'none', 
+                padding: '9px 18px',
+                borderRadius: 20,
+                border: campoActual==='ETICA' ? '2px solid #1565c0' : '1px solid #cbd5e0',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '13px',
+                background: campoActual==='ETICA' ? '#1E88E5' : '#ffffff',
+                color: campoActual==='ETICA' ? '#ffffff' : '#2d3748',
+                boxShadow: campoActual==='ETICA' ? '0 3px 8px rgba(30,136,229,0.35)' : 'none',
                 whiteSpace: 'nowrap',
                 transition: 'all 0.2s'
               }}
             >
               🔵 Ética, Naturaleza y Soc.
             </button>
-            <button 
-              onClick={()=>cambiarCampo('HUMANO')} 
+            <button
+              onClick={()=>cambiarCampo('HUMANO')}
               style={{
-                padding: '9px 18px', 
-                borderRadius: 20, 
-                border: campoActual==='HUMANO' ? '2px solid #b71c1c' : '1px solid #cbd5e0', 
-                cursor: 'pointer', 
-                fontWeight: 'bold', 
-                fontSize: '13px', 
-                background: campoActual==='HUMANO' ? '#E53935' : '#ffffff', 
-                color: campoActual==='HUMANO' ? '#ffffff' : '#2d3748', 
-                boxShadow: campoActual==='HUMANO' ? '0 3px 8px rgba(229,57,53,0.35)' : 'none', 
+                padding: '9px 18px',
+                borderRadius: 20,
+                border: campoActual==='HUMANO' ? '2px solid #b71c1c' : '1px solid #cbd5e0',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '13px',
+                background: campoActual==='HUMANO' ? '#E53935' : '#ffffff',
+                color: campoActual==='HUMANO' ? '#ffffff' : '#2d3748',
+                boxShadow: campoActual==='HUMANO' ? '0 3px 8px rgba(229,57,53,0.35)' : 'none',
                 whiteSpace: 'nowrap',
                 transition: 'all 0.2s'
               }}
@@ -896,13 +898,13 @@ function App() {
           </div>
 
           <div className="android-evaluation-body" style={{flexGrow:1, display:'flex', flexDirection:'column', minHeight: 0, padding: 0, overflow: 'hidden'}}>
-            
+
             {modoConfig ? (
                 <div className="columna-gestion android-criteria-panel" style={{maxWidth:700, margin:'10px auto', padding:25, borderRadius:15, boxShadow:'0 4px 15px rgba(0,0,0,0.1)', background:'white', overflowY: 'auto'}}>
                     <h3 style={{textAlign:'center', color:'#004aad'}}>⚙️ Configurar Criterios para {campoActual}</h3>
                     <div style={{background:'#eee', height:25, borderRadius:15, margin:'15px 0', position:'relative', overflow:'hidden'}}><div style={{width:`${Math.min(sumaPorcentajes, 100)}%`, background:sumaPorcentajes===100?'#2ecc71':'#e74c3c', height:'100%', transition:'width 0.5s'}}></div><span style={{position:'absolute', width:'100%', textAlign:'center', top:3, fontWeight:'bold', fontSize:'0.9rem', color:'#333'}}>Suma: {sumaPorcentajes}%</span></div>
                     <div style={{background:'#fafafa', padding:15, borderRadius:10, border:'1px solid #ddd'}}>
-                        
+
                         {(criterios || []).map((c, i)=>(
                             <div className="android-criterion-row" key={`crit-${i}`} style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
                                 <span style={{fontWeight:'bold', width:30}}>{i+1}.</span>
@@ -948,17 +950,17 @@ function App() {
                     </thead>
                     <tbody>
                       {(alumnos || []).map((al, index)=>{
-                        const prom = calcularPromedioDiario(al.id); 
+                        const prom = calcularPromedioDiario(al.id);
                         return (
                           <tr key={al.id} style={{backgroundColor: getColorSemaforo(prom), borderBottom: '1px solid #f1f5f9'}}>
                             <td style={{textAlign:'center', fontWeight:'bold', color:'#64748b'}}>{index + 1}</td>
                             <td className="celda-nombre" style={{ color: '#0f172a', fontWeight: '800', textTransform: 'uppercase', fontSize: '13px', background: '#ffffff', borderRight: '2px solid #cbd5e1' }}>
                               {al.nombre}
                             </td>
-                            {(criterios || []).map(c=>( 
+                            {(criterios || []).map(c=>(
                               <td key={c.frontId} style={{ textAlign: 'center' }}>
                                 <CeldaNota idAlumno={al.id} idCriterio={c.id} valorInicial={notas[`${al.id}-${c.id}`]} onGuardar={handleSaveNota} soloLectura={evaluacionAutomatica?.enlaces?.some(e => e.criterio_id === c.id)} />
-                              </td> 
+                              </td>
                             ))}
                             <td style={{textAlign:'center', fontWeight:'800', fontSize:'1.2rem', color: '#0f172a'}}>{prom ?? '-'}</td>
                           </tr>
@@ -975,49 +977,49 @@ function App() {
 
     if(vista === 'BITACORA') {
       return (
-        <div className="pantalla-dosificador" style={{flexDirection:'row', padding:0}}> 
+        <div className="pantalla-dosificador" style={{flexDirection:'row', padding:0}}>
           <div className="sidebar-lista">
             <div style={{padding:15, background:'#004aad', color:'white'}}><h3>📂 Alumnos</h3><button onClick={()=>setVista('MENU')} style={{color:'black'}}>Salir</button></div>
             <ul className="lista-alumnos-simple">{alumnos.map(a=><li key={a.id} onClick={()=>selAlumnoBitacora(a)} className={alumnoBitacora?.id===a.id?'activo':''}>{a.nombre}</li>)}</ul>
-          </div> 
-          <div className="contenido-bitacora" style={{padding:20, flexGrow:1, overflowY:'auto'}}> 
-            {!alumnoBitacora ? <div style={{textAlign:'center', marginTop:100, color:'#999'}}><h2>👈 Selecciona un alumno</h2></div> : ( 
-              <> 
-                <div className="header-alumno"><h2 style={{color:'#004aad'}}>👤 {alumnoBitacora.nombre}</h2><div className="tabs-bitacora"><button className={tabBitacora==='PERFIL'?'activo':''} onClick={()=>setTabBitacora('PERFIL')}>📋 Ficha Técnica</button><button className={tabBitacora==='INCIDENCIAS'?'activo':''} onClick={()=>setTabBitacora('INCIDENCIAS')}>⚠️ Incidencias</button></div></div> 
-                {tabBitacora==='PERFIL' ? ( 
-                  <form className="form-perfil" onSubmit={savePerfil}> 
-                    <div className="seccion-form"> 
-                      <h4>Datos Personales</h4> 
-                      <div className="grid-dos"> 
-                        <input name="curp" defaultValue={perfil.curp} placeholder="CURP" /> 
-                        <input name="f_nacimiento" type="date" defaultValue={perfil.f_nacimiento} placeholder="Fecha Nacimiento" /> 
-                      </div> 
-                      <div className="grid-dos" style={{marginTop:10}}> 
-                        <input name="edad" defaultValue={perfil.edad} placeholder="Edad" style={{width:80}} /> 
-                        <input name="peso" defaultValue={perfil.peso} placeholder="Peso (kg)" /> 
-                        <input name="estatura" defaultValue={perfil.estatura} placeholder="Estatura (cm)" /> 
-                      </div> 
-                      <div className="grid-dos" style={{marginTop:10}}> 
-                        <input name="tipo_sangre" defaultValue={perfil.tipo_sangre} placeholder="Tipo Sangre" /> 
-                        <input name="servicio_medico" defaultValue={perfil.servicio_medico} placeholder="Servicio Médico" /> 
-                      </div> 
-                      <input name="alergias" defaultValue={perfil.alergias} placeholder="Alergias / Padecimientos" style={{width:'100%', marginTop:10}}/> 
-                      <input name="direccion" defaultValue={perfil.direccion} placeholder="Dirección completa" style={{width:'100%', marginTop:10}}/> 
-                    </div> 
-                    <div className="seccion-form"> 
-                      <h4>Datos de Padres / Tutores</h4> 
-                      <div className="grid-dos"><input name="nombre_mama" defaultValue={perfil.nombre_mama} placeholder="Nombre Madre"/><input name="tel_mama" defaultValue={perfil.tel_mama} placeholder="Teléfono"/></div> 
-                      <div className="grid-dos" style={{marginTop:10}}><input name="nombre_papa" defaultValue={perfil.nombre_papa} placeholder="Nombre Padre"/><input name="tel_papa" defaultValue={perfil.tel_papa} placeholder="Teléfono"/></div> 
-                      <textarea name="otros_datos" defaultValue={perfil.otros_datos} placeholder="Otros datos relevantes..." style={{width:'100%', marginTop:10, height:60}}></textarea> 
-                    </div> 
-                    <button className="btn-guardar">💾 Guardar Ficha</button> 
-                  </form> 
-                ) : ( 
+          </div>
+          <div className="contenido-bitacora" style={{padding:20, flexGrow:1, overflowY:'auto'}}>
+            {!alumnoBitacora ? <div style={{textAlign:'center', marginTop:100, color:'#999'}}><h2>👈 Selecciona un alumno</h2></div> : (
+              <>
+                <div className="header-alumno"><h2 style={{color:'#004aad'}}>👤 {alumnoBitacora.nombre}</h2><div className="tabs-bitacora"><button className={tabBitacora==='PERFIL'?'activo':''} onClick={()=>setTabBitacora('PERFIL')}>📋 Ficha Técnica</button><button className={tabBitacora==='INCIDENCIAS'?'activo':''} onClick={()=>setTabBitacora('INCIDENCIAS')}>⚠️ Incidencias</button></div></div>
+                {tabBitacora==='PERFIL' ? (
+                  <form className="form-perfil" onSubmit={savePerfil}>
+                    <div className="seccion-form">
+                      <h4>Datos Personales</h4>
+                      <div className="grid-dos">
+                        <input name="curp" defaultValue={perfil.curp} placeholder="CURP" />
+                        <input name="f_nacimiento" type="date" defaultValue={perfil.f_nacimiento} placeholder="Fecha Nacimiento" />
+                      </div>
+                      <div className="grid-dos" style={{marginTop:10}}>
+                        <input name="edad" defaultValue={perfil.edad} placeholder="Edad" style={{width:80}} />
+                        <input name="peso" defaultValue={perfil.peso} placeholder="Peso (kg)" />
+                        <input name="estatura" defaultValue={perfil.estatura} placeholder="Estatura (cm)" />
+                      </div>
+                      <div className="grid-dos" style={{marginTop:10}}>
+                        <input name="tipo_sangre" defaultValue={perfil.tipo_sangre} placeholder="Tipo Sangre" />
+                        <input name="servicio_medico" defaultValue={perfil.servicio_medico} placeholder="Servicio Médico" />
+                      </div>
+                      <input name="alergias" defaultValue={perfil.alergias} placeholder="Alergias / Padecimientos" style={{width:'100%', marginTop:10}}/>
+                      <input name="direccion" defaultValue={perfil.direccion} placeholder="Dirección completa" style={{width:'100%', marginTop:10}}/>
+                    </div>
+                    <div className="seccion-form">
+                      <h4>Datos de Padres / Tutores</h4>
+                      <div className="grid-dos"><input name="nombre_mama" defaultValue={perfil.nombre_mama} placeholder="Nombre Madre"/><input name="tel_mama" defaultValue={perfil.tel_mama} placeholder="Teléfono"/></div>
+                      <div className="grid-dos" style={{marginTop:10}}><input name="nombre_papa" defaultValue={perfil.nombre_papa} placeholder="Nombre Padre"/><input name="tel_papa" defaultValue={perfil.tel_papa} placeholder="Teléfono"/></div>
+                      <textarea name="otros_datos" defaultValue={perfil.otros_datos} placeholder="Otros datos relevantes..." style={{width:'100%', marginTop:10, height:60}}></textarea>
+                    </div>
+                    <button className="btn-guardar">💾 Guardar Ficha</button>
+                  </form>
+                ) : (
                   <Incidencias key={alumnoBitacora.id} ipcRenderer={ipcRenderer} alumnoId={alumnoBitacora.id} />
-                )} 
-              </> 
-            )} 
-          </div> 
+                )}
+              </>
+            )}
+          </div>
         </div>
       );
     }
@@ -1067,70 +1069,71 @@ function App() {
     }
 
     if(vista === 'DOSIF') {
-      return ( 
-      <div className="pantalla-dosificador"> 
-        <div className="header-dosificador no-print">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />} 
-          <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>Dosificador Anual</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #FDCB6E', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select></div> 
-          <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button> 
-        </div> 
-        <div className="tabla-semanal"> 
-          {planDosif.map(s => { 
-            const isVisto = (vistos.dosif || []).includes(String(s.id)); 
-            return ( 
-              <div key={s.id} className="fila-semana" style={{opacity: isVisto ? 0.6 : 1, transition: 'opacity 0.3s'}}> 
-                <div className="info-semana" style={{display:'flex', flexDirection:'column', alignItems:'flex-start'}}> 
-                  <strong>Sem {s.id}</strong><br/> 
-                  <small style={{fontSize:'0.75rem', color:'#eee'}}>{s.fechas}</small> 
-                  <button className="no-print" onClick={()=>toggleVisto('dosif', s.id)} style={{marginTop: 5, padding: '2px 5px', fontSize: '0.7rem', cursor: 'pointer', background: isVisto ? '#2ecc71' : 'rgba(255,255,255,0.3)', color: 'white', border: '1px solid white', borderRadius: 3}}> 
-                    {isVisto ? '✅ Vista' : 'Marcar vista'} 
-                  </button> 
-                </div> 
-                <div className="contenido-semana"> 
-                  {(s.pdas||[]).length === 0 ? <span style={{opacity:0.5, fontStyle:'italic'}}>Sin contenido</span> : (s.pdas||[]).map((p, i) => ( 
-                    <div key={i} className="chip-pda" style={{backgroundColor: p.nota ? '#fff3cd' : '#e3f2fd', color: '#333'}}> 
-                      <strong>{p.proyecto}</strong><br/> 
-                      <small>{p.pda}</small> 
-                    </div> 
-                  )) } 
-                </div> 
-              </div> 
+      return (
+      <div className="pantalla-dosificador">
+        <div className="header-dosificador no-print">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />}
+          <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>Dosificador Anual</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #FDCB6E', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select></div>
+          <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button>
+        </div>
+        <div className="tabla-semanal">
+          {planDosif.map(s => {
+            const isVisto = (vistos.dosif || []).includes(String(s.id));
+            return (
+              <div key={s.id} className="fila-semana" style={{opacity: isVisto ? 0.6 : 1, transition: 'opacity 0.3s'}}>
+                <div className="info-semana" style={{display:'flex', flexDirection:'column', alignItems:'flex-start'}}>
+                  <strong>Sem {s.id}</strong><br/>
+                  <small style={{fontSize:'0.75rem', color:'#eee'}}>{s.fechas}</small>
+                  <button className="no-print" onClick={()=>toggleVisto('dosif', s.id)} style={{marginTop: 5, padding: '2px 5px', fontSize: '0.7rem', cursor: 'pointer', background: isVisto ? '#2ecc71' : 'rgba(255,255,255,0.3)', color: 'white', border: '1px solid white', borderRadius: 3}}>
+                    {isVisto ? '✅ Vista' : 'Marcar vista'}
+                  </button>
+                </div>
+                <div className="contenido-semana">
+                  {(s.pdas||[]).length === 0 ? <span style={{opacity:0.5, fontStyle:'italic'}}>Sin contenido</span> : (s.pdas||[]).map((p, i) => (
+                    <div key={i} className="chip-pda" style={{backgroundColor: p.nota ? '#fff3cd' : '#e3f2fd', color: '#333'}}>
+                      <strong>{p.proyecto}</strong><br/>
+                      <small>{p.pda}</small>
+                    </div>
+                  )) }
+                </div>
+              </div>
             );
-          })} 
-        </div> 
-      </div> 
+          })}
+        </div>
+      </div>
       );
     }
 
     if(vista === 'PROYECTOS') {
       const pdasSeleccionadosParaImprimir = pdasDisponibles.filter(p => (Array.isArray(proyectoActual.pdas_seleccionados) ? proyectoActual.pdas_seleccionados : []).includes(p.id));
       const datosExportacionProyecto = { tipo: 'Proyecto didáctico', nombre: proyectoActual.nombre, datos: { ...proyectoActual, grado }, apartados: safeParse(proyectoActual.apartados, {}), pdas: pdasSeleccionadosParaImprimir, fases: (METODOLOGIAS[proyectoActual.metodologia]?.fases || []).map((label, index) => ({ label, value: safeParse(proyectoActual.fases_contenido, {})[index] })) };
-      return ( 
-        <div className="pantalla-dosificador"> 
+      return (
+        <div className="pantalla-dosificador">
             {toast && (
                 <div style={{position:'fixed', top:20, left:'50%', transform:'translateX(-50%)', background:'#34495e', color:'white', padding:'10px 20px', borderRadius:20, zIndex:9999, fontWeight:'bold', boxShadow:'0 4px 10px rgba(0,0,0,0.2)'}}>
                     {toast}
                 </div>
             )}
-            <div className="header-dosificador">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />} <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>🚀 Proyectos</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #00CEC9', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select></div> <div> {!modoEdicionProy && <button className="btn-guardar" onClick={()=>{setProyectoActual({id:null, nombre:'', metodologia:'COMUNITARIOS', escenario:'AULA', temporalidad:'', pdas_seleccionados:[], fases_contenido:{}, apartados:{}}); setBusquedaPda(""); setModoEdicionProy(true);}}>+ Nuevo</button>} <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button> </div> </div> {modoEdicionProy ? ( <div key={proyectoActual.id || 'nuevo'} className="hoja-planeacion" style={{ background: `linear-gradient(to bottom, ${calcularColorSemaforo(proyectoActual)} 0%, #ffffff 350px)` }}> <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}> <h3 className="titulo-edicion">✏️ Editar Proyecto</h3> <div className="botones-edicion"><button className="btn-guardar" onClick={()=>exportarPlanoWord(datosExportacionProyecto)} style={{marginRight:10}}>Word</button><button className="btn-guardar" onClick={()=>exportarPlanoPdf(datosExportacionProyecto)}>PDF</button><button className="btn-volver" onClick={()=>setModoEdicionProy(false)}>🔙 Volver</button></div> </div> <div className="grid-dos"> <div className="grupo-input grupo-nombre"> <label>Nombre:</label> <input defaultValue={proyectoActual.nombre} onBlur={e => actualizarDatoProyecto('nombre', e.target.value)} style={{padding:'8px'}} placeholder="Nombre..." /> </div> <div className="grupo-input"><label>Metodología:</label><select value={proyectoActual.metodologia} onChange={e=>actualizarDatoProyecto('metodologia', e.target.value)} style={{padding:10}}> {Object.keys(METODOLOGIAS).map(k=><option key={k} value={k}>{METODOLOGIAS[k].nombre}</option>)} </select></div> </div> <details open className="seccion-plan no-print" style={{marginTop:20}}><summary style={{cursor:'pointer',fontWeight:'bold',fontSize:'1.1rem'}}>Apartados del plano didáctico</summary><div className="grid-dos">{FORMULARIO_PROYECTO.map(campo=><div className="grupo-input" key={campo.key}><label>{campo.label}</label><textarea value={safeParse(proyectoActual.apartados,{})[campo.key] || ''} onChange={e=>actualizarDatoProyecto('apartados',{...safeParse(proyectoActual.apartados,{}),[campo.key]:e.target.value})} style={{width:'100%',minHeight:campo.multiline?90:48}} /></div>)}</div></details> <div className="seccion-plan" style={{marginTop:20, borderLeft:`6px solid ${METODOLOGIAS[proyectoActual.metodologia].borde}`}}> <h4>Fases ({METODOLOGIAS[proyectoActual.metodologia].nombre})</h4> {METODOLOGIAS[proyectoActual.metodologia].fases.map((fase, i) => ( <div key={i} className="momento" style={{flexDirection:'column', marginBottom:15}}> <span className="label-momento" style={{fontSize:'0.9rem'}}>{fase}</span> <textarea style={{width:"100%", minHeight:80}} value={(safeParse(proyectoActual.fases_contenido, {}))[i] || ""} onChange={e => actualizarFaseProyecto(i, e.target.value)} placeholder="Desarrollo..." /> </div> ))} </div> <div className="pdas-print-view" style={{display:'none'}}> <h4 style={{marginTop:20, textTransform:'uppercase', borderBottom:'1px solid black'}}>Vinculación de Aprendizajes (PDAs)</h4> <ul style={{listStyle:'none', padding:0}}> {pdasSeleccionadosParaImprimir.length === 0 && <li>Sin aprendizajes vinculados.</li>} {pdasSeleccionadosParaImprimir.map(p => ( <li key={p.id} style={{marginBottom:10, fontSize:'11pt', fontFamily:'Times New Roman'}}> <b>• {p.proyecto_sugerido}:</b> {p.descripcion} </li> ))} </ul> </div> <div className="seccion-plan no-print" style={{marginTop:20, background:'rgba(0,0,0,0.03)'}}> <h4>Vincular PDAs</h4> <input placeholder="Buscar tema..." value={busquedaPda} onChange={e=>setBusquedaPda(e.target.value)} style={{width:'100%', padding:8, marginBottom:10}}/> <div style={{maxHeight:150, overflowY:'auto'}}> {pdasFiltrados.length === 0 && <p style={{fontStyle:'italic', color:'#999'}}>No hay PDAs.</p>} {pdasFiltrados.map(p=>( <div key={p.id} style={{display:'flex', gap:5, marginBottom:5}}> <input type="checkbox" checked={(Array.isArray(proyectoActual.pdas_seleccionados) ? proyectoActual.pdas_seleccionados : []).includes(p.id)} onChange={()=>togglePdaProyecto(p.id)} /> <span><b>{p.proyecto_sugerido}</b>: {p.descripcion}</span> </div> ))} </div> </div> <button className="btn-guardar botones-edicion" onClick={guardarProyecto} style={{marginTop:20, width:'100%', padding:15}}>💾 GUARDAR</button> </div> ) : ( <div className="grid-proyectos-scroll" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:20, alignContent:'start'}}> {listaProyectos.map(p => { const estilo = METODOLOGIAS[p.metodologia] || {color:'#fff', borde:'#ccc'}; const isVisto = (vistos.proyecto || []).includes(String(p.id)); return ( <div key={p.id} className="tarjeta-proyecto" onClick={() => editarProyectoSafe(p)} style={{ cursor:'pointer', borderLeft:`8px solid ${estilo.borde}`, background: estilo.color, padding: 15, borderRadius: 8, height: '140px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', opacity: isVisto ? 0.6 : 1, transition: 'opacity 0.3s' }}> <div> <h3 style={{margin:'0 0 5px 0', fontSize:'1.1rem', color:'#333'}}>{p.nombre}</h3> <span style={{fontSize:'0.8rem', background:'rgba(255,255,255,0.6)', padding:'2px 6px', borderRadius:4, fontWeight:'bold', color:estilo.borde}}> {estilo.nombre} {p.es_sugerido && '⭐'} </span> </div> <div style={{alignSelf: 'flex-end', marginTop: 10}}><button className="no-print" onClick={(e)=>{e.stopPropagation(); toggleVisto('proyecto', p.id)}} style={{padding: '5px 10px', fontSize: '0.8rem', cursor: 'pointer', background: isVisto ? '#2ecc71' : 'rgba(255,255,255,0.8)', color: isVisto ? 'white' : '#333', border: 'none', borderRadius: 5, fontWeight:'bold'}}> {isVisto ? '✅ Terminado' : 'Marcar Terminado'} </button></div> </div> ); })} </div> )} </div> 
+            <div className="header-dosificador">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />} <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>🚀 Proyectos</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #00CEC9', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select></div> <div> {!modoEdicionProy && <button className="btn-guardar" onClick={()=>{setProyectoActual({id:null, nombre:'', metodologia:'COMUNITARIOS', escenario:'AULA', temporalidad:'', pdas_seleccionados:[], fases_contenido:{}, apartados:{}}); setBusquedaPda(""); setModoEdicionProy(true);}}>+ Nuevo</button>} <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button> </div> </div> {modoEdicionProy ? ( <div key={proyectoActual.id || 'nuevo'} className="hoja-planeacion" style={{ background: `linear-gradient(to bottom, ${calcularColorSemaforo(proyectoActual)} 0%, #ffffff 350px)` }}> <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}> <h3 className="titulo-edicion">✏️ Editar Proyecto</h3> <div className="botones-edicion"><button className="btn-guardar" onClick={()=>exportarPlanoWord(datosExportacionProyecto)} style={{marginRight:10}}>Word</button><button className="btn-guardar" onClick={()=>exportarPlanoPdf(datosExportacionProyecto)}>PDF</button><button className="btn-volver" onClick={()=>setModoEdicionProy(false)}>🔙 Volver</button></div> </div> <div className="grid-dos"> <div className="grupo-input grupo-nombre"> <label>Nombre:</label> <input defaultValue={proyectoActual.nombre} onBlur={e => actualizarDatoProyecto('nombre', e.target.value)} style={{padding:'8px'}} placeholder="Nombre..." /> </div> <div className="grupo-input"><label>Metodología:</label><select value={proyectoActual.metodologia} onChange={e=>actualizarDatoProyecto('metodologia', e.target.value)} style={{padding:10}}> {Object.keys(METODOLOGIAS).map(k=><option key={k} value={k}>{METODOLOGIAS[k].nombre}</option>)} </select></div> </div> <PlaneacionApartados value={safeParse(proyectoActual.apartados, {})} onChange={(key, value) => actualizarDatoProyecto('apartados', {...safeParse(proyectoActual.apartados, {}), [key]: value})} /> <div className="seccion-plan" style={{marginTop:20, borderLeft:`6px solid ${METODOLOGIAS[proyectoActual.metodologia].borde}`}}> <h4>Fases ({METODOLOGIAS[proyectoActual.metodologia].nombre})</h4> {METODOLOGIAS[proyectoActual.metodologia].fases.map((fase, i) => ( <div key={i} className="momento" style={{flexDirection:'column', marginBottom:15}}> <span className="label-momento" style={{fontSize:'0.9rem'}}>{fase}</span> <textarea style={{width:"100%", minHeight:80}} value={(safeParse(proyectoActual.fases_contenido, {}))[i] || ""} onChange={e => actualizarFaseProyecto(i, e.target.value)} placeholder="Desarrollo..." /> </div> ))} </div> <div className="pdas-print-view" style={{display:'none'}}> <h4 style={{marginTop:20, textTransform:'uppercase', borderBottom:'1px solid black'}}>Vinculación de Aprendizajes (PDAs)</h4> <ul style={{listStyle:'none', padding:0}}> {pdasSeleccionadosParaImprimir.length === 0 && <li>Sin aprendizajes vinculados.</li>} {pdasSeleccionadosParaImprimir.map(p => ( <li key={p.id} style={{marginBottom:10, fontSize:'11pt', fontFamily:'Times New Roman'}}> <b>• {p.proyecto_sugerido}:</b> {p.descripcion} </li> ))} </ul> </div> <div className="seccion-plan no-print" style={{marginTop:20, background:'rgba(0,0,0,0.03)'}}> <h4>Vincular PDAs</h4> <input placeholder="Buscar tema..." value={busquedaPda} onChange={e=>setBusquedaPda(e.target.value)} style={{width:'100%', padding:8, marginBottom:10}}/> <div style={{maxHeight:150, overflowY:'auto'}}> {pdasFiltrados.length === 0 && <p style={{fontStyle:'italic', color:'#999'}}>No hay PDAs.</p>} {pdasFiltrados.map(p=>( <div key={p.id} style={{display:'flex', gap:5, marginBottom:5}}> <input type="checkbox" checked={(Array.isArray(proyectoActual.pdas_seleccionados) ? proyectoActual.pdas_seleccionados : []).includes(p.id)} onChange={()=>togglePdaProyecto(p.id)} /> <span><b>{p.proyecto_sugerido}</b>: {p.descripcion}</span> </div> ))} </div> </div> <button className="btn-guardar botones-edicion" onClick={guardarProyecto} style={{marginTop:20, width:'100%', padding:15}}>💾 GUARDAR</button> </div> ) : ( <div className="grid-proyectos-scroll" style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:20, alignContent:'start'}}> {listaProyectos.map(p => { const estilo = METODOLOGIAS[p.metodologia] || {color:'#fff', borde:'#ccc'}; const isVisto = (vistos.proyecto || []).includes(String(p.id)); return ( <div key={p.id} className="tarjeta-proyecto" onClick={() => editarProyectoSafe(p)} style={{ cursor:'pointer', borderLeft:`8px solid ${estilo.borde}`, background: estilo.color, padding: 15, borderRadius: 8, height: '140px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', opacity: isVisto ? 0.6 : 1, transition: 'opacity 0.3s' }}> <div> <h3 style={{margin:'0 0 5px 0', fontSize:'1.1rem', color:'#333'}}>{p.nombre}</h3> <span style={{fontSize:'0.8rem', background:'rgba(255,255,255,0.6)', padding:'2px 6px', borderRadius:4, fontWeight:'bold', color:estilo.borde}}> {estilo.nombre} {p.es_sugerido && '⭐'} </span> </div> <div style={{alignSelf: 'flex-end', marginTop: 10}}><button className="no-print" onClick={(e)=>{e.stopPropagation(); toggleVisto('proyecto', p.id)}} style={{padding: '5px 10px', fontSize: '0.8rem', cursor: 'pointer', background: isVisto ? '#2ecc71' : 'rgba(255,255,255,0.8)', color: isVisto ? 'white' : '#333', border: 'none', borderRadius: 5, fontWeight:'bold'}}> {isVisto ? '✅ Terminado' : 'Marcar Terminado'} </button></div> </div> ); })} </div> )} </div>
       );
     }
 
-    if(vista === 'PLANNER') { 
-      const isVisto = (vistos.plan || []).includes(String(semanaPlan)); const datosExportacionSemana = { tipo: 'Planeación semanal', nombre: `Semana ${semanaPlan}`, datos: { grado, temporalidad: obtenerFechasSemana(semanaPlan) }, apartados: safeParse(planData.apartados, {}), pdas: pdasSemana, dias: ['lunes','martes','miercoles','jueves','viernes'].map(label => ({ label: label.toUpperCase(), inicio: planData[`${label}_inicio`], desarrollo: planData[`${label}_desarrollo`], cierre: planData[`${label}_cierre`] })), extras: { recursos: planData.recursos, evaluacion: planData.evaluacion, adecuaciones: planData.adecuaciones } }; 
+    if(vista === 'PLANNER') {
+      const isVisto = (vistos.plan || []).includes(String(semanaPlan)); const datosExportacionSemana = { tipo: 'Planeación semanal', nombre: `Semana ${semanaPlan}`, datos: { grado, temporalidad: obtenerFechasSemana(semanaPlan) }, apartados: safeParse(planData.apartados, {}), pdas: pdasSemana, dias: ['lunes','martes','miercoles','jueves','viernes'].map(label => ({ label: label.toUpperCase(), inicio: planData[`${label}_inicio`], desarrollo: planData[`${label}_desarrollo`], cierre: planData[`${label}_cierre`] })), extras: { recursos: planData.recursos, evaluacion: planData.evaluacion, adecuaciones: planData.adecuaciones } };
 
-      return ( 
-        <div className="pantalla-dosificador"> 
-          <div className="header-dosificador no-print">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />} 
-            <div style={{display:'flex', gap:10, alignItems:'center'}}><h2>Planeación</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #0984E3', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select><select value={semanaPlan} onChange={e=>setSemanaPlan(Number(e.target.value))}>{SEMANAS_CLASE.map(s=><option key={s.id} value={s.id}>Sem {s.id} ({obtenerFechasSemana(s.id)})</option>)}</select></div> 
+      return (
+        <div className="pantalla-dosificador">
+          <div className="header-dosificador no-print">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />}
+            <div style={{display:'flex', gap:10, alignItems:'center'}}><h2>Planeación</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #0984E3', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select><select value={semanaPlan} onChange={e=>setSemanaPlan(Number(e.target.value))}>{SEMANAS_CLASE.map(s=><option key={s.id} value={s.id}>Sem {s.id} ({obtenerFechasSemana(s.id)})</option>)}</select></div>
             <div>
               <button onClick={()=>toggleVisto('plan', semanaPlan)} style={{padding: '10px 15px', fontWeight:'bold', cursor: 'pointer', background: isVisto ? '#2ecc71' : '#bdc3c7', color: 'white', border: 'none', borderRadius: 5, marginRight: 10}} className="no-print"> {isVisto ? '✅ Completada' : 'Marcar Completada'} </button>
               <button className="btn-guardar" onClick={savePlan}>💾 Guardar</button>
               <button className="btn-volver" onClick={()=>exportarPlanoWord(datosExportacionSemana)}>Word</button><button className="btn-volver" onClick={()=>exportarPlanoPdf(datosExportacionSemana)}>PDF</button>
               <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button>
-            </div> 
-          </div> 
-          
+            </div>
+          </div>
+
           <div className="hoja-planeacion" style={{opacity: isVisto ? 0.8 : 1, position: 'relative'}}>
+<PlaneacionApartados value={safeParse(planData.apartados, {})} onChange={(key, value) => setPlanData(prev => ({...prev, apartados: {...safeParse(prev.apartados, {}), [key]: value}}))} />
             {/* Encabezado Oficial SEP solo visible al imprimir */}
             <div className="print-header-oficial" style={{display: 'none'}}>
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #004aad', paddingBottom: '10px', marginBottom: '15px'}}>
@@ -1145,17 +1148,17 @@ function App() {
                   <div><b>Grado:</b> {grado}º Primaria | <b>Semana:</b> Sem {semanaPlan} ({obtenerFechasSemana(semanaPlan)})</div>
                 </div>
               </div>
-            </div> 
-            <div className="seccion-plan" style={{marginBottom:20}}> 
-              <h3>🎯 Aprendizajes (PDA)</h3> 
-              {pdasSemana.length === 0 ? <p style={{color:'#999'}}>Sin contenido.</p> : <ul>{pdasSemana.map((p,i)=><li key={i}><b>{p.proyecto}</b>: {p.pda}</li>)}</ul>} 
-            </div> 
-            
+            </div>
+            <div className="seccion-plan" style={{marginBottom:20}}>
+              <h3>🎯 Aprendizajes (PDA)</h3>
+              {pdasSemana.length === 0 ? <p style={{color:'#999'}}>Sin contenido.</p> : <ul>{pdasSemana.map((p,i)=><li key={i}><b>{p.proyecto}</b>: {p.pda}</li>)}</ul>}
+            </div>
+
             <div className="grid-semanal">
               {['lunes','martes','miercoles','jueves','viernes'].map(d=>(
                 <div key={d} className="dia-plan">
                   <div className="titulo-dia">{d.toUpperCase()}</div>
-                  
+
                   {/* Vista en Pantalla (Campos editables) */}
                   <div className="no-print" style={{display:'flex', flexDirection:'column', gap:5}}>
                     <textarea placeholder="Inicio" style={{minHeight:70, width:'100%', padding:5}} value={planData[`${d}_inicio`] || ''} onChange={e=>setPlanData({...planData,[`${d}_inicio`]:e.target.value})} />
@@ -1187,9 +1190,9 @@ function App() {
 
                 </div>
               ))}
-            </div> 
-            
-            <details open className="seccion-plan no-print" style={{marginTop:20}}><summary style={{cursor:'pointer',fontWeight:'bold',fontSize:'1.1rem'}}>Apartados del plano didáctico</summary><div className="grid-dos">{FORMULARIO_PROYECTO.map(campo=><div className="grupo-input" key={campo.key}><label>{campo.label}</label><textarea value={safeParse(planData.apartados,{})[campo.key] || ''} onChange={e=>setPlanData({...planData,apartados:{...safeParse(planData.apartados,{}),[campo.key]:e.target.value}})} style={{width:'100%',minHeight:campo.multiline?90:48}} /></div>)}</div></details> <div className="footer-plan">
+            </div>
+
+             <div className="footer-plan">
               <div className="caja-footer">
                 <h4>Recursos</h4>
                 <textarea className="no-print" value={planData.recursos || ''} onChange={e=>setPlanData({...planData,recursos:e.target.value})}/>
@@ -1219,10 +1222,10 @@ function App() {
                   <div style={{fontSize: '8.5pt', color: '#555'}}>Director(a) de la Escuela</div>
                 </div>
               </div>
-            </div> 
-          </div> 
-        </div> 
-      ); 
+            </div>
+          </div>
+        </div>
+      );
     }
 
     if(vista === 'GRUPO') {
@@ -1238,25 +1241,25 @@ function App() {
     }
 
     if(vista === 'COMISIONES') {
-      return ( 
-        <div className="pantalla-dosificador"> 
-          <div className="header-dosificador">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />} 
-            <h2>🔔 Comisiones</h2> 
-            <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button> 
-          </div> 
-          <div className="config-grid"> 
-            <div className="columna-gestion"> 
-              <h3>Nueva</h3> 
-              <input value={nuevaComision.descripcion} onChange={e=>setNuevaComision({...nuevaComision, descripcion:e.target.value})} placeholder="Descripción"/> 
-              <input type="date" value={nuevaComision.fecha} onChange={e=>setNuevaComision({...nuevaComision, fecha:e.target.value})}/> 
-              <button className="btn-guardar" onClick={()=>{ipcRenderer.invoke('add-comision', nuevaComision).then(()=>{ipcRenderer.invoke('get-comisiones').then(setComisiones); alert('Agregada')})}}>Guardar</button> 
-            </div> 
-            <div className="columna-gestion"> 
-              <h3>Lista</h3> 
-              {comisiones.map(c=><div key={c.id}><b>{c.fecha}</b>: {c.descripcion}</div>)} 
-            </div> 
-          </div> 
-        </div> 
+      return (
+        <div className="pantalla-dosificador">
+          <div className="header-dosificador">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />}
+            <h2>🔔 Comisiones</h2>
+            <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button>
+          </div>
+          <div className="config-grid">
+            <div className="columna-gestion">
+              <h3>Nueva</h3>
+              <input value={nuevaComision.descripcion} onChange={e=>setNuevaComision({...nuevaComision, descripcion:e.target.value})} placeholder="Descripción"/>
+              <input type="date" value={nuevaComision.fecha} onChange={e=>setNuevaComision({...nuevaComision, fecha:e.target.value})}/>
+              <button className="btn-guardar" onClick={()=>{ipcRenderer.invoke('add-comision', nuevaComision).then(()=>{ipcRenderer.invoke('get-comisiones').then(setComisiones); alert('Agregada')})}}>Guardar</button>
+            </div>
+            <div className="columna-gestion">
+              <h3>Lista</h3>
+              {comisiones.map(c=><div key={c.id}><b>{c.fecha}</b>: {c.descripcion}</div>)}
+            </div>
+          </div>
+        </div>
       );
     }
 
@@ -1320,8 +1323,8 @@ function App() {
         <div className="pantalla-dosificador">
           <div className="header-dosificador">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />}
             <div>
-              <button onClick={()=>mesCal===1?(setMesCal(12),setAnioCal(anioCal-1)):setMesCal(mesCal-1)}>◀</button> 
-              <h2 style={{color:'black'}}>{NOMBRES_MESES[mesCal]} {anioCal}</h2> 
+              <button onClick={()=>mesCal===1?(setMesCal(12),setAnioCal(anioCal-1)):setMesCal(mesCal-1)}>◀</button>
+              <h2 style={{color:'black'}}>{NOMBRES_MESES[mesCal]} {anioCal}</h2>
               <button onClick={()=>mesCal===12?(setMesCal(1),setAnioCal(anioCal+1)):setMesCal(mesCal+1)}>▶</button>
             </div>
             <div>
@@ -1355,7 +1358,8 @@ function App() {
   return (
     <div className="elara-app-root">
       {renderVistaContent()}
-      
+      <LegalInfo />
+
       {/* COMPONENTES DE INTERFAZ ELARA GLOBALES */}
 
       {/* BANNER DE ACTUALIZACIÓN AUTOMÁTICA */}
