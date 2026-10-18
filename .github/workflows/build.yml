@@ -241,59 +241,34 @@ jobs:
           fi
 
       - name: Verify both native architectures
-
         shell: bash
-
         env:
-
           PRODUCT_NAME: ${{ needs.prepare.outputs.name }}
-
           MAC_SIGNED: ${{ steps.mac.outputs.signed }}
-
         run: |
-
           set -euo pipefail
-
           APP="release/mac-universal/$PRODUCT_NAME.app"
-
           lipo "$APP/Contents/MacOS/$PRODUCT_NAME" -verify_arch x86_64 arm64
-
           RESOURCES="$APP/Contents/Resources"
-
+          verify_archive() {
+            local archive="$1"
+            node -e 'const asar=require("@electron/asar");const files=asar.listPackage(process.argv[1]);for(const file of ["electron/qrAssignments.js","electron/evaluationQr.js","electron/studentRecord.js"]){if(!files.includes(file))throw new Error("Missing "+file+" in "+process.argv[1]);}' "$archive"
+          }
           if [ -d "$RESOURCES/app-x64" ] && [ -d "$RESOURCES/app-arm64" ]; then
-
-            test -f "$RESOURCES/app.asar"
-
-            lipo "$RESOURCES/app-x64/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch x86_64
-
-            lipo "$RESOURCES/app-arm64/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch arm64
-
-            test -f "$RESOURCES/app-x64/electron/qrAssignments.js"
-
-            test -f "$RESOURCES/app-x64/electron/evaluationQr.js"
-
-            test -f "$RESOURCES/app-x64/electron/studentRecord.js"
-
-            test -f "$RESOURCES/app-arm64/electron/qrAssignments.js"
-
-            test -f "$RESOURCES/app-arm64/electron/evaluationQr.js"
-
-            test -f "$RESOURCES/app-arm64/electron/studentRecord.js"
-
+            for arch in x64 arm64; do
+              archive="$RESOURCES/app-$arch/app.asar"
+              test -f "$archive"
+              verify_archive "$archive"
+              lipo "$RESOURCES/app-$arch/app.asar.unpacked/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch "$arch"
+            done
           else
-
-            test -f "$RESOURCES/app/electron/qrAssignments.js"
-
-            test -f "$RESOURCES/app/electron/studentRecord.js"
-
-            lipo "$RESOURCES/app/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch x86_64 arm64
-
+            archive="$RESOURCES/app.asar"
+            test -f "$archive"
+            verify_archive "$archive"
+            lipo "$RESOURCES/app.asar.unpacked/node_modules/sqlite3/build/Release/node_sqlite3.node" -verify_arch x86_64 arm64
           fi
-
           if [ "$MAC_SIGNED" = 'true' ]; then
-
             codesign --verify --deep --strict "$APP"
-
           fi
 
       - run: node scripts/verify-release.cjs release mac
