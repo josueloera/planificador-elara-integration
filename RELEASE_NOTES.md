@@ -145,3 +145,7 @@ Para activar la actualización automática, vincula los criterios una vez desde 
 - Publicación estable con archivos de actualización y comprobación de integridad.
 
 Las bases de datos existentes de los docentes se conservan.
+
+## v1.0.21
+- Publica los datos del responsable, domicilio y canal para solicitudes de privacidad en las cuatro ediciones.
+- Actualiza el aviso de privacidad, almacenamiento local, uso opcional de IA y lÃ­mites de la protecciÃ³n del cÃ³digo.
