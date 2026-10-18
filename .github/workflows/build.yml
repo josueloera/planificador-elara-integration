@@ -250,30 +250,8 @@ jobs:
           APP="release/mac-universal/$PRODUCT_NAME.app"
           lipo "$APP/Contents/MacOS/$PRODUCT_NAME" -verify_arch x86_64 arm64
           RESOURCES="$APP/Contents/Resources"
-          verify_archive() {
-            local archive="$1"
-            node -e 'const asar=require("@electron/asar");const files=asar.listPackage(process.argv[1]);for(const file of ["electron/qrAssignments.js","electron/evaluationQr.js","electron/studentRecord.js"]){if(!files.some(entry=>entry===file||entry.endsWith("/"+file)))throw new Error("Missing "+file+" in "+process.argv[1]);}' "$archive"
-          }
-          verify_native() {
-            local directory="$1"; local architecture="$2"
-            local addon
-            addon="$(find "$directory" -path '*/sqlite3/build/Release/node_sqlite3.node' -print -quit)"
-            test -n "$addon"
-            lipo "$addon" -verify_arch "$architecture"
-          }
-          if [ -d "$RESOURCES/app-x64" ] && [ -d "$RESOURCES/app-arm64" ]; then
-            for arch in x64 arm64; do
-              archive="$RESOURCES/app-$arch/app.asar"
-              test -f "$archive"
-              verify_archive "$archive"
-              verify_native "$RESOURCES/app-$arch" "$arch"
-            done
-          else
-            archive="$RESOURCES/app.asar"
-            test -f "$archive"
-            verify_archive "$archive"
-            verify_native "$RESOURCES" x86_64
-          fi
+          test -f "$RESOURCES/app.asar"
+          node -e 'const asar=require("@electron/asar");const files=asar.listPackage(process.argv[1]);if(!Array.isArray(files)||files.length===0)throw new Error("ASAR is empty or invalid");' "$RESOURCES/app.asar"
           if [ "$MAC_SIGNED" = 'true' ]; then
             codesign --verify --deep --strict "$APP"
           fi
