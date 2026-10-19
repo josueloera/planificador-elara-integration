@@ -122,7 +122,7 @@ jobs:
 
       - name: Verify daily QR evaluation
 
-        run: npm run test:daily && node --test scripts/test-task-categories.cjs scripts/test-backups.cjs scripts/test-document-pdf-controller.cjs scripts/test-mobile-pairing.cjs scripts/test-planeaciones.cjs scripts/test-trial-policy.cjs
+        run: node scripts/test-seguimiento-docente.mjs && npm run test:daily && node --test scripts/test-task-categories.cjs scripts/test-backups.cjs scripts/test-document-pdf-controller.cjs scripts/test-mobile-pairing.cjs scripts/test-planeaciones.cjs scripts/test-trial-policy.cjs
 
       - name: Verify student profiles and records
 
@@ -194,7 +194,7 @@ jobs:
 
       - name: Verify daily QR evaluation
 
-        run: npm run test:daily && node --test scripts/test-task-categories.cjs scripts/test-backups.cjs scripts/test-document-pdf-controller.cjs scripts/test-mobile-pairing.cjs scripts/test-planeaciones.cjs scripts/test-trial-policy.cjs
+        run: node scripts/test-seguimiento-docente.mjs && npm run test:daily && node --test scripts/test-task-categories.cjs scripts/test-backups.cjs scripts/test-document-pdf-controller.cjs scripts/test-mobile-pairing.cjs scripts/test-planeaciones.cjs scripts/test-trial-policy.cjs
 
       - name: Verify student profiles and records
 

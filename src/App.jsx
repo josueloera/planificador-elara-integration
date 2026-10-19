@@ -1,3 +1,7 @@
+import { contextoDocente, claveDocente, leerDocumento } from './seguimientoDocente';
+import { ObservacionesDia, ObservacionesTrimestre } from './components/ObservacionesDia';
+import DosificadorEditable from './components/DosificadorEditable';
+import ProgramaAnalitico from './components/ProgramaAnalitico';
 import LegalInfo from './components/LegalInfo';
 import PlaneacionApartados from './components/PlaneacionApartados';
 import ExportDocument from './components/ExportDocument';
@@ -378,6 +382,7 @@ function App() {
                 }
             }
             setPdasSemana(pdasSemanaAct.length > 0 ? pdasSemanaAct : [{ proyecto: "Repaso", pda: "Periodo de fortalecimiento de aprendizajes." }]);
+            leerDocumento(ipcRenderer, claveDocente('dosificador', contextoDocente('primaria', grupoActual, grado, configCiclo)), null).then(saved => { if (saved) setPdasSemana(saved.find(s => Number(s.id) === Number(semanaPlan))?.pdas || []); }).catch(console.error);
         }
       });
     }
@@ -619,15 +624,18 @@ function App() {
   };
 
   // ================= SWITCH PRINCIPAL DE VISTAS (React Router alternativo) =================
+  const contextoTrabajo = contextoDocente('primaria', grupoActual, grado, configCiclo);
   const renderVistaContent = () => {
     if (vista === 'GRUPOS') {
       setVista('MENU');
       return null;
     }
 
+    if (vista === 'ANALITICO') return <ProgramaAnalitico key={contextoTrabajo} ipc={ipcRenderer} contexto={contextoTrabajo} variante='primaria' grupo={grupoActual} grado={grado} ciclo={configCiclo} onVolver={()=>setVista('MENU')} />;
     if (vista === 'ALUMNO') return <Alumno ipcRenderer={ipcRenderer} variante='primaria' configCiclo={configCiclo} grupoActual={grupoActual} onVolver={()=>setVista('MENU')} />;
     if(vista === 'MENU') {
       const menuItems = [
+        { id: 'ANALITICO', icon: '📘', label: 'Programa analítico', desc: 'Diagnóstico, PDA y codiseño', color: '#4338ca', action: ()=>setVista('ANALITICO') },
         { id: 'ALUMNO', icon: '👤', label: 'ALUMNO', desc: 'Perfil, calificaciones y expediente', color: '#147768', action: ()=>setVista('ALUMNO') },
         { id: 'GRUPO', icon: '👥', label: grupoActual ? `${grupoActual.grado}º${grupoActual.seccion} Primaria` : 'Mi Grupo', desc: `${alumnos.length} alumnos`, color: '#6C5CE7', action: ()=>setVista('GRUPO') },
         { id: 'EVAL', icon: '📝', label: 'Evaluación', desc: 'Calificaciones y seguimiento del ciclo', color: '#00B894', action: ()=>{setVista('EVAL'); cargarEval();} },
@@ -955,7 +963,7 @@ function App() {
                           <tr key={al.id} style={{backgroundColor: getColorSemaforo(prom), borderBottom: '1px solid #f1f5f9'}}>
                             <td style={{textAlign:'center', fontWeight:'bold', color:'#64748b'}}>{index + 1}</td>
                             <td className="celda-nombre" style={{ color: '#0f172a', fontWeight: '800', textTransform: 'uppercase', fontSize: '13px', background: '#ffffff', borderRight: '2px solid #cbd5e1' }}>
-                              {al.nombre}
+                              {al.nombre} <ObservacionesDia key={JSON.stringify([contextoTrabajo,al.id,fechaEval,campoActual])} ipc={ipcRenderer} contexto={contextoTrabajo} alumno={al} fecha={fechaEval} campo={campoActual} />
                             </td>
                             {(criterios || []).map(c=>(
                               <td key={c.frontId} style={{ textAlign: 'center' }}>
@@ -1064,7 +1072,7 @@ function App() {
               </tbody>
             </table>
           </div>
-        </div>
+        <ObservacionesTrimestre key={contextoTrabajo} ipc={ipcRenderer} contexto={contextoTrabajo} alumnos={resumen || []} periodo={configCiclo.periodos[trimestre]} /></div>
       );
     }
 
@@ -1075,31 +1083,7 @@ function App() {
           <div style={{display:'flex', gap:15, alignItems:'center'}}><h2>Dosificador Anual</h2><select value={grado} onChange={e => { const g = Number(e.target.value); setGrado(g); localStorage.setItem('grado', g); setGrupoActual(prev => ({ ...(prev||{}), grado: g })); }} style={{fontSize:'1.1rem', padding:'5px 10px', borderRadius:5, border:'2px solid #FDCB6E', fontWeight:'bold', background:'white', cursor:'pointer'}}><option value={1}>1º Primaria</option><option value={2}>2º Primaria</option><option value={3}>3º Primaria</option><option value={4}>4º Primaria</option><option value={5}>5º Primaria</option><option value={6}>6º Primaria</option></select></div>
           <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button>
         </div>
-        <div className="tabla-semanal">
-          {planDosif.map(s => {
-            const isVisto = (vistos.dosif || []).includes(String(s.id));
-            return (
-              <div key={s.id} className="fila-semana" style={{opacity: isVisto ? 0.6 : 1, transition: 'opacity 0.3s'}}>
-                <div className="info-semana" style={{display:'flex', flexDirection:'column', alignItems:'flex-start'}}>
-                  <strong>Sem {s.id}</strong><br/>
-                  <small style={{fontSize:'0.75rem', color:'#eee'}}>{s.fechas}</small>
-                  <button className="no-print" onClick={()=>toggleVisto('dosif', s.id)} style={{marginTop: 5, padding: '2px 5px', fontSize: '0.7rem', cursor: 'pointer', background: isVisto ? '#2ecc71' : 'rgba(255,255,255,0.3)', color: 'white', border: '1px solid white', borderRadius: 3}}>
-                    {isVisto ? '✅ Vista' : 'Marcar vista'}
-                  </button>
-                </div>
-                <div className="contenido-semana">
-                  {(s.pdas||[]).length === 0 ? <span style={{opacity:0.5, fontStyle:'italic'}}>Sin contenido</span> : (s.pdas||[]).map((p, i) => (
-                    <div key={i} className="chip-pda" style={{backgroundColor: p.nota ? '#fff3cd' : '#e3f2fd', color: '#333'}}>
-                      <strong>{p.proyecto}</strong><br/>
-                      <small>{p.pda}</small>
-                    </div>
-                  )) }
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+        <DosificadorEditable key={contextoTrabajo} ipc={ipcRenderer} contexto={contextoTrabajo} plan={planDosif} vistos={vistos} toggleVisto={toggleVisto} /></div>
       );
     }
 
@@ -1358,7 +1342,8 @@ function App() {
   return (
     <div className="elara-app-root">
       {renderVistaContent()}
-      <LegalInfo />
+      {vista === 'MENU' && <LegalInfo />}
+      
 
       {/* COMPONENTES DE INTERFAZ ELARA GLOBALES */}
 
