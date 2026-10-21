@@ -106,7 +106,7 @@ export default function Alumno({ ipcRenderer, variante = 'primaria', configCiclo
   function imprimir(){if(editado){setError('Guarda los cambios del perfil antes de imprimir.');return;}window.print();}
   function volver(){if(ocupado)return;if(!editado || window.confirm('Hay cambios sin guardar. ¿Salir sin guardarlos?'))onVolver();}
   return <main className={`alumno-screen alumno-${variante}`}>
-    <header className="alumno-header no-print"><div><p className="alumno-eyebrow">PLANIFICADOR DOCENTE</p><h1>ALUMNO</h1><p>Perfil, calificaciones y expediente escolar</p></div><button onClick={volver} disabled={ocupado}>← Menú principal</button></header>
+    <header className="alumno-header no-print"><div><p className="alumno-eyebrow">ELARA</p><h1>ALUMNO</h1><p>Perfil, calificaciones y expediente escolar</p></div><button onClick={volver} disabled={ocupado}>← Menú principal</button></header>
     <div className="alumno-layout no-print">
       <aside className="alumno-search" aria-label="Buscar alumno"><h2>Buscar alumno</h2><label htmlFor="alumno-search">Nombre del alumno</label><input id="alumno-search" type="search" placeholder="Escribe un nombre o apellido…" value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
         {variante==='secundaria' && <><label htmlFor="alumno-grade">Grado</label><select id="alumno-grade" value={grado} onChange={e=>setGrado(e.target.value)}><option value="">Todos los grados</option>{grados.map(g=><option key={g} value={g}>{g}º de secundaria</option>)}</select></>}

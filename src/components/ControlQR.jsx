@@ -1858,7 +1858,7 @@ export default function ControlQR({
                 <ol style={{ margin: '6px 0 0 0', paddingLeft: '16px', lineHeight: '1.4' }}>
                   <li>Asegúrate de que la computadora y el celular estén en el <strong>mismo Wi-Fi</strong>.</li>
                   <li>Si cambiaste de red, abre el escáner de la app e ingresa la IP: <strong style={{ background: '#fbd38d', padding: '1px 5px', borderRadius: '3px' }}>{localIp}</strong> y puerto: <strong style={{ background: '#fbd38d', padding: '1px 5px', borderRadius: '3px' }}>{wsPort}</strong>.</li>
-                  <li>Si el firewall bloquea la conexión, permite Planificador Docente en redes privadas de Windows o en el firewall de macOS.</li>
+                  <li>Si el firewall bloquea la conexión, permite Elara en redes privadas de Windows o en el firewall de macOS.</li>
                 </ol>
               </div>
             </div>

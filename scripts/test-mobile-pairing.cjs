@@ -18,6 +18,7 @@ for (const platform of ['win32', 'darwin']) {
       maximize() {} show() {} focus() {} isDestroyed() { return false; }
     }
     const context = vm.createContext({
+      path, __dirname: path.join(root, 'electron'),
       process: { platform }, BrowserWindow: Window, WebSocketServer: Server,
       console: { log() {}, error() {} }, setTimeout: fn => timers.push(fn),
       setInterval: () => 1, clearInterval() {},

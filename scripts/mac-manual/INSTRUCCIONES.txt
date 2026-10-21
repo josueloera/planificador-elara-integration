@@ -1,9 +1,9 @@
-PLANIFICADOR PRIMARIA 1.0.16 - INSTALACION MANUAL PARA MAC
+ELARA 1.0.25 - INSTALACIÓN ASISTIDA PARA MAC
 
 1. Abre el DMG.
 2. Abre Terminal (Aplicaciones > Utilidades).
 3. Escribe bash seguido de un espacio, arrastra Instalar Planificador.command desde el DMG a Terminal y pulsa Enter.
 
-El asistente comprueba la firma local, instala en tu carpeta de usuario Applications y abre el Planificador. Quita la cuarentena solo de la copia instalada; no desactiva Gatekeeper. Si existe una version en esa carpeta, la conserva como respaldo. No modifica bases de datos ni licencia.
+El asistente comprueba la firma local, instala Elara en Applications dentro de tu carpeta de usuario y abre la aplicación. Conserva como respaldo una instalación anterior de Elara en esa carpeta. Las instalaciones con el nombre Planificador se conservan; utiliza el nuevo icono de Elara. Los datos y la licencia mantienen su ubicación anterior.
 
-La firma es local (ad hoc), no una certificacion de Apple. Este paquete es para instalacion manual; la actualizacion automatica de las versiones sin Developer ID tiene un fallo conocido y no debe considerarse validada.
+La firma local no es una certificación de Apple. Este paquete requiere instalación manual y no desactiva Gatekeeper.

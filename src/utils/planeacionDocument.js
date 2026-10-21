@@ -1,4 +1,4 @@
-import { exportHtmlPdf } from './documentExport';
+import { exportHtmlPdf } from './documentExport.js';
 const escapeHtml = value => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')

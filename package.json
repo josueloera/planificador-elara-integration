@@ -1,7 +1,7 @@
 {
   "name": "planificador-docente-elara-integration",
   "private": true,
-  "version": "1.0.23",
+  "version": "1.0.25",
   "description": "Herramienta de Gestión Docente NEM - Integración ELARA",
   "author": "Josue Loera",
   "main": "electron/main.js",
@@ -16,11 +16,12 @@
     "electron": "electron .",
     "dist": "vite build && electron-builder",
     "dist:mac": "vite build && electron-builder --mac --universal",
-    "test:backup": "node --test scripts/test-backups.cjs"
+    "test:backup": "node --test scripts/test-backups.cjs",
+    "test:elara": "node --test scripts/test-elara.mjs scripts/test-google-service.cjs"
   },
   "build": {
     "appId": "com.josue.planificador.elara",
-    "productName": "Planificador Docente ELARA Integration",
+    "productName": "Elara Primaria",
     "npmRebuild": false,
     "asar": true,
     "directories": {
@@ -49,7 +50,8 @@
     ],
     "win": {
       "target": "nsis",
-      "artifactName": "Planificador-Docente-Primaria-Setup-${version}-${arch}.${ext}"
+      "artifactName": "Planificador-Docente-Primaria-Setup-${version}-${arch}.${ext}",
+      "icon": "resources/elara.ico"
     },
     "mac": {
       "target": [
@@ -67,7 +69,8 @@
         }
       ],
       "category": "public.app-category.education",
-      "artifactName": "Planificador-Docente-Primaria-${version}-${arch}.${ext}"
+      "artifactName": "Planificador-Docente-Primaria-${version}-${arch}.${ext}",
+      "icon": "resources/elara.icns"
     },
     "publish": [
       {

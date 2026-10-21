@@ -1,3 +1,7 @@
+import GoogleSync from './components/GoogleSync';
+import CTE from './components/CTE';
+import Specialists from './components/Specialists';
+import LanTransfer from './components/LanTransfer';
 import { contextoDocente, claveDocente, leerDocumento } from './seguimientoDocente';
 import { ObservacionesDia, ObservacionesTrimestre } from './components/ObservacionesDia';
 import DosificadorEditable from './components/DosificadorEditable';
@@ -631,10 +635,16 @@ function App() {
       return null;
     }
 
+    if (vista === 'CTE') return <CTE key={contextoTrabajo} ipc={ipcRenderer} edition='primaria' group={grupoActual} cycle={configCiclo} onBack={()=>setVista('MENU')} />;
+    if (vista === 'LAN') return <LanTransfer ipc={ipcRenderer} onBack={()=>setVista('MENU')} />;
+    if (vista === 'SPECIALISTS') return <Specialists key={contextoTrabajo} ipc={ipcRenderer} group={grupoActual} cycle={configCiclo} onBack={()=>setVista('EVAL')} />;
     if (vista === 'ANALITICO') return <ProgramaAnalitico key={contextoTrabajo} ipc={ipcRenderer} contexto={contextoTrabajo} variante='primaria' grupo={grupoActual} grado={grado} ciclo={configCiclo} onVolver={()=>setVista('MENU')} />;
     if (vista === 'ALUMNO') return <Alumno ipcRenderer={ipcRenderer} variante='primaria' configCiclo={configCiclo} grupoActual={grupoActual} onVolver={()=>setVista('MENU')} />;
     if(vista === 'MENU') {
       const menuItems = [
+        {id:'CTE',icon:'📒',label:'Consejo Técnico Escolar',desc:'Sesiones, acuerdos y evidencias',color:'#3655a2',action:()=>setVista('CTE')},
+        {id:'LAN',icon:'🔗',label:'Conectar dispositivos',desc:'Transferir base de datos por wifi',color:'#147768',action:()=>setVista('LAN')},
+        {id:'SPECIALISTS',icon:'📝',label:'Docentes especialistas',desc:'Formularios y evaluaciones',color:'#6544ad',action:()=>setVista('SPECIALISTS')},
         { id: 'ANALITICO', icon: '📘', label: 'Programa analítico', desc: 'Diagnóstico, PDA y codiseño', color: '#4338ca', action: ()=>setVista('ANALITICO') },
         { id: 'ALUMNO', icon: '👤', label: 'ALUMNO', desc: 'Perfil, calificaciones y expediente', color: '#147768', action: ()=>setVista('ALUMNO') },
         { id: 'GRUPO', icon: '👥', label: grupoActual ? `${grupoActual.grado}º${grupoActual.seccion} Primaria` : 'Mi Grupo', desc: `${alumnos.length} alumnos`, color: '#6C5CE7', action: ()=>setVista('GRUPO') },
@@ -655,8 +665,8 @@ function App() {
         <div className="pantalla-menu">
           <div className="menu-header-zone">
             <div className="menu-header-glow"></div>
-            <h1 className="titulo-principal">PLANIFICADOR DOCENTE</h1>
-            <p className="menu-subtitle">Ciclo Escolar 2026 - 2027 (INTEGRACIÓN ELARA)</p>
+            <img src="./elara-icon.png" alt="Elara" style={{width:100,height:100,borderRadius:22}} /><h1 className="titulo-principal">ELARA</h1>
+            <p className="menu-subtitle">Ciclo Escolar 2026 - 2027 </p>
             {licenciaInfo && (
               <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px', marginTop: '10px'}}>
                 {licenciaInfo.isActivated ? (
@@ -763,7 +773,7 @@ function App() {
       const sumaPorcentajes = (criterios || []).reduce((acc, c) => acc + (parseFloat(c.porcentaje) || 0), 0);
 
       return (
-      <div className="pantalla-dosificador android-evaluation-screen" style={{ height: 'var(--app-height, 100dvh)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div className="pantalla-dosificador android-evaluation-screen" style={{ height: 'var(--app-height, 100dvh)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}><button className='no-print' onClick={()=>setVista('SPECIALISTS')}>Evaluación de docentes especialistas</button>
           {toast && (
               <div style={{position:'fixed', top:20, left:'50%', transform:'translateX(-50%)', background:'#34495e', color:'white', padding:'10px 20px', borderRadius:20, zIndex:9999, fontWeight:'bold', boxShadow:'0 4px 10px rgba(0,0,0,0.2)'}}>
                   {toast}
@@ -1341,7 +1351,7 @@ function App() {
 
   return (
     <div className="elara-app-root">
-      {renderVistaContent()}
+      <GoogleSync ipc={ipcRenderer} />{renderVistaContent()}
       {vista === 'MENU' && <LegalInfo />}
       
 

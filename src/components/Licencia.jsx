@@ -66,7 +66,7 @@ const Licencia = ({ onActivated, onVolver }) => {
             <p style={{color: '#e74c3c', fontWeight: 'bold'}}>Tu periodo de prueba ha expirado.</p>
         ) : (
             <p style={{ color: '#7f8c8d', marginBottom: '30px' }}>
-              Para usar el Planificador Docente de forma ilimitada, adquiere una licencia permanente.
+              Para usar el Elara de forma ilimitada, adquiere una licencia permanente.
             </p>
         )}
 
@@ -97,7 +97,7 @@ const Licencia = ({ onActivated, onVolver }) => {
             Envía este código al desarrollador para recibir tu Clave de Activación.
           </p>
           <a 
-            href={`https://wa.me/526271073044?text=${encodeURIComponent('Hola, me interesa adquirir la licencia del Planificador Docente. Mi código de instalación es: ' + (status?.installationCode || ''))}`}
+            href={`https://wa.me/526271073044?text=${encodeURIComponent('Hola, me interesa adquirir la licencia del Elara. Mi código de instalación es: ' + (status?.installationCode || ''))}`}
             target="_blank"
             rel="noopener noreferrer"
             style={{

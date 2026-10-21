@@ -100,6 +100,7 @@ if (app.isPackaged) {
 console.log(`\n📂 BASE DE DATOS DE INTEGRACION ELARA: ${dbPath}`);
 const db = new sqlite3.Database(dbPath);
 require('./databaseBackup.cjs').registerBackupHandlers({ db, dbPath, sqlite3, ipcMain, dialog: require('electron').dialog, BrowserWindow, app, edition: 'primaria', version: app.getVersion() });
+require('./elaraDesktop.cjs').registerElara({db,dbPath,sqlite3,ipcMain,app,edition:'primaria',version:app.getVersion()});
 
 // --- 1.B GESTIÓN DE LA BASE DE DATOS UNIVERSAL (SEP) ---
 let universalDbPath;
@@ -207,7 +208,8 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: "Planificador Docente",
+    title: "Elara",
+    icon: path.join(__dirname, "../dist/elara-icon.png"),
     show: true,
     backgroundColor: '#ffffff',
     webPreferences: {
@@ -469,6 +471,7 @@ const { transaction: evaluationTransaction, beforeQrMutation } = require('./eval
   ipcMain, db, variant: 'primaria', onChange: notifyEvaluationChange
 });
 // Un único orden de escritura para QR, criterios y vínculos del ciclo.
+require('./specialists.cjs').registerSpecialists({ipcMain,db,transaction:evaluationTransaction,onChange:notifyEvaluationChange});
 const registerQrMutation = (channel, handler) => ipcMain.handle(channel, async (...args) => {
   const result = await evaluationTransaction(async () => {
     await beforeQrMutation(channel, args);

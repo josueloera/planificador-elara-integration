@@ -1,4 +1,4 @@
-import { badgeImages, badgePdfHtml, badgeDocx } from './badgeExport';
+import { badgeImages, badgePdfHtml, badgeDocx } from './badgeExport.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const filename = name => String(name || 'Documento').replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').slice(0, 120);
 
