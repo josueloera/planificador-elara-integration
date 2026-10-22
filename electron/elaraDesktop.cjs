@@ -21,12 +21,12 @@ function registerElara(options){
  ipcMain.handle('elara-lan-request',(_,host,route,body)=>{if(!/^\/(hello|pair|transfer|status\/[a-f0-9-]+)$/.test(route))throw Error('Ruta inválida.');return lan.request(host,route,body);});
  ipcMain.handle('elara-lan-export',guarded(async()=>{const file=temporary();try{await backup.snapshot(options,file);if((await fs.stat(file)).size>32*1024*1024)throw Error('Este respaldo supera 32 MB. Exporta el archivo y transfiérelo por USB.');return {data:(await fs.readFile(file)).toString('base64'),edition,version,protocol:1};}finally{await fs.unlink(file).catch(()=>{});}}));
  ipcMain.handle('elara-lan-preview',guarded(async(_,payload)=>{
-  if(payload.version!==version||payload.edition!==edition||payload.protocol!==1||typeof payload.data!=='string'||payload.data.length>45*1024*1024)throw Error('Respaldo incompatible.');
+  if(payload.edition!==edition||payload.protocol!==1||typeof payload.data!=='string'||payload.data.length>45*1024*1024)throw Error('Respaldo incompatible.');
   const file=temporary();try{
    await fs.writeFile(file,Buffer.from(payload.data,'base64'));await backup.validateBackup(sqlite3,file,edition);
    const candidate=await new Promise((ok,no)=>{const d=new sqlite3.Database(file,sqlite3.OPEN_READONLY,e=>e?no(e):ok(d));});
-   let groups,students,meta;try{groups=await all(candidate,'SELECT id,grado,seccion,escuela,ciclo_escolar FROM grupos_maestro');students=(await all(candidate,'SELECT count(*) AS total FROM alumnos'))[0].total;meta=await all(candidate,'SELECT app_version FROM planificador_backup_meta');}finally{await close(candidate);}
-   if(meta.length!==1||meta[0].app_version!==version)throw Error('La base de datos pertenece a otra versión.');
+   let groups,students,meta;try{groups=await all(candidate,'SELECT id,grado,seccion,escuela,ciclo_escolar FROM grupos_maestro');students=(await all(candidate,'SELECT count(*) AS total FROM alumnos'))[0].total;meta=await all(candidate,'SELECT format,edition FROM planificador_backup_meta');}finally{await close(candidate);}
+   if(meta.length!==1||meta[0].format!==1||meta[0].edition!==edition)throw Error('El respaldo no usa un formato compatible con esta edicion.');
    if(pending)await fs.unlink(pending.file).catch(()=>{});pending={file,token:crypto.randomUUID()};return {token:pending.token,groups,students,bytes:(await fs.stat(file)).size};
   }catch(e){await fs.unlink(file).catch(()=>{});throw e;}
  }));

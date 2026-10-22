@@ -1,4 +1,4 @@
-export const RELEASE = '1.0.27';
+export const RELEASE = '1.0.31';
 export function cteKey(edition, group, cycle) {
   const school=String(group?.escuela_id || group?.escuela || cycle?.cct || cycle?.nombreEscuela || '').trim();
   if (!school) throw Error('Asigna una escuela al grupo antes de abrir CTE.');

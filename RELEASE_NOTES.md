@@ -1,10 +1,7 @@
-# Elara 1.0.30
+# Elara 1.0.31
 
-Corrección del error que impedía abrir la guía de conexión de Google Forms y ver el código del servicio.
+- Wi-Fi: permite transferir respaldos entre versiones distintas de la misma edicion cuando el protocolo y el formato son compatibles.
+- Primaria: se quita el acceso a Docentes especialistas y se conservan los datos existentes.
+- Primaria: mantiene grado, seccion y escuela del grupo al cambiar de menu.
 
-# Elara 1.0.29
-
-- Google Forms: el paso de instalación muestra el código completo y explica que copiarlo no lo pega automáticamente en Google Apps Script.
-- El botón de copia abre el código en pantalla y confirma el siguiente paso; si el portapapeles no está disponible, el usuario puede seleccionarlo manualmente.
-
-Windows y macOS: actualiza desde Elara o instala sobre la versión anterior. Android: conserva los datos y requiere un APK firmado con la llave original.
+Windows y macOS: actualiza desde Elara o instala sobre la version anterior. Android: requiere un APK firmado con la llave original para actualizar sin perder los datos.

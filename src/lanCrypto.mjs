@@ -9,4 +9,4 @@ export async function deriveKey(code,salt){
 }
 export async function seal(key,value){const iv=crypto.getRandomValues(new Uint8Array(12));const data=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(JSON.stringify(value)));return {iv:base64(iv),data:base64(new Uint8Array(data))};}
 export async function unseal(key,packet){try{return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:bytes(packet.iv)},key,bytes(packet.data))));}catch{throw Error('Código incorrecto o transferencia dañada.');}}
-export function compatible(local,remote){if(remote.protocol!==1||remote.version!==local.version||remote.edition!==local.edition)throw Error('Ambos dispositivos deben tener la misma versión y edición de Elara.');}
+export function compatible(local,remote){if(remote.protocol!==1||remote.edition!==local.edition)throw Error('Ambos dispositivos deben tener la misma versión y edición de Elara.');}

@@ -1,7 +1,6 @@
 import SortableMenu from './components/SortableMenu';
 import GoogleSync from './components/GoogleSync';
 const CTE = lazy(() => import('./components/CTE'));
-const Specialists = lazy(() => import('./components/Specialists'));
 const LanTransfer = lazy(() => import('./components/LanTransfer'));
 import { contextoDocente, claveDocente, leerDocumento } from './seguimientoDocente';
 const ObservacionesDia = lazy(() => import('./components/ObservacionesDia').then(m => ({default:m.ObservacionesDia})));
@@ -274,12 +273,20 @@ function App() {
         const currentG = savedGrado ? Number(savedGrado) : 1;
         setGrado(currentG);
         if (res && res.length > 0) {
-          setGrupoActual({ ...res[0], grado: currentG, seccion: '' });
+          const grupoGuardado = res[0];
+          const gradoGuardado = Number(grupoGuardado.grado) || currentG;
+          setGrado(gradoGuardado);
+          setGrupoActual({ ...grupoGuardado, grado: gradoGuardado });
         } else {
           const defaultGrupo = { grado: currentG, seccion: '', disciplina_id: 1, tipo: 'Primaria', ciclo_escolar: '2026-2027' };
           ipcRenderer.invoke('add-grupo', defaultGrupo).then(() => {
             ipcRenderer.invoke('get-grupos').then(newRes => {
-              if (newRes && newRes.length > 0) setGrupoActual({ ...newRes[0], grado: currentG, seccion: '' });
+              if (newRes && newRes.length > 0) {
+                const grupoCreado = newRes[0];
+                const gradoCreado = Number(grupoCreado.grado) || currentG;
+                setGrado(gradoCreado);
+                setGrupoActual({ ...grupoCreado, grado: gradoCreado });
+              }
             });
           });
         }
@@ -635,14 +642,12 @@ function App() {
 
     if (vista === 'CTE') return <CTE key={contextoTrabajo} ipc={ipcRenderer} edition='primaria' group={grupoActual} cycle={configCiclo} onBack={()=>setVista('MENU')} />;
     if (vista === 'LAN') return <LanTransfer ipc={ipcRenderer} onBack={()=>setVista('MENU')} />;
-    if (vista === 'SPECIALISTS') return <Specialists key={contextoTrabajo} ipc={ipcRenderer} group={grupoActual} cycle={configCiclo} onBack={()=>setVista('EVAL')} />;
     if (vista === 'ANALITICO') return <ProgramaAnalitico key={contextoTrabajo} ipc={ipcRenderer} contexto={contextoTrabajo} variante='primaria' grupo={grupoActual} grado={grado} ciclo={configCiclo} onVolver={()=>setVista('MENU')} />;
     if (vista === 'ALUMNO') return <Alumno ipcRenderer={ipcRenderer} variante='primaria' configCiclo={configCiclo} grupoActual={grupoActual} onVolver={()=>setVista('MENU')} />;
     if(vista === 'MENU') {
       const menuItems = [
         {id:'CTE',icon:'📒',label:'Consejo Técnico Escolar',desc:'Sesiones, acuerdos y evidencias',color:'#3655a2',action:()=>setVista('CTE')},
         {id:'LAN',icon:'🔗',label:'Conectar dispositivos',desc:'Transferir base de datos por wifi',color:'#147768',action:()=>setVista('LAN')},
-        {id:'SPECIALISTS',icon:'📝',label:'Docentes especialistas',desc:'Formularios y evaluaciones',color:'#6544ad',action:()=>setVista('SPECIALISTS')},
         { id: 'ANALITICO', icon: '📘', label: 'Programa analítico', desc: 'Diagnóstico, PDA y codiseño', color: '#4338ca', action: ()=>setVista('ANALITICO') },
         { id: 'ALUMNO', icon: '👤', label: 'ALUMNO', desc: 'Perfil, calificaciones y expediente', color: '#147768', action: ()=>setVista('ALUMNO') },
         { id: 'GRUPO', icon: '👥', label: grupoActual ? `${grupoActual.grado}º${grupoActual.seccion} Primaria` : 'Mi Grupo', desc: `${alumnos.length} alumnos`, color: '#6C5CE7', action: ()=>setVista('GRUPO') },
@@ -706,7 +711,7 @@ function App() {
                     const g = Number(e.target.value);
                     setGrado(g);
                     localStorage.setItem('grado', g);
-                    setGrupoActual(prev => ({ ...(prev||{}), grado: g, seccion: '' }));
+                    setGrupoActual(prev => ({ ...(prev||{}), grado: g }));
                   }}
                   style={{fontSize: '1.1rem', padding: '6px 15px', borderRadius: '20px', border: 'none', fontWeight: 'bold', background: 'white', color: '#2c3e50', cursor: 'pointer', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.2)'}}
                 >
@@ -759,7 +764,7 @@ function App() {
       const sumaPorcentajes = (criterios || []).reduce((acc, c) => acc + (parseFloat(c.porcentaje) || 0), 0);
 
       return (
-      <div className="pantalla-dosificador android-evaluation-screen" style={{ height: 'var(--app-height, 100dvh)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}><button className='no-print' onClick={()=>setVista('SPECIALISTS')}>Evaluación de docentes especialistas</button>
+      <div className="pantalla-dosificador android-evaluation-screen" style={{ height: 'var(--app-height, 100dvh)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {toast && (
               <div style={{position:'fixed', top:20, left:'50%', transform:'translateX(-50%)', background:'#34495e', color:'white', padding:'10px 20px', borderRadius:20, zIndex:9999, fontWeight:'bold', boxShadow:'0 4px 10px rgba(0,0,0,0.2)'}}>
                   {toast}
