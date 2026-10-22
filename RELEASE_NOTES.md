@@ -1,7 +1,10 @@
-# Elara 1.0.26
+# Elara 1.0.27
 
-- Menú principal personalizable: pulsa «Organizar menú» para arrastrar tarjetas con ratón o dedo, o moverlas con las flechas. El orden se guarda en este dispositivo y se puede restablecer.
-- Guía desplegable «¿Cómo vincular Google Forms?» con siete pasos, enlaces directos a Google Apps Script y sus servicios, y botones para copiar o descargar el código y la configuración.
-- Ayuda junto a la URL y la clave privada para identificar dónde obtenerlas. La conexión usa la cuenta propia del docente y sigue requiriendo la configuración inicial de Google.
+- CTE reconoce la escuela y el CCT configurados cuando un grupo no trae esos datos en su registro.
+- Ajustes conserva y vuelve a cargar docente, escuela, CCT, fecha inicial y periodos; guardar muestra el resultado sin bloquear la escritura.
+- Transferencia Wi-Fi admite respaldos de hasta 32 MB y da más tiempo a redes lentas; muestra cuándo prepara y envía la base.
+- Google Forms se configura en cinco pasos. El script usa los servicios nativos de Apps Script y ya no requiere proyecto de Cloud ni activar API.
+- Menú: control compacto arriba a la derecha, fuera del flujo de las tarjetas.
+- La pantalla inicial carga el módulo QR cuando se abre para reducir la descarga inicial.
 
-Windows: actualiza mediante el instalador o el actualizador. Android: instala sobre la versión anterior, sin desinstalar. macOS: usa la instalación manual o el DMG asistido; no se promete actualización automática sin firma de Apple.
+Windows y macOS: usa el actualizador o instalador de tu edición. Android: instala sobre la versión anterior sin desinstalarla.

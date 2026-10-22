@@ -22,17 +22,9 @@ function doPost(e) {
    const form=FormApp.create('Elara · '+a.subject+' · '+a.school+' · '+a.groupLabel);
    if(!form.supportsAdvancedResponderPermissions())throw Error('Esta cuenta no permite restringir los destinatarios del formulario.');
    form.setPublished(false);
-   // Remove broad responder permissions before adding any student names.
-   const permissions=Drive.Permissions.list(form.getId(),{includePermissionsForView:'published',fields:'permissions(id,type,role,view)'}).permissions||[];
-   permissions.filter(p=>p.view==='published'&&['anyone','domain','group'].includes(p.type)).forEach(p=>Drive.Permissions.remove(form.getId(),p.id));
    form.addPublishedReader(a.email);
    form.setDescription('Periodo: '+a.start+' al '+a.end+'. Especialista: '+a.email+'. Captura calificaciones de 0 a 10; deja sin respuesta los pendientes. Solo se incorporarán respuestas del correo asignado.');
    form.setCollectEmail(true);form.setAllowResponseEdits(true);form.setPublishingSummary(false);
-   const settings=UrlFetchApp.fetch('https://forms.googleapis.com/v1/forms/'+encodeURIComponent(form.getId())+':batchUpdate',{
-    method:'post',contentType:'application/json',headers:{Authorization:'Bearer '+ScriptApp.getOAuthToken()},
-    payload:JSON.stringify({requests:[{updateSettings:{settings:{emailCollectionType:'VERIFIED'},updateMask:'emailCollectionType'}}]}),muteHttpExceptions:true
-   });
-   if(settings.getResponseCode()!==200)throw Error('No se pudo verificar el correo del formulario. Habilita Google Forms API en tu proyecto de Google Cloud y vuelve a autorizar los permisos del archivo appsscript.json.');
    const items={};
    a.students.forEach(s=>{
     const grade=form.addTextItem().setTitle(s.name+' · Calificación').setRequired(false);

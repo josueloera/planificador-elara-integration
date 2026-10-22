@@ -1,8 +1,8 @@
 const http=require('node:http'),os=require('node:os'),crypto=require('node:crypto'),dgram=require('node:dgram');
-const MULTICAST='239.255.42.99',DISCOVERY=45825,LIMIT=48*1024*1024;
+const MULTICAST='239.255.42.99',DISCOVERY=45825,LIMIT=64*1024*1024;
 const localIPv4=ip=>/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip)||ip==='127.0.0.1';
 function address(value){const u=new URL('http://'+value);if(!localIPv4(u.hostname)||!/^\d+$/.test(u.port)||Number(u.port)>65535||u.username||u.password||u.pathname!=='/'||u.search||u.hash)throw Error('Usa la dirección IP local y puerto mostrados por el receptor.');return u;}
-function request(host,route,body){const u=address(host),encoded=body?Buffer.from(JSON.stringify(body)):null;return new Promise((ok,no)=>{const req=http.request({hostname:u.hostname,port:u.port,path:route,method:body?'POST':'GET',timeout:30000,headers:{'content-type':'application/json','content-length':encoded?.length||0}},res=>{let size=0,chunks=[];res.on('data',b=>{size+=b.length;if(size>LIMIT){res.destroy();no(Error('Transferencia demasiado grande.'));}else chunks.push(b);});res.on('end',()=>{try{const r=JSON.parse(Buffer.concat(chunks));if(res.statusCode!==200)throw Error(r.error||'Conexión rechazada.');ok(r);}catch(e){no(e);}});});req.on('timeout',()=>req.destroy(Error('El dispositivo no respondió.')));req.on('error',no);if(encoded)req.write(encoded);req.end();});}
+function request(host,route,body){const u=address(host),encoded=body?Buffer.from(JSON.stringify(body)):null;return new Promise((ok,no)=>{const req=http.request({hostname:u.hostname,port:u.port,path:route,method:body?'POST':'GET',timeout:120000,headers:{'content-type':'application/json','content-length':encoded?.length||0}},res=>{let size=0,chunks=[];res.on('data',b=>{size+=b.length;if(size>LIMIT){res.destroy();no(Error('Transferencia demasiado grande.'));}else chunks.push(b);});res.on('end',()=>{try{const r=JSON.parse(Buffer.concat(chunks));if(res.statusCode!==200)throw Error(r.error||'Conexión rechazada.');ok(r);}catch(e){no(e);}});});req.on('timeout',()=>req.destroy(Error('El dispositivo no respondió.')));req.on('error',no);if(encoded)req.write(encoded);req.end();});}
 function createReceiver(meta){
  let state={phase:'waiting'},server,udp,timer;const expires=Date.now()+5*60*1000,session=crypto.randomUUID();let attempts=0,activeRequest=false;
  const hello={...meta,protocol:1,session,expires,name:os.hostname()};
@@ -23,7 +23,7 @@ function createReceiver(meta){
     if(req.url==='/pair'){state={phase:'pairing',ticket:crypto.randomUUID(),packet:body};reply(200,{ticket:state.ticket});}
     else{if(state.phase!=='accepted'||body.ticket!==state.ticket)throw Error('Conexión no autorizada.');if(!body.packet?.iv||typeof body.packet?.data!=='string')throw Error('Contenido inválido.');state={...state,phase:'received',packet:body.packet};reply(200,{ok:true});}
    }catch(e){reply(400,{error:e.message});}finally{activeRequest=false;}
-  });server.requestTimeout=30000;server.headersTimeout=10000;server.on('error',no);server.listen(0,'0.0.0.0',()=>{
+  });server.requestTimeout=120000;server.headersTimeout=10000;server.on('error',no);server.listen(0,'0.0.0.0',()=>{
    const port=server.address().port,ips=Object.values(os.networkInterfaces()).flat().filter(n=>n.family==='IPv4'&&!n.internal&&localIPv4(n.address)).map(n=>n.address);
    udp=dgram.createSocket('udp4');udp.on('error',()=>{});const announce=()=>{if(Date.now()>expires){stop();return;}const payload=Buffer.from(JSON.stringify({elara:1,name:hello.name,port,edition:meta.edition,version:meta.version}));udp.send(payload,DISCOVERY,MULTICAST,()=>{});};timer=setInterval(announce,2000);announce();ok({...hello,addresses:ips.map(ip=>ip+':'+port),port});
   });

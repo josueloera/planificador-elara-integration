@@ -1,6 +1,6 @@
-export const RELEASE = '1.0.25';
+export const RELEASE = '1.0.27';
 export function cteKey(edition, group, cycle) {
-  const school=String(group?.escuela_id ?? group?.escuela ?? '').trim();
+  const school=String(group?.escuela_id || group?.escuela || cycle?.cct || cycle?.nombreEscuela || '').trim();
   if (!school) throw Error('Asigna una escuela al grupo antes de abrir CTE.');
   return 'elara:cte:v1:'+JSON.stringify([edition,school,String(group.ciclo_escolar || cycle.fechaInicioStr)]);
 }

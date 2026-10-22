@@ -19,9 +19,9 @@ function registerElara(options){
  ipcMain.handle('elara-lan-reject',()=>{receiver?.reject();return true;});
  ipcMain.handle('elara-lan-discover',()=>lan.discover());
  ipcMain.handle('elara-lan-request',(_,host,route,body)=>{if(!/^\/(hello|pair|transfer|status\/[a-f0-9-]+)$/.test(route))throw Error('Ruta inválida.');return lan.request(host,route,body);});
- ipcMain.handle('elara-lan-export',guarded(async()=>{const file=temporary();try{await backup.snapshot(options,file);if((await fs.stat(file)).size>24*1024*1024)throw Error('Este respaldo supera 24 MB. Utiliza la exportación a archivo.');return {data:(await fs.readFile(file)).toString('base64'),edition,version,protocol:1};}finally{await fs.unlink(file).catch(()=>{});}}));
+ ipcMain.handle('elara-lan-export',guarded(async()=>{const file=temporary();try{await backup.snapshot(options,file);if((await fs.stat(file)).size>32*1024*1024)throw Error('Este respaldo supera 32 MB. Exporta el archivo y transfiérelo por USB.');return {data:(await fs.readFile(file)).toString('base64'),edition,version,protocol:1};}finally{await fs.unlink(file).catch(()=>{});}}));
  ipcMain.handle('elara-lan-preview',guarded(async(_,payload)=>{
-  if(payload.version!==version||payload.edition!==edition||payload.protocol!==1||typeof payload.data!=='string'||payload.data.length>34*1024*1024)throw Error('Respaldo incompatible.');
+  if(payload.version!==version||payload.edition!==edition||payload.protocol!==1||typeof payload.data!=='string'||payload.data.length>45*1024*1024)throw Error('Respaldo incompatible.');
   const file=temporary();try{
    await fs.writeFile(file,Buffer.from(payload.data,'base64'));await backup.validateBackup(sqlite3,file,edition);
    const candidate=await new Promise((ok,no)=>{const d=new sqlite3.Database(file,sqlite3.OPEN_READONLY,e=>e?no(e):ok(d));});

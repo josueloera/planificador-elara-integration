@@ -8,6 +8,9 @@ test('CTE shares a school across groups and isolates schools, editions and cycle
  const a={id:1,escuela:'Escuela Á',ciclo_escolar:'2026-2027'},cycle={fechaInicioStr:'2026-08-31'};
  assert.equal(cteKey('primaria',a,cycle),cteKey('primaria',{...a,id:2},cycle));
  for(const [edition,g] of [['secundaria',a],['primaria',{...a,escuela:'Escuela B'}],['primaria',{...a,ciclo_escolar:'2027-2028'}]])assert.notEqual(cteKey('primaria',a,cycle),cteKey(edition,g,cycle));
+ const savedSchool={fechaInicioStr:'2026-08-31',nombreEscuela:'Escuela de Ajustes',cct:'15EPR0123X'};
+ assert.doesNotThrow(()=>cteKey('primaria',{id:4,escuela:''},savedSchool));
+ assert.equal(cteKey('primaria',{id:4,escuela:''},savedSchool),cteKey('primaria',{id:8},savedSchool));
  assert.throws(()=>cteKey('primaria',{},cycle),/escuela/);const sessions=newSessions();assert.equal(sessions.length,13);assert.equal(sessions.filter(s=>s.type==='Extraordinaria').length,5);assert.equal(sessions.filter(s=>s.type==='Ordinaria').length,8);
 });
 test('Specialist records preserve pending grades and handle corrections idempotently',()=>{

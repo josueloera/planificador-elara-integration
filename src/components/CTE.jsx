@@ -7,6 +7,7 @@ const fields={place:'Lugar',participants:'Participantes',purpose:'Propósito',ag
 export default function CTE({ipc,edition,group,cycle,onBack}){
  const [data,setData]=useState(null),[selected,setSelected]=useState(1),[filter,setFilter]=useState('actual'),[dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
  let key;try{key=cteKey(edition,group,cycle);}catch{}
+ const school=group?.escuela||cycle?.nombreEscuela||cycle?.cct||'';
  useEffect(()=>{let live=true;setData(null);if(!key){setError('Asigna una escuela al grupo para registrar sus sesiones.');return;}Promise.all([leerDocumento(ipc,key,null),ipc.invoke('get-eventos-oficiales')]).then(([saved,events])=>{if(live)setData(saved||{sessions:newSessions(events,cycle.fechaInicioStr),logo:''});}).catch(e=>setError(e.message));return()=>{live=false;};},[key]);
  useEffect(()=>{const handler=e=>{if(dirty){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',handler);return()=>window.removeEventListener('beforeunload',handler);},[dirty]);
  const edit=(name,value)=>{setData(d=>({...d,sessions:d.sessions.map(s=>s.id===selected?{...s,[name]:value}:s)}));setDirty(true);setMessage('');};

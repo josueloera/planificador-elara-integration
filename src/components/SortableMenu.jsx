@@ -67,12 +67,12 @@ export default function SortableMenu({ items, edition }) {
   };
 
   return <>
-    <div className="menu-order-toolbar">
+    <div className={`menu-order-toolbar${editing ? ' is-editing' : ''}`}>
       <button type="button" aria-expanded={editing} aria-controls="sortable-menu-grid" onClick={() => { cancelDrag(); setEditing(!editing); }}>
         {editing ? 'Terminar de organizar' : 'Organizar menú'}
       </button>
       {editing && <button type="button" onClick={() => save(items.map(item => item.id), 'Orden original restaurado.')}>Restablecer orden original</button>}
-      <p>{editing ? 'Arrastra desde «Mover» con el ratón o el dedo y suelta sobre otra tarjeta. También puedes usar las flechas.' : 'Coloca primero las herramientas que más utilizas.'}</p>
+      {editing && <p>Arrastra desde «Mover» o usa las flechas.</p>}
       <p className="menu-order-status" role="status">{message}</p>
       {error && <p role="alert">{error}</p>}
     </div>
