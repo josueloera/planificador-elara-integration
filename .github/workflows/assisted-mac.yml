@@ -118,6 +118,12 @@ jobs:
             const fs = require('node:fs');
             const installer = 'Planificador-Primaria-' + process.env.RELEASE_TAG.replace(/^v/, '') + '-instalacion-asistida-universal.dmg';
             const release = (await github.rest.repos.getReleaseByTag({ ...context.repo, tag: process.env.RELEASE_TAG })).data;
-            if (release.assets.some(asset => asset.name === installer)) throw new Error('Assisted Mac installer already exists in this release.');
             const file = 'manual-installer/' + installer;
-            await github.rest.repos.uploadReleaseAsset({ ...context.repo, release_id: release.id, name: installer, data: fs.readFileSync(file), headers: { 'content-type': 'application/x-apple-diskimage', 'content-length': fs.statSync(file).size } });
+            const size = fs.statSync(file).size;
+            const sha256 = fs.readFileSync('manual-installer/SHA256.txt', 'utf8').trim().split(/\s+/)[0];
+            const existing = release.assets.find(asset => asset.name === installer);
+            if (existing) {
+              if (existing.size !== size || (existing.digest && existing.digest !== 'sha256:' + sha256)) throw new Error('Existing Assisted Mac installer has a different checksum.');
+            } else {
+              await github.rest.repos.uploadReleaseAsset({ ...context.repo, release_id: release.id, name: installer, data: fs.readFileSync(file), headers: { 'content-type': 'application/x-apple-diskimage', 'content-length': size } });
+            }
