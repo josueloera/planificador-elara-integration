@@ -92,10 +92,16 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag || 'v1.0.25' }}
         run: |
           mkdir -p manual-installer
+          pkill -f 'unpacked/Elara Primaria.app/Contents/MacOS/' || true
+          sleep 2
           ln -s /Applications unpacked/Applications
           codesign --verify --deep --strict 'unpacked/Elara Primaria.app'
           VERSION="${RELEASE_TAG#v}"
-          hdiutil create -volname 'Planificador Primaria' -srcfolder unpacked -ov -format UDZO "manual-installer/Planificador-Primaria-${VERSION}-instalacion-asistida-universal.dmg"
+          for attempt in 1 2 3; do
+            if hdiutil create -volname 'Planificador Primaria' -srcfolder unpacked -ov -format UDZO "manual-installer/Planificador-Primaria-${VERSION}-instalacion-asistida-universal.dmg"; then break; fi
+            if [ "$attempt" = 3 ]; then exit 1; fi
+            sleep 5
+          done
           shasum -a 256 manual-installer/*.dmg > manual-installer/SHA256.txt
       - uses: actions/upload-artifact@v4
         if: success() && matrix.signing == 'adhoc' && matrix.runner == 'macos-14'
