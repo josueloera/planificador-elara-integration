@@ -1,3 +1,4 @@
+import SortableMenu from './components/SortableMenu';
 import GoogleSync from './components/GoogleSync';
 import CTE from './components/CTE';
 import Specialists from './components/Specialists';
@@ -723,15 +724,7 @@ function App() {
             </div>
           </div>
 
-          <div className="grid-menu">
-              {menuItems.map((item, idx) => (
-                  <button key={item.id} className="boton-menu" onClick={item.action} style={{'--card-color': item.color, '--delay': `${idx * 0.06}s`}}>
-                      <span className="menu-icon">{item.icon}</span>
-                      <span className="menu-label">{item.label}</span>
-                      <span className="menu-desc">{item.desc}</span>
-                  </button>
-              ))}
-          </div>
+          <SortableMenu items={menuItems} edition="primaria" />
       </div>
       );
     }

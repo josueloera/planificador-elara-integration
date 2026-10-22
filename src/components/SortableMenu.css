@@ -1,0 +1,13 @@
+.menu-order-toolbar{position:relative;z-index:2;width:90%;max-width:900px;margin:0 auto 20px;color:#fff;text-align:center}
+.menu-order-toolbar button,.menu-order-controls button{font:inherit;font-weight:600;color:#fff;background:#45416f;border:1px solid #aaa6cf;border-radius:10px;padding:10px 14px;min-height:44px;cursor:pointer}
+.menu-order-toolbar button{margin:4px}.menu-order-toolbar p{margin:8px 0;font-size:.95rem;line-height:1.5;color:#e0dff0}.menu-order-status:empty{display:none}.menu-order-toolbar [role=alert]{color:#ffe1b0}
+.menu-order-card{position:relative;min-width:0;border-radius:20px;display:flex;flex-direction:column}
+.sortable-menu .boton-menu{width:100%;height:100%;min-width:0;overflow-wrap:anywhere}
+.sortable-menu.is-editing .boton-menu{animation:none;transform:none;cursor:default;border-radius:20px 20px 0 0}
+.menu-order-controls{display:flex;justify-content:center;flex-wrap:wrap;gap:6px;padding:10px;background:rgba(255,255,255,.12);border-radius:0 0 20px 20px}
+.menu-order-controls button{padding:8px 12px}.menu-order-controls button:disabled{opacity:.4;cursor:default}
+.menu-order-controls .menu-drag-handle{touch-action:none;user-select:none;cursor:grab}.menu-order-controls .menu-drag-handle:active{cursor:grabbing}
+.menu-order-card.is-dragging{opacity:.65}.menu-order-card.is-drop-target{outline:3px dashed #d4caff;outline-offset:5px}
+.menu-order-toolbar button:focus-visible,.menu-order-controls button:focus-visible,.sortable-menu .boton-menu:focus-visible{outline:3px solid #fff;outline-offset:3px}
+@media(max-width:600px){.grid-menu.sortable-menu{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.sortable-menu .boton-menu{padding:20px 10px}.menu-order-controls{padding:8px 4px}.menu-order-controls .menu-drag-handle{flex-basis:100%}}
+@media(prefers-reduced-motion:reduce){.sortable-menu .boton-menu{animation:none;transition:none}}
