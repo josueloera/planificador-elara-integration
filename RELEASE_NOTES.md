@@ -1,3 +1,7 @@
+# Elara 1.0.30
+
+Corrección del error que impedía abrir la guía de conexión de Google Forms y ver el código del servicio.
+
 # Elara 1.0.29
 
 - Google Forms: el paso de instalación muestra el código completo y explica que copiarlo no lo pega automáticamente en Google Apps Script.

@@ -4,9 +4,6 @@ import './GoogleSetupGuide.css';
 
 export function GoogleLink({ href, children }) {
   const [error, setError] = useState('');
-  const [code, setCode] = useState('');
-  const [codeOpen, setCodeOpen] = useState(false);
-  const [codeLoading, setCodeLoading] = useState(false);
   return <><a href={href} target="_blank" rel="noopener noreferrer" onClick={event => {
     const shell = window.require?.('electron')?.shell;
     if (shell) {
@@ -20,6 +17,9 @@ export default function GoogleSetupGuide() {
   const [open, setOpen] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
+  const [code, setCode] = useState('');
+  const [codeOpen, setCodeOpen] = useState(false);
+  const [codeLoading, setCodeLoading] = useState(false);
   const panelId = useId();
   const codeId = useId();
 
