@@ -1,4 +1,4 @@
-import React, { StrictMode } from 'react'
+import React, { StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
@@ -42,7 +42,7 @@ class ErrorBoundary extends React.Component {
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      <Suspense fallback={<div style={{minHeight:"100vh",display:"grid",placeItems:"center"}}>Cargando...</div>}><App /></Suspense>
       <ClippyAssistant />
     </ErrorBoundary>
   </StrictMode>,

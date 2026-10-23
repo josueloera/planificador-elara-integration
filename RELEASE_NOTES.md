@@ -1,3 +1,9 @@
+# Elara 1.0.34
+
+- Mantiene una carga segura de las pantallas que se abren desde el menú.
+- Conserva el grado elegido en Primaria al reiniciar.
+- Mantiene el ajuste de visualización de evaluaciones trimestrales.
+
 # Elara 1.0.33
 
 - Conserva el grado elegido en Primaria al reiniciar.
