@@ -1,3 +1,8 @@
+# Elara 1.0.33
+
+- Conserva el grado elegido en Primaria al reiniciar.
+- Incluye el ajuste de visualización de evaluaciones trimestrales de 1.0.32.
+
 # Elara 1.0.32
 
 - Corrige la visualización de las evaluaciones trimestrales cuando la tabla de observaciones contiene muchos registros.

@@ -273,10 +273,10 @@ function App() {
         const currentG = savedGrado ? Number(savedGrado) : 1;
         setGrado(currentG);
         if (res && res.length > 0) {
-          const grupoGuardado = res[0];
-          const gradoGuardado = Number(grupoGuardado.grado) || currentG;
-          setGrado(gradoGuardado);
-          setGrupoActual({ ...grupoGuardado, grado: gradoGuardado });
+          const grupoGuardado = res.find(g => Number(g.grado) === currentG) || res[0];
+          const gradoSeleccionado = currentG;
+          setGrado(gradoSeleccionado);
+          setGrupoActual({ ...grupoGuardado, grado: gradoSeleccionado });
         } else {
           const defaultGrupo = { grado: currentG, seccion: '', disciplina_id: 1, tipo: 'Primaria', ciclo_escolar: '2026-2027' };
           ipcRenderer.invoke('add-grupo', defaultGrupo).then(() => {
