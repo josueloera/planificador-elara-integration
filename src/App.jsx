@@ -1045,7 +1045,7 @@ function App() {
             </div>
           </div>
           <p className="android-quarterly-status" role="status" style={{display: cargandoReporte || errorReporte || resumen.length === 0 ? 'block' : 'none'}}>{cargandoReporte ? 'Cargando alumnos y calificaciones…' : errorReporte || 'No hay alumnos registrados en el grupo seleccionado.'}</p><div className="tabs-trimestres no-print">{[1,2,3].map(id=><button key={id} className={`tab-btn ${trimestre===id?'activo':''}`} onClick={()=>setTrimestre(id)}>{configCiclo.periodos[id].nombre}</button>)}</div>
-          <div className="tabla-container">
+          <div className="tabla-container" style={{flex:'0 0 auto', minHeight:'auto'}}>
             <table className="tabla-eval" style={{maxWidth: '1150px', width: '100%'}}>
               <thead>
                 <tr>
