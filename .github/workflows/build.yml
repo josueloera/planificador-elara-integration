@@ -14,7 +14,7 @@ on:
 
 permissions:
 
-  contents: write
+  contents: read
 
 
 
@@ -30,6 +30,10 @@ jobs:
 
   prepare:
 
+    permissions:
+
+      contents: read
+
     runs-on: ubuntu-latest
 
     outputs:
@@ -42,13 +46,15 @@ jobs:
 
     steps:
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Validate release version
 
         id: metadata
 
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
 
         with:
 
@@ -94,15 +100,21 @@ jobs:
 
   build-windows:
 
+    permissions:
+
+      contents: read
+
     needs: prepare
 
     runs-on: windows-latest
 
     steps:
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
 
         with:
 
@@ -142,7 +154,7 @@ jobs:
 
       - run: node scripts/verify-release.cjs release win
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
 
         with:
 
@@ -162,6 +174,10 @@ jobs:
 
   build-mac:
 
+    permissions:
+
+      contents: read
+
     needs: prepare
 
     runs-on: macos-latest
@@ -172,9 +188,11 @@ jobs:
 
     steps:
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
 
         with:
 
@@ -258,7 +276,7 @@ jobs:
 
       - run: node scripts/verify-release.cjs release mac
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
 
         with:
 
@@ -280,15 +298,25 @@ jobs:
 
   publish:
 
+    permissions:
+
+      contents: write
+
+    environment:
+
+      name: production
+
     needs: [prepare, build-windows, build-mac]
 
     runs-on: ubuntu-latest
 
     steps:
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
 
         with:
 
@@ -300,7 +328,7 @@ jobs:
 
         run: npm ci --ignore-scripts
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
 
         with:
 
@@ -316,7 +344,7 @@ jobs:
 
       - name: Upload to draft and publish complete stable release
 
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
 
         env:
 
