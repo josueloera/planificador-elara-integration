@@ -3,11 +3,6 @@ name: Build and publish stable update
 
 
 on:
-
-  push:
-
-    branches: [main, master]
-
   workflow_dispatch:
 
 
@@ -29,6 +24,8 @@ concurrency:
 jobs:
 
   prepare:
+
+    if: github.ref == 'refs/heads/master'
 
     permissions:
 
