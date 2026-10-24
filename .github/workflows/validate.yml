@@ -1,0 +1,65 @@
+name: ELARA Primaria - CI sin publicación
+
+on:
+  push:
+    branches:
+      - 'ci-validation/**'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-primaria-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Primaria en ${{ matrix.os }} (sin release)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Verify Primaria version and appId
+        run: node -e 'const fs=require("node:fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));const l=JSON.parse(fs.readFileSync("package-lock.json","utf8"));if(!/^\d+\.\d+\.\d+$/.test(p.version)||p.version!==l.version||p.version!==l.packages[""].version)throw new Error("Version/package-lock mismatch");if(p.build.appId!=="com.josue.planificador.elara")throw new Error("Unexpected Primaria appId");console.log(p.version,p.build.appId)'
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify incident records
+        run: node --test scripts/test-incidencias.cjs
+
+      - name: Verify individualized QR assignments
+        run: npm run test:qr
+
+      - name: Verify ELARA and Google service
+        run: npm run test:elara
+
+      - name: Verify teacher follow-up
+        run: node scripts/test-seguimiento-docente.mjs
+
+      - name: Verify daily evaluation
+        run: npm run test:daily
+
+      - name: Verify categories, backups, documents, pairing, planning and trial policy
+        run: node --test scripts/test-task-categories.cjs scripts/test-backups.cjs scripts/test-document-pdf-controller.cjs scripts/test-mobile-pairing.cjs scripts/test-planeaciones.cjs scripts/test-trial-policy.cjs
+
+      - name: Verify student profiles and release seed sanitization
+        run: npm run test:alumno
+
+      - name: Build frontend only (no app package or installer)
+        run: npm run build
