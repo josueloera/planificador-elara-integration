@@ -1,0 +1,88 @@
+name: ELARA Primaria - CI sin publicación
+
+on:
+  push:
+    branches:
+      - 'ci-validation/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-primaria-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Primaria en ${{ matrix.os }} (sin release)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - name: Clone validation branch without SQLite blobs
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          branch="${REF#refs/heads/}"
+          case "$branch" in
+            ci-validation/*) ;;
+            *) echo "Ref outside validation namespace" >&2; exit 1 ;;
+          esac
+          if [ -n "$(find . -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+            echo "Runner workspace is not empty" >&2
+            exit 1
+          fi
+          git clone --filter=blob:none --depth=1 --no-checkout --single-branch --branch "$branch" "https://github.com/${REPOSITORY}.git" .
+          git config core.sparseCheckout true
+          git config core.sparseCheckoutCone false
+          printf '/*\n!*.db\n!*.sqlite\n!*.sqlite3\n' > .git/info/sparse-checkout
+          git checkout --detach HEAD
+          if find . -path './.git' -prune -o -type f \( -iname '*.db' -o -iname '*.sqlite' -o -iname '*.sqlite3' \) -print -quit | grep -q .; then
+            echo "SQLite file unexpectedly present in worktree" >&2
+            exit 1
+          fi
+          if [ "$(git config --get remote.origin.partialclonefilter)" != "blob:none" ]; then
+            echo "Partial clone filter is missing" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Verify Primaria version and appId
+        run: node -e 'const fs=require("node:fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));const l=JSON.parse(fs.readFileSync("package-lock.json","utf8"));if(!/^\d+\.\d+\.\d+$/.test(p.version)||p.version!==l.version||p.version!==l.packages[""].version)throw new Error("Version/package-lock mismatch");if(p.build.appId!=="com.josue.planificador.elara")throw new Error("Unexpected Primaria appId");console.log(p.version,p.build.appId)'
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify incident records
+        run: node --test scripts/test-incidencias.cjs
+
+      - name: Verify individualized QR assignments
+        run: npm run test:qr
+
+      - name: Verify ELARA and Google service
+        run: npm run test:elara
+
+      - name: Verify teacher follow-up
+        run: node scripts/test-seguimiento-docente.mjs
+
+      - name: Verify daily evaluation
+        run: npm run test:daily
+
+      - name: Verify categories, backups, documents, pairing, planning and trial policy
+        run: node --test scripts/test-task-categories.cjs scripts/test-backups.cjs scripts/test-document-pdf-controller.cjs scripts/test-mobile-pairing.cjs scripts/test-planeaciones.cjs scripts/test-trial-policy.cjs
+
+      - name: Verify student profiles with synthetic fixtures
+        run: npm run test:alumno
+
+      - name: Build frontend only (no app package or installer)
+        run: npm run build
