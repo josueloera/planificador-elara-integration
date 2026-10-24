@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - 'ci-validation/**'
-  pull_request:
-    branches: [main, master]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,15 +22,35 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-          sparse-checkout: |
-            /*
-            !*.db
-            !*.sqlite
-            !*.sqlite3
-          sparse-checkout-cone-mode: false
+      - name: Clone validation branch without SQLite blobs
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          branch="${REF#refs/heads/}"
+          case "$branch" in
+            ci-validation/*) ;;
+            *) echo "Ref outside validation namespace" >&2; exit 1 ;;
+          esac
+          if [ -n "$(find . -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+            echo "Runner workspace is not empty" >&2
+            exit 1
+          fi
+          git clone --filter=blob:none --depth=1 --no-checkout --single-branch --branch "$branch" "https://github.com/${REPOSITORY}.git" .
+          git config core.sparseCheckout true
+          git config core.sparseCheckoutCone false
+          printf '/*\n!*.db\n!*.sqlite\n!*.sqlite3\n' > .git/info/sparse-checkout
+          git checkout --detach HEAD
+          if find . -path './.git' -prune -o -type f \( -iname '*.db' -o -iname '*.sqlite' -o -iname '*.sqlite3' \) -print -quit | grep -q .; then
+            echo "SQLite file unexpectedly present in worktree" >&2
+            exit 1
+          fi
+          if [ "$(git config --get remote.origin.partialclonefilter)" != "blob:none" ]; then
+            echo "Partial clone filter is missing" >&2
+            exit 1
+          fi
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
