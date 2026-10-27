@@ -5,11 +5,21 @@ export function rangoDelCiclo(config = {}) {
 }
 
 function notasConAutomaticas(notas, automatica) {
-  const ids = new Set((automatica?.enlaces || []).map(e => e.criterio_id));
-  return [
-    ...(notas || []).filter(n => !ids.has(n.criterio_id)),
-    ...(automatica?.notas || []).filter(n => ids.has(n.criterio_id) && n.fecha)
-  ];
+  const ids = new Set((automatica?.enlaces || []).map(e => Number(e.criterio_id)));
+  const automaticas = (automatica?.notas || [])
+    .filter(n => ids.has(Number(n.criterio_id)) && n.fecha)
+    .map(n => ({ ...n, alumno_id: Number(n.alumno_id), criterio_id: Number(n.criterio_id) }));
+  const clavesAutomaticas = new Set(automaticas.map(n => JSON.stringify([
+    Number(n.alumno_id), Number(n.criterio_id), n.fecha
+  ])));
+  const manuales = (notas || []).filter(n => {
+    const idCriterio = Number(n.criterio_id);
+    if (!ids.has(idCriterio)) return true;
+    const clave = JSON.stringify([Number(n.alumno_id), idCriterio, n.fecha]);
+    return !clavesAutomaticas.has(clave);
+  }).map(n => ({ ...n, alumno_id: Number(n.alumno_id), criterio_id: Number(n.criterio_id) }));
+  // La nota QR reemplaza a la manual solo para el mismo alumno, criterio y fecha.
+  return [...manuales, ...automaticas];
 }
 
 export function mezclarNotasAutomaticas(notas, automatica, fecha) {
