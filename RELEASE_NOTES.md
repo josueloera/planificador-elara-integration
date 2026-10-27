@@ -1,6 +1,6 @@
 # Elara 1.0.35
 
-- Corrige la fecha inicial de EvaluaciÃ³n para usar el dÃ­a local y evitar el desfase por UTC.
+- Corrige la fecha inicial de Evaluación para usar el día local y evitar el desfase por UTC.
 
 # Elara 1.0.34
 
@@ -25,3 +25,4 @@
 - Primaria: mantiene grado, seccion y escuela del grupo al cambiar de menu.
 
 Windows y macOS: actualiza desde Elara o instala sobre la version anterior. Android: requiere un APK firmado con la llave original para actualizar sin perder los datos.
+
