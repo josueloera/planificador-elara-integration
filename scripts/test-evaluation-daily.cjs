@@ -146,19 +146,19 @@ for (const variant of ['primaria', 'secundaria']) {
     await f.addWork(1, days[0], 9);
     await f.addWork(1, days[1], 2);
     await f.addWork(1, '2027-01-01', 100);
-    await f.run('INSERT INTO notas (alumno_id, criterio_id, fecha, valor) VALUES (1, 102, ?, 0), (1, 102, ?, 10), (1, 101, ?, 99)', [days[0], days[2], days[3]]);
+    await f.run('INSERT INTO notas (alumno_id, criterio_id, fecha, valor) VALUES (1, 102, ?, 0), (1, 102, ?, 10), (1, 101, ?, 77), (1, 101, ?, 99)', [days[0], days[2], days[0], days[3]]);
     const automatic = await f.invoke('get-evaluacion-automatica', 1, { inicio: days[0], fin: days[3] });
     const manual = await f.all('SELECT * FROM notas');
     const criteria = await f.all('SELECT * FROM criterios WHERE id IN (101, 102)');
     const { promedioPeriodo, mezclarNotasAutomaticas } = await frontend;
-    // Día 1: (9 + 0) / 2 = 4.5; día 2: 2; día 3: 10. Promedio: 5.5.
-    assert.equal(promedioPeriodo(criteria, manual, automatic, 1), 5.5);
+    // Día 1: (9 + 0) / 2 = 4.5; día 2: 2; día 3: 10. Promedio: 28.9.
+    assert.equal(promedioPeriodo(criteria, manual, automatic, 1), 28.9);
     assert.equal(promedioPeriodo(criteria, manual, automatic, 2), null);
-    assert.equal(mezclarNotasAutomaticas(manual, automatic, days[3])['1-101'], undefined);
+    assert.equal(mezclarNotasAutomaticas(manual, automatic, days[3])['1-101'], 99);
     await f.invoke('desvincular-evaluacion-automatica', 1, 101);
     const unlinked = await f.invoke('get-evaluacion-automatica', 1);
     assert.equal(mezclarNotasAutomaticas(manual, unlinked, days[3])['1-101'], 99);
-    assert.equal((await f.all('SELECT * FROM notas')).length, 3);
+    assert.equal((await f.all('SELECT * FROM notas')).length, 4);
   });
 
   test(`${variant}: importación de un rango conserva las fechas de trabajos y asistencias`, async t => {

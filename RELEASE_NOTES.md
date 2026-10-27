@@ -1,3 +1,7 @@
+# Elara 1.0.36
+
+- Conserva las calificaciones manuales anteriores cuando Control QR no tiene una nota para el mismo alumno, criterio y fecha.
+
 # Elara 1.0.35
 
 - Corrige la fecha inicial de Evaluación para usar el día local y evitar el desfase por UTC.
