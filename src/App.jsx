@@ -30,6 +30,14 @@ import { mezclarNotasAutomaticas, promedioPeriodo } from './evaluacionAutomatica
 
 const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
 
+const fechaLocalISO = () => {
+  const fecha = new Date();
+  const anio = fecha.getFullYear();
+  const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+  const dia = String(fecha.getDate()).padStart(2, '0');
+  return anio + '-' + mes + '-' + dia;
+};
+
 export const DEFAULT_FECHA_INICIO = new Date(2026, 7, 31); // 31 Agosto 2026
 
 export const DEFAULT_PERIODOS = {
@@ -125,7 +133,7 @@ function App() {
   }, [criterios]);
 
   const [notas, setNotas] = useState({});
-  const [fechaEval, setFechaEval] = useState(new Date().toISOString().split('T')[0]);
+  const [fechaEval, setFechaEval] = useState(fechaLocalISO);
   const [modoConfig, setModoConfig] = useState(false);
   const [showModalImportarQR, setShowModalImportarQR] = useState(false);
   const [evaluacionAutomatica, setEvaluacionAutomatica] = useState(null);
