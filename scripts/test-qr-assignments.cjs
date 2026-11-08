@@ -78,7 +78,9 @@ test('Excel incluye actividades sin entregas, No aplica y denominadores individu
   const path = require('node:path');
   const helperSource = fs.readFileSync(path.join(__dirname,'../src/qrAssignments.js')).toString('base64');
   const source = fs.readFileSync(path.join(__dirname,'../src/utils/excelExporter.js'),'utf8')
-    .replace("'../qrAssignments'", JSON.stringify('data:text/javascript;base64,' + helperSource));
+    .replace("'../qrAssignments'", JSON.stringify('data:text/javascript;base64,' + helperSource))
+    .replace("import { saveDocument } from './documentExport.js';", "const saveDocument = (blob) => URL.createObjectURL(blob);")
+    .replace("import { spreadsheetXmlToXlsx } from './xlsxExport.js';", "const spreadsheetXmlToXlsx = xml => new Blob([xml]);");
   const { exportarTrabajosExcel } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
   const originalDocument = global.document, originalCreate = URL.createObjectURL, originalRevoke = URL.revokeObjectURL;
   let blob;

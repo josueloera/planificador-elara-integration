@@ -1,3 +1,4 @@
+import { useCteCalendar, CteAgenda } from './cteCalendar.jsx';
 import SortableMenu from './components/SortableMenu';
 import GoogleSync from './components/GoogleSync';
 const CTE = lazy(() => import('./components/CTE'));
@@ -113,6 +114,7 @@ function App() {
   const [alumnos, setAlumnos] = useState([]);
   const [grado, setGrado] = useState(() => localStorage.getItem('grado') ? parseInt(localStorage.getItem('grado')) : 3);
   const [configCiclo, setConfigCiclo] = useState({ fechaInicioStr: '2026-08-31', periodos: DEFAULT_PERIODOS });
+  const acuerdosCTE = useCteCalendar(ipcRenderer, 'primaria', grupoActual, configCiclo);
 
   // EVALUACIÓN
   const [criterios, setCriterios] = useState([]);
@@ -624,7 +626,7 @@ function App() {
       const f=`${anioCal}-${String(mesCal).padStart(2,'0')}-${String(d).padStart(2,'0')}`, te=eventosSEP[f];
       let st={};
       if(te && TIPOS_EVENTO[te]){st={background:TIPOS_EVENTO[te].color,color:TIPOS_EVENTO[te].texto||'black',border:'1px solid #ccc'};}
-      arr.push(<div key={d} className="dia-calendario" style={st} onClick={()=>toggleEventoCalendario(f)}><span className="numero-dia">{d}</span>{te && TIPOS_EVENTO[te] && <span style={{display:'block', fontSize:'0.8rem'}}>{TIPOS_EVENTO[te].label}</span>}</div>);
+      arr.push(<div key={d} className="dia-calendario" style={st} onClick={()=>toggleEventoCalendario(f)}><span className="numero-dia">{d}</span>{acuerdosCTE.some(a=>a.due===f) && <button style={{display:'block'}} onClick={e=>{e.stopPropagation();setVista('CTE');}}>📌 {acuerdosCTE.filter(a=>a.due===f).length} acuerdos CTE</button>}{te && TIPOS_EVENTO[te] && <span style={{display:'block', fontSize:'0.8rem'}}>{TIPOS_EVENTO[te].label}</span>}</div>);
     }
     return arr;
   };
@@ -744,7 +746,7 @@ function App() {
     }
 
     if (vista === 'CONFIG') {
-      return <ConfiguracionCiclo onVolver={() => {
+      return <ConfiguracionCiclo group={grupoActual} onGroupSaved={setGrupoActual} onVolver={() => {
         setVista('MENU');
         ipcRenderer.invoke('get-config').then(cfg => {
           let periodos = DEFAULT_PERIODOS;
@@ -1326,7 +1328,7 @@ function App() {
             </div>
           </div>
           {modoConfigCalendario && (<div style={{background:'white', padding:15, marginBottom:15, borderRadius:8, boxShadow:'0 2px 5px rgba(0,0,0,0.1)', display:'flex', gap:10, flexWrap:'wrap'}}>{Object.keys(TIPOS_EVENTO).map(k=>(<button key={k} onClick={()=>setHerramientaSeleccionada(k)} style={{background: TIPOS_EVENTO[k].color, color: TIPOS_EVENTO[k].texto, border: herramientaSeleccionada===k ? '3px solid black' : '1px solid #ccc', padding: '8px 15px', fontWeight: 'bold', cursor: 'pointer'}}>{TIPOS_EVENTO[k].label}</button>))}</div>)}
-          <div className="grid-calendario-header"><div>DOM</div><div>LUN</div><div>MAR</div><div>MIE</div><div>JUE</div><div>VIE</div><div>SAB</div></div>
+          <CteAgenda events={acuerdosCTE} year={anioCal} month={mesCal} onOpen={()=>setVista('CTE')} /><div className="grid-calendario-header"><div>DOM</div><div>LUN</div><div>MAR</div><div>MIE</div><div>JUE</div><div>VIE</div><div>SAB</div></div>
           <div className="grid-calendario-dias">{renderCal()}</div>
         </div>
       );

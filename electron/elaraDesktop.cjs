@@ -25,7 +25,7 @@ function registerElara(options){
   const file=temporary();try{
    await fs.writeFile(file,Buffer.from(payload.data,'base64'));await backup.validateBackup(sqlite3,file,edition);
    const candidate=await new Promise((ok,no)=>{const d=new sqlite3.Database(file,sqlite3.OPEN_READONLY,e=>e?no(e):ok(d));});
-   let groups,students,meta;try{groups=await all(candidate,'SELECT id,grado,seccion,escuela,ciclo_escolar FROM grupos_maestro');students=(await all(candidate,'SELECT count(*) AS total FROM alumnos'))[0].total;meta=await all(candidate,'SELECT format,edition FROM planificador_backup_meta');}finally{await close(candidate);}
+   let groups,students,meta;try{groups=await require('./backupGroups.cjs').readBackupGroups(candidate,all);students=(await all(candidate,'SELECT count(*) AS total FROM alumnos'))[0].total;meta=await all(candidate,'SELECT format,edition FROM planificador_backup_meta');}finally{await close(candidate);}
    if(meta.length!==1||meta[0].format!==1||meta[0].edition!==edition)throw Error('El respaldo no usa un formato compatible con esta edicion.');
    if(pending)await fs.unlink(pending.file).catch(()=>{});pending={file,token:crypto.randomUUID()};return {token:pending.token,groups,students,bytes:(await fs.stat(file)).size};
   }catch(e){await fs.unlink(file).catch(()=>{});throw e;}

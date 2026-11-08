@@ -74,7 +74,7 @@ function registerEvaluationHandlers({ ipcMain, db, variant = 'primaria', onChang
     }
     return count;
   };
-  const assignments = registerQrAssignments({ ipcMain, all, run, transaction, grupoValido, normalizarCampo, secundaria, onChange });
+  const assignments = registerQrAssignments({ ipcMain, all, run, transaction, grupoValido, normalizarCampo, secundaria, onChange, waitForWrites: () => pendingWrites });
   const trabajosDelGrupo = async (grupoId, inicio, fin, campo) => {
     const rows = await all(`SELECT t.*, al.nombre AS alumno_nombre FROM trabajos_qr t
       JOIN alumnos al ON al.id = t.alumno_id
@@ -207,7 +207,7 @@ function registerEvaluationHandlers({ ipcMain, db, variant = 'primaria', onChang
       return guardarNotas(rows, criterios);
     });
   });
-  return { transaction, beforeQrMutation: assignments.beforeMutation };
+  return { transaction, beforeQrMutation: assignments.beforeMutation, waitForWrites: () => pendingWrites };
 }
 
 module.exports = { normalizarCampo, registerEvaluationHandlers };

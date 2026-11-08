@@ -1,3 +1,9 @@
+# Elara 1.0.39
+
+- Conserva actividades del evaluador QR y recupera las creadas en versiones anteriores.
+- Mejora el guardado de actividades, calendario CTE, exportaciones Excel y respaldo entre Windows y Android.
+- Incluye ajustes de fecha local y evaluacion por categoria.
+
 # Elara 1.0.36
 
 - Conserva las calificaciones manuales anteriores cuando Control QR no tiene una nota para el mismo alumno, criterio y fecha.

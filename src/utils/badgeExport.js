@@ -82,7 +82,7 @@ export function badgePdfHtml(images, title) {
 }
 
 // Small standards-compliant stored ZIP writer. No runtime dependency or network.
-function zip(files) {
+export function zip(files, mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
   const encoder = new TextEncoder(), local = [], central = []; let offset = 0;
   const bytes = n => new Uint8Array(n);
   const put = (a, pos, n, size = 4) => { for (let i = 0; i < size; i++) a[pos + i] = (n >>> (i * 8)) & 255; };
@@ -96,7 +96,7 @@ function zip(files) {
     local.push(header, file); central.push(entry); offset += header.length + file.length;
   }
   const end = bytes(22); put(end, 0, 0x06054b50); put(end, 8, central.length, 2); put(end, 10, central.length, 2); put(end, 12, central.reduce((n, a) => n + a.length, 0)); put(end, 16, offset);
-  return new Blob([...local, ...central, end], {type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+  return new Blob([...local, ...central, end], {type:mime});
 }
 
 export function badgeDocx(images) {
