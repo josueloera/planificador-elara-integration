@@ -1,5 +1,7 @@
+import { saveDocument } from './documentExport.js';
+import { spreadsheetXmlToXlsx } from './xlsxExport.js';
 import { actividadAsignada } from '../qrAssignments';
-// Utilidad de exportación a Excel nativo (.xls / XML Spreadsheet) y CSV UTF-8
+// Utilidad de exportación a Excel nativo (.xlsx / XML Spreadsheet) y CSV UTF-8
 // Diseñado para compatibilidad inmediata con Microsoft Excel (Windows/Mac) sin requerir dependencias binarias pesadas.
 
 const escapeXml = (str) => {
@@ -15,16 +17,7 @@ const escapeXml = (str) => {
 /**
  * Descarga un archivo en el navegador
  */
-const triggerDownload = (blob, filename) => {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-};
+const triggerDownload = (blob, filename) => saveDocument(blob, filename);
 
 /**
  * Calcula la semana escolar relativa al ciclo educativo oficial
@@ -54,7 +47,7 @@ export const calcularSemanaEscolar = (fechaStr) => {
 };
 
 /**
- * Genera un archivo Excel XML (.xls) de Asistencia con estilos completos
+ * Genera un archivo Excel XML (.xlsx) de Asistencia con estilos completos
  */
 export const exportarAsistenciaExcel = ({ grupoNombre, fechaInicio, fechaFin, resumenAlumnos = [], matrizDias = {}, fechasUnicas = [] }) => {
   let xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -262,13 +255,13 @@ export const exportarAsistenciaExcel = ({ grupoNombre, fechaInicio, fechaFin, re
  </Worksheet>
 </Workbook>`;
 
-  const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
-  const safeNombre = `Asistencia_${(grupoNombre || 'Grupo').replace(/\s+/g, '_')}_${fechaInicio}_a_${fechaFin}.xls`;
-  triggerDownload(blob, safeNombre);
+  const blob = spreadsheetXmlToXlsx(xml);
+  const safeNombre = `Asistencia_${(grupoNombre || 'Grupo').replace(/\s+/g, '_')}_${fechaInicio}_a_${fechaFin}.xlsx`;
+  return triggerDownload(blob, safeNombre);
 };
 
 /**
- * Genera un archivo Excel XML (.xls) de Trabajos QR con Sábana General, Pestañas Separadas por Materia/Campo y Bitácora
+ * Genera un archivo Excel XML (.xlsx) de Trabajos QR con Sábana General, Pestañas Separadas por Materia/Campo y Bitácora
  */
 export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, campo, trabajos = [], resumenAlumnos = [], actividades = [] }) => {
   // Función para sanitizar nombres de pestañas en Excel (máx 31 caracteres y sin caracteres prohibidos)
@@ -888,13 +881,13 @@ export const exportarTrabajosExcel = ({ grupoNombre, fechaInicio, fechaFin, camp
  </Worksheet>
 </Workbook>`;
 
-  const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
-  const safeNombre = `Trabajos_${(grupoNombre || 'Grupo').replace(/\s+/g, '_')}_${fechaInicio}_a_${fechaFin}.xls`;
-  triggerDownload(blob, safeNombre);
+  const blob = spreadsheetXmlToXlsx(xml);
+  const safeNombre = `Trabajos_${(grupoNombre || 'Grupo').replace(/\s+/g, '_')}_${fechaInicio}_a_${fechaFin}.xlsx`;
+  return triggerDownload(blob, safeNombre);
 };
 
 /**
- * Genera un archivo Excel XML (.xls) para el Evaluador de Porcentajes y Criterios
+ * Genera un archivo Excel XML (.xlsx) para el Evaluador de Porcentajes y Criterios
  */
 export const exportarEvaluadorPorcentajesExcel = ({
   grupoNombre = '',
@@ -1151,7 +1144,7 @@ export const exportarEvaluadorPorcentajesExcel = ({
  </Worksheet>
 </Workbook>`;
 
-  const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
-  const safeNombre = `Evaluacion_Porcentajes_${(grupoNombre || 'Grupo').replace(/\s+/g, '_')}_${campoActual}_${fechaEval}.xls`;
-  triggerDownload(blob, safeNombre);
+  const blob = spreadsheetXmlToXlsx(xml);
+  const safeNombre = `Evaluacion_Porcentajes_${(grupoNombre || 'Grupo').replace(/\s+/g, '_')}_${campoActual}_${fechaEval}.xlsx`;
+  return triggerDownload(blob, safeNombre);
 };

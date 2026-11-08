@@ -1,3 +1,4 @@
+const fechaLocalQR = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 import ExportDocument from './ExportDocument';
 import AdecuacionesQR from './AdecuacionesQR';
 import { actividadAsignada } from '../qrAssignments';
@@ -103,7 +104,7 @@ export default function ControlQR({
   const [modoEscaneo, setModoEscaneo] = useState('ASISTENCIA'); // 'ASISTENCIA' o 'TRABAJO'
   
   // Fecha seleccionada para visualización y registro diario
-  const [fechaActualQR, setFechaActualQR] = useState(fechaEval || new Date().toISOString().split('T')[0]);
+  const [fechaActualQR, setFechaActualQR] = useState(fechaEval || fechaLocalQR());
 
   useEffect(() => {
     if (fechaEval && fechaEval !== fechaActualQR) {
@@ -165,8 +166,29 @@ export default function ControlQR({
   const scopeRef = useRef('');
   const scope = `${grupoActual?.id}:${fechaActualQR}`;
   scopeRef.current = scope;
+  const migrationRef = useRef({});
+  const recuperarActividadesLocales = () => {
+    const group = grupoActual?.id;
+    if (!group) return Promise.resolve();
+    if (!migrationRef.current[group]) migrationRef.current[group] = (async () => {
+      const prefix = `actividades_creadas_${group}_`, days = [];
+      for (let i=0;i<localStorage.length;i++) {
+        const key=localStorage.key(i);
+        if (!key?.startsWith(prefix)) continue;
+        const fecha=key.slice(prefix.length);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) continue;
+        const raw=localStorage.getItem(key)||'{}';
+        if(localStorage.getItem('qr_migrado_'+key)===raw)continue;
+        const saved=JSON.parse(raw);
+        if(saved && typeof saved==='object' && !Array.isArray(saved)) days.push({key,raw,fecha, actividades:Object.entries(saved).map(([nombre,campo])=>({nombre,campo}))});
+      }
+      if (days.length) { await ipcRenderer.invoke('import-qr-actividades-locales',group,days); for(const day of days) localStorage.setItem('qr_migrado_'+day.key,day.raw); }
+    })().catch(error=>{delete migrationRef.current[group];throw error;});
+    return migrationRef.current[group];
+  };
   const cargarAsignaciones = async () => {
     const current = scope;
+    await recuperarActividadesLocales();
     const rows = await ipcRenderer.invoke('get-qr-actividades', grupoActual?.id, fechaActualQR, fechaActualQR);
     if (scopeRef.current === current) {
       setAsignacionesDia(rows.map(a => esSecundaria ? { ...a, campo: camposDisponibles[0] } : a));
@@ -251,7 +273,7 @@ export default function ControlQR({
       ipcRenderer.invoke('get-trabajos-qr', fechaActualQR, grupoActual?.id).then(rows => {
         if (request !== diaRequestRef.current) return;
         setTrabajosDia((rows || []).map(t => esSecundaria ? { ...t, campo: camposDisponibles[0] } : t));
-      }).catch(console.error);
+      }).catch(error => showToast?.('No se pudieron leer las actividades guardadas: '+error.message));
 
       ipcRenderer.invoke('get-todos-perfiles').then(map => {
         setPerfilesMap(map || {});
@@ -297,6 +319,7 @@ export default function ControlQR({
       const updated = { ...prev, [nomTrim]: campo || camposDisponibles[0] };
       try {
         localStorage.setItem(storageKeyActividades, JSON.stringify(updated));
+        localStorage.setItem('qr_migrado_'+storageKeyActividades, JSON.stringify(updated));
       } catch (e) {
         console.error(e);
       }
@@ -310,6 +333,7 @@ export default function ControlQR({
       delete updated[nombre];
       try {
         localStorage.setItem(storageKeyActividades, JSON.stringify(updated));
+        localStorage.setItem('qr_migrado_'+storageKeyActividades, JSON.stringify(updated));
       } catch (e) {
         console.error(e);
       }
@@ -357,7 +381,7 @@ export default function ControlQR({
     return Array.from(map.values());
   }, [trabajosDia, actividadesCreadas, tituloTrabajo, campoSeleccionado, esSecundaria, camposDisponibles, asignacionesDia]);
 
-  const actividadesCaptura = useMemo(() => actividadesDelDia.filter(a => (a.categoria || 'TRABAJO') === (modoEscaneo === 'TAREA' ? 'TAREA' : 'TRABAJO')), [actividadesDelDia, modoEscaneo]);
+  const actividadesCaptura = useMemo(() => actividadesDelDia.filter(a => (a.categoria || 'TRABAJO') === (['TAREA', 'EXAMEN'].includes(modoEscaneo) ? modoEscaneo : 'TRABAJO')), [actividadesDelDia, modoEscaneo]);
   useEffect(() => {
     setCreandoNuevaActividad(false); setEditandoActividad(null);
     const primera = actividadesCaptura[0];
@@ -370,14 +394,14 @@ export default function ControlQR({
     const ids = fechaActualQR >= ciclo.inicio && fechaActualQR <= ciclo.fin
       ? await ipcRenderer.invoke('get-qr-adecuaciones', grupoActual.id, ciclo.inicio, ciclo.fin, campo) : [];
     return ipcRenderer.invoke('save-qr-actividad', grupoActual.id, fechaActualQR, {
-      nombre, campo, categoria: modoEscaneo === 'TAREA' ? 'TAREA' : 'TRABAJO', modo: 'GENERAL', alumno_ids: alumnos.filter(a => !ids.includes(a.id)).map(a => a.id)
+      nombre, campo, categoria: ['TAREA', 'EXAMEN'].includes(modoEscaneo) ? modoEscaneo : 'TRABAJO', modo: 'GENERAL', alumno_ids: alumnos.filter(a => !ids.includes(a.id)).map(a => a.id)
     });
   };
   const asegurarActividad = async (nombre, campo) => {
     if (!asignacionesListas) throw new Error('Espera a que carguen las actividades del grupo.');
     const current = scope;
-    let act = actividadesDelDia.find(a => a.nombre === nombre);
-    if (act && (act.categoria || 'TRABAJO') !== (modoEscaneo === 'TAREA' ? 'TAREA' : 'TRABAJO')) throw new Error('Selecciona una actividad del apartado actual.');
+    let act = asignacionesDia.find(a => a.nombre === nombre);
+    if (act && (act.categoria || 'TRABAJO') !== (['TAREA', 'EXAMEN'].includes(modoEscaneo) ? modoEscaneo : 'TRABAJO')) throw new Error('Selecciona una actividad del apartado actual.');
     if (!nombre?.trim()) throw new Error('Crea o selecciona una actividad antes de calificar.');
     if (!act) {
       act = await crearActividadGeneral(nombre, campo);
@@ -443,7 +467,7 @@ export default function ControlQR({
   // Abrir formulario para crear una nueva actividad con nombre y materia
   const abrirCreadorActividad = () => {
     const num = actividadesDelDia.length + 1;
-    setNuevoNombreActividad(`${modoEscaneo === 'TAREA' ? 'Tarea' : 'Actividad'} ${num}`);
+    setNuevoNombreActividad(`${modoEscaneo === 'EXAMEN' ? 'Examen' : modoEscaneo === 'TAREA' ? 'Tarea' : 'Actividad'} ${num}`);
     setNuevoCampoActividad(campoSeleccionado || camposDisponibles[0]);
     setNuevoTipoActividad('GENERAL');
     setCreandoNuevaActividad(true);
@@ -464,11 +488,11 @@ export default function ControlQR({
         if (cargandoAlumnosAdecuacion) throw new Error('Espera a que termine la carga de alumnos NEE.');
         if (!alumnoIds.length) throw new Error('Selecciona al menos un alumno NEE para esta actividad.');
         await ipcRenderer.invoke('save-qr-actividad', grupoActual.id, fechaActualQR, {
-          nombre: nomTrim, campo: nuevoCampoActividad, categoria: modoEscaneo === 'TAREA' ? 'TAREA' : 'TRABAJO', modo: 'ADAPTADA', alumno_ids: alumnoIds
+          nombre: nomTrim, campo: nuevoCampoActividad, categoria: ['TAREA', 'EXAMEN'].includes(modoEscaneo) ? modoEscaneo : 'TRABAJO', modo: 'ADAPTADA', alumno_ids: alumnoIds
         });
       } else if (nuevoTipoActividad === 'TODOS') {
         await ipcRenderer.invoke('save-qr-actividad', grupoActual.id, fechaActualQR, {
-          nombre: nomTrim, campo: nuevoCampoActividad, categoria: modoEscaneo === 'TAREA' ? 'TAREA' : 'TRABAJO', modo: 'TODOS', alumno_ids: alumnos.map(a => a.id)
+          nombre: nomTrim, campo: nuevoCampoActividad, categoria: ['TAREA', 'EXAMEN'].includes(modoEscaneo) ? modoEscaneo : 'TRABAJO', modo: 'TODOS', alumno_ids: alumnos.map(a => a.id)
         });
       } else {
         await crearActividadGeneral(nomTrim, nuevoCampoActividad);
@@ -632,6 +656,7 @@ export default function ControlQR({
     }
     setCargandoHistorial(true);
     try {
+      await recuperarActividadesLocales();
       const [resAsis, detAsis, resTrab, detTrab, acts] = await Promise.all([
         ipcRenderer.invoke('get-resumen-asistencia', grupoActual?.id, fechaInicioHistorial, fechaFinHistorial),
         ipcRenderer.invoke('get-asistencia-rango', grupoActual?.id, fechaInicioHistorial, fechaFinHistorial),
@@ -676,21 +701,21 @@ export default function ControlQR({
   // Presets rápidos para fechas de historial
   const setPresetFechas = (tipo) => {
     const hoy = new Date();
-    const hoyStr = hoy.toISOString().split('T')[0];
+    const hoyStr = fechaLocalQR(hoy);
     if (tipo === 'SEMANA') {
       const diaSemana = hoy.getDay() || 7; // 1 = lunes, 7 = domingo
       const lunes = new Date(hoy);
       lunes.setDate(hoy.getDate() - (diaSemana - 1));
-      setFechaInicioHistorial(lunes.toISOString().split('T')[0]);
+      setFechaInicioHistorial(fechaLocalQR(lunes));
       setFechaFinHistorial(hoyStr);
     } else if (tipo === 'MES') {
       const primeroMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-      setFechaInicioHistorial(primeroMes.toISOString().split('T')[0]);
+      setFechaInicioHistorial(fechaLocalQR(primeroMes));
       setFechaFinHistorial(hoyStr);
     } else if (tipo === '30DIAS') {
       const hace30 = new Date(hoy);
       hace30.setDate(hoy.getDate() - 30);
-      setFechaInicioHistorial(hace30.toISOString().split('T')[0]);
+      setFechaInicioHistorial(fechaLocalQR(hace30));
       setFechaFinHistorial(hoyStr);
     } else if (tipo === 'CICLO') {
       setFechaInicioHistorial(ciclo.inicio);
@@ -778,7 +803,7 @@ export default function ControlQR({
     [criteriosGrupo, esSecundaria, campoFiltroHistorial]);
   useEffect(() => {
     if (showModalExportTrab) setCriterioDestinoTrab(prev => criteriosFiltradosTrab.some(c => String(c.id) === prev)
-      ? prev : String(criteriosFiltradosTrab.find(c => (tipoVinculoTrab === 'tareas' ? /tarea/i : /trabaj|activid/i).test(c.nombre))?.id || ''));
+      ? prev : String(criteriosFiltradosTrab.find(c => (tipoVinculoTrab === 'examenes' ? /examen/i : tipoVinculoTrab === 'tareas' ? /tarea/i : /trabaj|activid/i).test(c.nombre))?.id || ''));
   }, [showModalExportTrab, criteriosFiltradosTrab, tipoVinculoTrab]);
 
   const criteriosFiltradosAsis = useMemo(() => criteriosGrupo.filter(c => esSecundaria ||
@@ -1003,7 +1028,8 @@ export default function ControlQR({
   };
 
   // Exportar Asistencias a Excel
-  const handleExportarAsistenciaExcel = () => {
+  const handleExportarAsistenciaExcel = async () => {
+    try {
     const matrizDias = {};
     const setFechas = new Set();
     (asistenciaRangoDetalle || []).forEach(r => {
@@ -1013,7 +1039,7 @@ export default function ControlQR({
     });
     const fechasUnicas = Array.from(setFechas).sort();
 
-    exportarAsistenciaExcel({
+    const saved = await exportarAsistenciaExcel({
       grupoNombre: grupoActual ? `${grupoActual.grado}° ${grupoActual.seccion}` : 'General',
       fechaInicio: fechaInicioHistorial,
       fechaFin: fechaFinHistorial,
@@ -1021,12 +1047,14 @@ export default function ControlQR({
       matrizDias,
       fechasUnicas
     });
-    if (showToast) showToast('📥 Archivo Excel de Asistencia generado con éxito');
+    if (!saved?.cancelled) showToast?.('📥 Archivo Excel de Asistencia generado');
+    } catch(error) { showToast?.('No se pudo guardar el Excel: ' + error.message); }
   };
 
   // Exportar Trabajos a Excel
-  const handleExportarTrabajosExcel = () => {
-    exportarTrabajosExcel({
+  const handleExportarTrabajosExcel = async () => {
+    try {
+    const saved = await exportarTrabajosExcel({
       grupoNombre: grupoActual ? `${grupoActual.grado}° ${grupoActual.seccion}` : 'General',
       fechaInicio: fechaInicioHistorial,
       fechaFin: fechaFinHistorial,
@@ -1035,7 +1063,8 @@ export default function ControlQR({
       actividades: actividadesHist,
       resumenAlumnos: resumenTrabajosHist
     });
-    if (showToast) showToast('📥 Archivo Excel de Trabajos generado con éxito');
+    if (!saved?.cancelled) showToast?.('📥 Archivo Excel de Trabajos generado');
+    } catch(error) { showToast?.('No se pudo guardar el Excel: ' + error.message); }
   };
 
   const notificarImportacion = (criterio) => {
@@ -1163,7 +1192,7 @@ export default function ControlQR({
               />
               <button
                 onClick={() => {
-                  const hoy = new Date().toISOString().split('T')[0];
+                  const hoy = fechaLocalQR();
                   setFechaActualQR(hoy);
                   if (typeof onDateChanged === 'function') onDateChanged(hoy);
                 }}
@@ -1218,7 +1247,7 @@ export default function ControlQR({
         <AdecuacionesQR key={scope} alumnos={alumnos} campos={camposDisponibles} fecha={fechaActualQR}
           ciclo={ciclo} grupoId={grupoActual.id} ipcRenderer={ipcRenderer} actividades={actividadesDelDia}
           onSaved={cargarAsignaciones} showToast={showToast}
-          onSelect={(act, calificar) => { seleccionarActividad(act); if (calificar) { setModoEscaneo(act.categoria === 'TAREA' ? 'TAREA' : 'TRABAJO'); setActiveTab('ESCANER'); } }} />
+          onSelect={(act, calificar) => { seleccionarActividad(act); if (calificar) { setModoEscaneo(['TAREA', 'EXAMEN'].includes(act.categoria) ? act.categoria : 'TRABAJO'); setActiveTab('ESCANER'); } }} />
       )}
 
       {/* VISTA 1: ESCÁNER Y VINCULACIÓN MÓVIL */}
@@ -1260,7 +1289,7 @@ export default function ControlQR({
               >
                 📝 Revisión de Trabajos
               </button>
-              <button type="button" onClick={() => setModoEscaneo('TAREA')} style={{ flex: 1, padding: 12, borderRadius: 8, border: 0, fontWeight: 700, background: modoEscaneo === 'TAREA' ? '#6b46c1' : '#edf2f7', color: modoEscaneo === 'TAREA' ? 'white' : '#4a5568' }}>📚 Tareas</button>
+              <button type="button" onClick={() => setModoEscaneo('TAREA')} style={{ flex: 1, padding: 12, borderRadius: 8, border: 0, fontWeight: 700, background: modoEscaneo === 'TAREA' ? '#6b46c1' : '#edf2f7', color: modoEscaneo === 'TAREA' ? 'white' : '#4a5568' }}>📚 Tareas</button><button type="button" onClick={() => setModoEscaneo('EXAMEN')} style={{flex:1,padding:12,borderRadius:8,border:0,background:modoEscaneo==='EXAMEN'?'#2b6cb0':'#edf2f7',color:modoEscaneo==='EXAMEN'?'white':'#4a5568'}}>📝 Exámenes</button>
             </div>
 
             {/* OPCIONES DE ASISTENCIA */}
@@ -1307,7 +1336,7 @@ export default function ControlQR({
               return (
                 <div style={{ backgroundColor: '#fffaf0', padding: '16px', borderRadius: '12px', border: '1px solid #feebc8', marginBottom: '20px', boxShadow: '0 2px 6px rgba(221, 107, 32, 0.08)' }}>
                   
-                  {modoEscaneo === 'TAREA' && <button type="button" onClick={() => { setTipoVinculoTrab('tareas'); setCriterioDestinoTrab(''); setShowModalExportTrab(true); }} style={{ padding: 10, marginBottom: 12 }}>Vincular Tareas al evaluador</button>}
+                  {['TAREA','EXAMEN'].includes(modoEscaneo) && <button type="button" onClick={() => { setTipoVinculoTrab(modoEscaneo === 'EXAMEN' ? 'examenes' : 'tareas'); setCriterioDestinoTrab(''); setShowModalExportTrab(true); }} style={{ padding: 10, marginBottom: 12 }}>Vincular {modoEscaneo === 'EXAMEN' ? 'Exámenes' : 'Tareas'} al evaluador</button>}
                   {/* BARRA SUPERIOR: RESUMEN DE ACTIVIDAD ACTIVA Y ACCIONES */}
                   <div className="android-qr-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                     
@@ -2581,7 +2610,7 @@ export default function ControlQR({
                       boxShadow: '0 2px 4px rgba(43, 108, 176, 0.3)'
                     }}
                   >
-                    📥 Descargar Excel de Asistencia (.xls)
+                    📥 Descargar Excel de Asistencia (.xlsx)
                   </button>
                   <button className="android-qr-row"
                     onClick={() => setShowModalExportAsis(true)}
@@ -2623,7 +2652,7 @@ export default function ControlQR({
                       boxShadow: '0 2px 4px rgba(39, 103, 73, 0.3)'
                     }}
                   >
-                    📥 Descargar Excel de Trabajos (.xls)
+                    📥 Descargar Excel de Trabajos (.xlsx)
                   </button>
                   <button className="android-qr-row"
                     onClick={() => { setTipoVinculoTrab('trabajos'); setCriterioDestinoTrab(''); setShowModalExportTrab(true); }}
@@ -3382,7 +3411,7 @@ export default function ControlQR({
           <div className="android-dialog" role="dialog" aria-modal="true" style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', width: '480px', maxWidth: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
             <h3 style={{ margin: '0 0 10px 0', color: '#1a365d' }}>🔗 Vincular Trabajos con Evaluación</h3>
             <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#718096' }}>
-              Vincula {tipoVinculoTrab === 'tareas' ? 'las tareas' : 'los trabajos de clase'} de esta materia durante todo el ciclo (<strong>{ciclo.inicio} al {ciclo.fin}</strong>). Cada promedio diario se mostrará en su fecha y se actualizará al registrar, corregir o eliminar un trabajo.
+              Vincula {tipoVinculoTrab === 'examenes' ? 'los exámenes' : tipoVinculoTrab === 'tareas' ? 'las tareas' : 'los trabajos de clase'} de esta materia durante todo el ciclo (<strong>{ciclo.inicio} al {ciclo.fin}</strong>). Cada promedio diario se mostrará en su fecha y se actualizará al registrar, corregir o eliminar un trabajo.
             </p>
 
             <div style={{ marginBottom: '14px' }}>
@@ -3403,7 +3432,7 @@ export default function ControlQR({
               <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#2d3748', marginBottom: '6px' }}>
                 Selecciona el Criterio de Destino:
               </label>
-              <select aria-label="Registros del criterio" value={tipoVinculoTrab} onChange={e => { setTipoVinculoTrab(e.target.value); setCriterioDestinoTrab(''); }}><option value="trabajos">Trabajos de clase</option><option value="tareas">Tareas</option></select>
+              <select aria-label="Registros del criterio" value={tipoVinculoTrab} onChange={e => { setTipoVinculoTrab(e.target.value); setCriterioDestinoTrab(''); }}><option value="trabajos">Trabajos de clase</option><option value="tareas">Tareas</option><option value="examenes">Exámenes</option></select>
               <select
                 value={criterioDestinoTrab}
                 onChange={e => setCriterioDestinoTrab(e.target.value)}

@@ -32,7 +32,7 @@ function registerCycleHandlers({
     if (!Array.isArray(enlaces)) throw new Error('La configuración de Control QR de este grupo no es válida.');
     const criterios = await all('SELECT id FROM criterios WHERE grupo_id = ?', [grupoId]);
     const ids = new Set(criterios.map(c => c.id));
-    return enlaces.filter(e => ids.has(e.criterio_id) && ['trabajos', 'tareas', 'asistencia'].includes(e.tipo));
+    return enlaces.filter(e => ids.has(e.criterio_id) && ['trabajos', 'tareas', 'examenes', 'asistencia'].includes(e.tipo));
   };
   const guardarEnlaces = (grupoId, ciclo, enlaces) => run(
     'INSERT OR REPLACE INTO configuracion (llave, valor) VALUES (?, ?)',
@@ -64,7 +64,7 @@ function registerCycleHandlers({
         const key = campo + ':' + enlace.tipo;
         if (!cacheTrabajos.has(key)) {
           const trabajos = await trabajosDelGrupo(grupoId, inicio, fin, campo);
-          cacheTrabajos.set(key, promediosDiarios(trabajos.filter(t => enlace.tipo === 'tareas' ? t.categoria === 'TAREA' : t.categoria !== 'TAREA')));
+          cacheTrabajos.set(key, promediosDiarios(trabajos.filter(t => (t.categoria || 'TRABAJO') === ({tareas:'TAREA',examenes:'EXAMEN',trabajos:'TRABAJO'}[enlace.tipo]))));
         }
         notas.push(...cacheTrabajos.get(key).map(n => ({ ...n, criterio_id: criterio.id })));
       } else {
@@ -95,7 +95,7 @@ function registerCycleHandlers({
   });
   ipcMain.handle('configurar-evaluacion-automatica', async (_, opciones = {}) => {
     const grupoId = grupoValido(opciones.grupo_id);
-    if (!['trabajos', 'tareas', 'asistencia'].includes(opciones.tipo)) throw new Error('Selecciona trabajos, tareas o asistencia.');
+    if (!['trabajos', 'tareas', 'examenes', 'asistencia'].includes(opciones.tipo)) throw new Error('Selecciona trabajos, tareas o asistencia.');
     const escala = opciones.escala == null ? 10 : Number(opciones.escala);
     if (!Number.isFinite(escala) || escala <= 0) throw new Error('La escala debe ser mayor que cero.');
     const result = await transaction(async () => {

@@ -49,7 +49,7 @@ export default function AdecuacionesQR({ alumnos, campos, fecha, ciclo, grupoId,
     <fieldset disabled={busy || !ready} style={box}>
       <legend><strong>2. {editando ? 'Editar destinatarios' : 'Crear actividad'}</strong></legend>
       <label>Nombre de la actividad <input aria-label="Nombre de actividad adaptada" disabled={editando} value={nombre} onChange={e => setNombre(e.target.value)} style={{ padding: 8, margin: 8 }} /></label>
-      <label>Apartado <select value={categoria} onChange={e => setCategoria(e.target.value)}><option value="TRABAJO">Trabajos de clase</option><option value="TAREA">Tareas</option></select></label>
+      <label>Apartado <select value={categoria} onChange={e => setCategoria(e.target.value)}><option value="TRABAJO">Trabajos de clase</option><option value="TAREA">Tareas</option><option value="EXAMEN">Exámenes</option></select></label>
       <label>Tipo <select aria-label="Tipo de actividad" value={modo} onChange={e => { setModo(e.target.value); setDestinatarios(defaults(e.target.value)); }} style={{ padding: 8, margin: 8 }}>
         <option value="ADAPTADA">Adaptada para alumnos seleccionados</option><option value="GENERAL">General (sin alumnos con adecuaciones)</option><option value="TODOS">Compartida con todo el grupo</option>
       </select></label>
@@ -67,7 +67,7 @@ export default function AdecuacionesQR({ alumnos, campos, fecha, ciclo, grupoId,
       <h4>3. Actividades y alumnos asignados</h4>
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}><thead><tr><th>Actividad</th><th>Tipo</th><th>Alumnos</th><th>Acciones</th></tr></thead><tbody>
         {actividades.filter(a => campos.length === 1 || a.campo === campo).map(a => <tr key={a.nombre} style={{ borderTop: '1px solid #e2e8f0' }}>
-          <td style={{ padding: 10 }}>{a.nombre} · {a.categoria === 'TAREA' ? 'Tarea' : 'Trabajo'}</td><td>{a.modo === 'ADAPTADA' ? 'Adaptada' : a.modo === 'GENERAL' ? 'General' : 'Compartida'}</td>
+          <td style={{ padding: 10 }}>{a.nombre} · {a.categoria === 'EXAMEN' ? 'Examen' : a.categoria === 'TAREA' ? 'Tarea' : 'Trabajo'}</td><td>{a.modo === 'ADAPTADA' ? 'Adaptada' : a.modo === 'GENERAL' ? 'General' : 'Compartida'}</td>
           <td>{alumnos.filter(al => actividadAsignada(a, al.id)).map(al => al.nombre).join(', ') || 'Sin destinatarios'}</td>
           <td><button disabled={busy || !ready} style={button} onClick={() => { setNombre(a.nombre); setCategoria(a.categoria || 'TRABAJO'); setModo(a.modo || 'TODOS'); setDestinatarios(alumnos.filter(al => actividadAsignada(a, al.id)).map(al => al.id)); setEditando(true); }}>Editar destinatarios</button>{' '}<button style={button} onClick={() => onSelect(a, true)}>Calificar</button></td>
         </tr>)}

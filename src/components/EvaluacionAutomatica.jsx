@@ -24,7 +24,7 @@ export function EstadoEvaluacionQR({ automatica, criterios, ipcRenderer, grupoId
       </p>
       {enlaces.length > 0 && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {enlaces.map(e => <span key={e.criterio_id} style={{ background: '#fff', padding: '4px 8px', borderRadius: 6 }}>
-          {criterios.find(c => c.id === e.criterio_id)?.nombre}: {e.tipo === 'asistencia' ? 'Asistencia' : e.tipo === 'tareas' ? 'Tareas' : 'Trabajos'} · automático{' '}
+          {criterios.find(c => c.id === e.criterio_id)?.nombre}: {e.tipo === 'asistencia' ? 'Asistencia' : e.tipo === 'examenes' ? 'Exámenes' : e.tipo === 'tareas' ? 'Tareas' : 'Trabajos'} · automático{' '}
           <button type="button" disabled={ocupado} style={boton} onClick={() => desvincular(e.criterio_id)}>Desvincular</button>
         </span>)}
       </div>}
@@ -57,9 +57,9 @@ export function VincularEvaluacionQR({ criterios, grupoId, ipcRenderer, automati
         <p style={{ fontSize: 13 }}>Cada nota se mostrará en la fecha de su registro y se recalculará al registrar, corregir o eliminar asistencias, trabajos y tareas. El vínculo queda guardado aunque todavía no existan registros.</p>
         <label style={{ display: 'block', marginBottom: 12 }}>
           Registros que alimentarán el criterio
-          <select value={tipo} disabled={ocupado} onChange={e => { setTipo(e.target.value); const sugerido = criterios.find(c => (e.target.value === 'tareas' ? /tarea/i : e.target.value === 'asistencia' ? /asist/i : /trabaj|activid/i).test(c.nombre)); if (sugerido) setCriterioId(String(sugerido.id)); }} style={{ display: 'block', padding: 10, width: '100%', marginTop: 5 }}>
+          <select value={tipo} disabled={ocupado} onChange={e => { setTipo(e.target.value); const sugerido = criterios.find(c => (e.target.value === 'examenes' ? /examen/i : e.target.value === 'tareas' ? /tarea/i : e.target.value === 'asistencia' ? /asist/i : /trabaj|activid/i).test(c.nombre)); if (sugerido) setCriterioId(String(sugerido.id)); }} style={{ display: 'block', padding: 10, width: '100%', marginTop: 5 }}>
             <option value="tareas">Promedio diario de tareas de la materia</option>
-            <option value="trabajos">Promedio diario de trabajos de la materia</option>
+            <option value="examenes">Promedio diario de exámenes de la materia</option><option value="trabajos">Promedio diario de trabajos de la materia</option>
             <option value="asistencia">Asistencia diaria del grupo (escala 0 a 10)</option>
           </select>
         </label>

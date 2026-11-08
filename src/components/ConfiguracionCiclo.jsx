@@ -1,3 +1,4 @@
+const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
 import RespaldoDatos from './RespaldoDatos';
 import React, { useEffect, useState } from 'react';
 import PreferenciasElara from './PreferenciasElara';
@@ -8,13 +9,13 @@ const readPeriods = (value, fallback) => {
     catch { return fallback; }
 };
 
-const ConfiguracionCiclo = ({ onVolver, currentConfig, defaultConfig }) => {
-    const [config, setConfig] = useState(() => ({ ...defaultConfig, ...currentConfig, periodos: readPeriods(currentConfig?.periodos, defaultConfig.periodos) }));
+const ConfiguracionCiclo = ({ onVolver, currentConfig, defaultConfig, group, onGroupSaved }) => {
+    const [config, setConfig] = useState(() => ({ ...defaultConfig, ...currentConfig, nombreEscuela: group?.escuela || currentConfig?.nombreEscuela || '', periodos: readPeriods(currentConfig?.periodos, defaultConfig.periodos) }));
     const [saving, setSaving] = useState(false);
     const [status, setStatus] = useState('');
 
     useEffect(() => {
-        setConfig({ ...defaultConfig, ...currentConfig, periodos: readPeriods(currentConfig?.periodos, defaultConfig.periodos) });
+        setConfig({ ...defaultConfig, ...currentConfig, nombreEscuela: group?.escuela || currentConfig?.nombreEscuela || '', periodos: readPeriods(currentConfig?.periodos, defaultConfig.periodos) });
     }, [currentConfig]);
 
     const handleChangeFecha = (campo, valor) => {
@@ -40,6 +41,7 @@ const ConfiguracionCiclo = ({ onVolver, currentConfig, defaultConfig }) => {
                 cct: config.cct || ''
             };
             for (const [key, value] of Object.entries(values)) await ipcRenderer.invoke('save-config', key, value);
+            if (group?.id) { await ipcRenderer.invoke('set-grupo-escuela', group.id, config.nombreEscuela || ''); onGroupSaved?.({...group, escuela: (config.nombreEscuela || '').trim()}); }
             setStatus('Configuración guardada.');
         } catch (error) {
             console.error(error);

@@ -1,3 +1,4 @@
+import { spreadsheetXmlToXlsx } from './xlsxExport.js';
 import { badgeImages, badgePdfHtml, badgeDocx } from './badgeExport.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const filename = name => String(name || 'Documento').replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').slice(0, 120);
@@ -81,9 +82,9 @@ export async function exportDocument(root, title, format) {
       const controls = [...cell.querySelectorAll('input,textarea,select')];
       const text = controls.length ? controls.map(c => c.tagName === 'SELECT' ? c.selectedOptions[0]?.textContent : c.value).join(' ') : cell.innerText;
       const type = /^-?\d+(\.\d+)?$/.test(text.trim()) ? 'Number' : 'String';
-      return `<Cell><Data ss:Type="${type}">${escape(text)}</Data></Cell>`;
+      return `<Cell${cell.colSpan>1?` ss:MergeAcross="${cell.colSpan-1}"`:''}${cell.rowSpan>1?` ss:MergeDown="${cell.rowSpan-1}"`:''}><Data ss:Type="${type}">${escape(text)}</Data></Cell>`;
     }).join('')}</Row>`).join('')}</Table></Worksheet>`).join('');
-    return saveDocument(new Blob([`<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">${sheets}</Workbook>`], { type: 'application/vnd.ms-excel' }), filename(title) + '.xls');
+    return saveDocument(spreadsheetXmlToXlsx(`<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">${sheets}</Workbook>`), filename(title) + '.xlsx');
   }
   const html = await documentHtml(root, title);
   if (format === 'pdf') return exportHtmlPdf(html, title);

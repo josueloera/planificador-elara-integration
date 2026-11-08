@@ -1,5 +1,5 @@
 // Destinatarios persistidos junto con los datos del docente, incluidos en respaldos.
-function registerQrAssignments({ ipcMain, all, run, transaction, grupoValido, normalizarCampo, secundaria, onChange }) {
+function registerQrAssignments({ ipcMain, all, run, transaction, grupoValido, normalizarCampo, secundaria, onChange, waitForWrites = async () => {} }) {
   const dayKey = (g, d) => `qr_actividades:${g}:${d}`;
   const checkDate = d => {
     if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d) || !Number.isFinite(Date.parse(d)) || new Date(d).toISOString().slice(0, 10) !== d) throw new Error('Fecha no válida.');
@@ -51,7 +51,31 @@ function registerQrAssignments({ ipcMain, all, run, transaction, grupoValido, no
     });
     onChange(g); return result;
   });
-  ipcMain.handle('get-qr-actividades', async (_, g, inicio, fin, campo) => g ? list(grupoValido(g), inicio, fin, campo) : []);
+  ipcMain.handle('get-qr-actividades', async (_, g, inicio, fin, campo) => { await waitForWrites(); return g ? list(grupoValido(g), inicio, fin, campo) : []; });
+  // Recover activities created by legacy versions in browser storage. Never replace SQLite data.
+  ipcMain.handle('import-qr-actividades-locales', async (_, group, days) => {
+    const g=grupoValido(group);
+    if(!Array.isArray(days)) throw new Error('Actividades locales no válidas.');
+    const result=await transaction(async()=>{
+      const alumnos=await roster(g); let count=0;
+      for(const day of days) {
+        checkDate(day.fecha);
+        if(!Array.isArray(day.actividades)) throw new Error('Actividades locales no válidas.');
+        const key=dayKey(g,day.fecha), stored=await read(key,[]);
+        let changed=false;
+        for(const a of day.actividades) {
+          const nombre=String(a.nombre||'').trim();
+          if(!nombre || stored.some(s=>s.nombre===nombre)) continue;
+          stored.push({nombre,campo:String(a.campo||'GENERAL'),categoria:'TRABAJO',modo:'TODOS',alumno_ids:null});
+          changed=true;count++;
+        }
+        if(changed) await write(key,stored);
+      }
+      return {imported:count};
+    });
+    if(result.imported) onChange(g);
+    return result;
+  });
   ipcMain.handle('save-qr-actividad', async (_, g, fecha, actividad) => {
     g = grupoValido(g); checkDate(fecha);
     const result = await transaction(async () => {
@@ -68,7 +92,7 @@ function registerQrAssignments({ ipcMain, all, run, transaction, grupoValido, no
         WHERE a.grupo_id = ? AND (t.grupo_id = ? OR t.grupo_id IS NULL) AND t.fecha = ? AND t.nombre_trabajo = ?`, [g, g, fecha, nombre]);
       if (entregas.some(t => !ids.includes(t.alumno_id))) throw new Error('Un alumno que intentas excluir ya tiene una entrega. Elimina primero esa calificación si no le corresponde.');
       const categoria = actividad.categoria ?? previous?.categoria ?? 'TRABAJO';
-      if (!['TRABAJO', 'TAREA'].includes(categoria)) throw new Error('Selecciona trabajos o tareas.');
+      if (!['TRABAJO', 'TAREA', 'EXAMEN'].includes(categoria)) throw new Error('Selecciona trabajos o tareas.');
       const saved = { categoria, nombre, campo: previous?.campo || actividad.campo || 'LENGUAJES', modo: actividad.modo, alumno_ids: ids };
       const stored = await read(dayKey(g, fecha), []);
       await write(dayKey(g, fecha), [...stored.filter(a => a.nombre !== nombre), saved]);
