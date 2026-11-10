@@ -1,3 +1,8 @@
+# Elara Primaria 1.0.46
+
+- Amplía el reporte trimestral en PDF y Excel con resumen general y ficha por alumno, materias, CURP, asistencia, faltas, observaciones y fotografía.
+- Permite capturar décimas en el evaluador de exámenes.
+
 # Elara Primaria 1.0.45
 
 - Agrega un menú rápido de Exámenes desde Captura QR para crear, capturar o vincular sin salir del flujo.

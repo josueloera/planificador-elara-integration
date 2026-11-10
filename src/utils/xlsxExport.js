@@ -11,7 +11,8 @@ export function spreadsheetXmlToXlsx(xml) {
   if (doc.getElementsByTagName('parsererror').length) throw new Error('No se pudo generar la tabla de Excel.');
   const sheets = Array.from(doc.getElementsByTagNameNS(NS,'Worksheet'));
   if (!sheets.length) throw new Error('El reporte no contiene hojas de cálculo.');
-  const files={}, names=new Set(), workbook=[], relationships=[], overrides=[];
+  const files={}, names=new Set(), workbook=[], relationships=[], overrides=[], imageExtensions=new Set();
+  let imageNo=0;
   const styles=Array.from(doc.getElementsByTagNameNS(NS,'Style'));
   const styleIds=new Map(styles.map((s,i)=>[attr(s,'ID'),i+1]));
   const fonts=['<font><sz val="11"/><name val="Calibri"/></font>'];
@@ -31,7 +32,7 @@ export function spreadsheetXmlToXlsx(xml) {
     while(names.has(name.toLowerCase())) {const tail=` (${suffix++})`;name=base.slice(0,31-tail.length)+tail;}
     names.add(name.toLowerCase());
     const table=children(sheet,'Table')[0];
-    const merges=[], rows=[];let r=0;
+    const merges=[], rows=[], pictures=[], rowHeights=new Map();let r=0;
     for(const row of children(table,'Row')) {
       r=Number(attr(row,'Index'))||r+1;let c=0;
       const cells=[];
@@ -39,18 +40,33 @@ export function spreadsheetXmlToXlsx(xml) {
         c=Number(attr(cell,'Index'))||c+1;
         const data=children(cell,'Data')[0], value=data?.textContent||'', ref=column(c)+r;
         const style=styleIds.get(attr(cell,'StyleID'))||0;
+        const photo=cell.getAttribute('elara:Photo');
+        const match=photo&&photo.match(/^data:image\/(png|jpeg|jpg);base64,([A-Za-z0-9+/=]+)$/i);
+        if(match){
+          const ext=match[1].toLowerCase()==='png'?'png':'jpg', id=++imageNo;
+          files[`xl/media/image${id}.${ext}`]=Uint8Array.from(atob(match[2]),ch=>ch.charCodeAt(0));
+          imageExtensions.add(ext); pictures.push({id,ext,col:c-1,row:r-1}); rowHeights.set(r,90);
+        }
         if(data&&attr(data,'Type')==='Number'&&value.trim()&&Number.isFinite(Number(value))) cells.push(`<c r="${ref}" s="${style}"><v>${Number(value)}</v></c>`);
         else cells.push(`<c r="${ref}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${esc(value)}</t></is></c>`);
         const across=Number(attr(cell,'MergeAcross'))||0, down=Number(attr(cell,'MergeDown'))||0;
         if(across||down) merges.push(`<mergeCell ref="${ref}:${column(c+across)}${r+down}"/>`);
         c+=across;
       }
-      const height=Number(attr(row,'Height'));
+      const height=Number(attr(row,'Height'))||rowHeights.get(r);
       rows.push(`<row r="${r}"${height?` ht="${height}" customHeight="1"`:''}>${cells.join('')}</row>`);
     }
     let col=0;
     const cols=children(table,'Column').map(c=>{const min=Number(attr(c,'Index'))||col+1;col=min+(Number(attr(c,'Span'))||0);return `<col min="${min}" max="${col}" width="${Math.max(5,(Number(attr(c,'Width'))||90)/5.25)}" customWidth="1"/>`;});
-    files[`xl/worksheets/sheet${i+1}.xml`]=`<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${cols.length?`<cols>${cols.join('')}</cols>`:''}<sheetData>${rows.join('')}</sheetData>${merges.length?`<mergeCells count="${merges.length}">${merges.join('')}</mergeCells>`:''}</worksheet>`;
+    const drawingTag=pictures.length?'<drawing r:id="rId1"/>':'';
+    files[`xl/worksheets/sheet${i+1}.xml`]=`<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${cols.length?`<cols>${cols.join('')}</cols>`:''}<sheetData>${rows.join('')}</sheetData>${merges.length?`<mergeCells count="${merges.length}">${merges.join('')}</mergeCells>`:''}${drawingTag}</worksheet>`;
+    if(pictures.length){
+      const anchors=pictures.map((pic,j)=>`<xdr:oneCellAnchor><xdr:from><xdr:col>${pic.col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${pic.row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="914400" cy="1097280"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${j+1}" name="Fotografía ${j+1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="rId${j+1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="1097280"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`).join('');
+      files[`xl/drawings/drawing${i+1}.xml`]=`<?xml version="1.0" encoding="UTF-8"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchors}</xdr:wsDr>`;
+      files[`xl/drawings/_rels/drawing${i+1}.xml.rels`]=`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${pictures.map((pic,j)=>`<Relationship Id="rId${j+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image${pic.id}.${pic.ext}"/>`).join('')}</Relationships>`;
+      files[`xl/worksheets/_rels/sheet${i+1}.xml.rels`]=`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing${i+1}.xml"/></Relationships>`;
+      overrides.push(`<Override PartName="/xl/drawings/drawing${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`);
+    }
     workbook.push(`<sheet name="${esc(name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`);
     relationships.push(`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`);
     overrides.push(`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`);
@@ -58,6 +74,7 @@ export function spreadsheetXmlToXlsx(xml) {
   files['xl/workbook.xml']=`<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${workbook.join('')}</sheets></workbook>`;
   files['xl/_rels/workbook.xml.rels']=`<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join('')}<Relationship Id="styles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
   files['_rels/.rels']='<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="workbook" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
-  files['[Content_Types].xml']=`<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${overrides.join('')}</Types>`;
+  const imageTypes=[...imageExtensions].map(ext=>`<Default Extension="${ext}" ContentType="image/${ext==='jpg'?'jpeg':'png'}"/>`).join('');
+  files['[Content_Types].xml']=`<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${imageTypes}<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${overrides.join('')}</Types>`;
   return zip(files,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
