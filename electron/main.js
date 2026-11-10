@@ -99,6 +99,9 @@ if (app.isPackaged) {
 
 console.log(`\n📂 BASE DE DATOS DE INTEGRACION ELARA: ${dbPath}`);
 const db = new sqlite3.Database(dbPath);
+const examScan = require('./examScan.cjs');
+examScan.installSchema(db);
+const normalizarExamField = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
 require('./databaseBackup.cjs').registerBackupHandlers({ db, dbPath, sqlite3, ipcMain, dialog: require('electron').dialog, BrowserWindow, app, edition: 'primaria', version: app.getVersion() });
 require('./elaraDesktop.cjs').registerElara({db,dbPath,sqlite3,ipcMain,app,edition:'primaria',version:app.getVersion()});
 
@@ -437,6 +440,67 @@ ipcMain.handle('get-alumnos', async (e, grupo_id) => {
     const params = grupo_id ? [grupo_id] : [];
     return new Promise(r => db.all(query, params, (err, rows) => r(rows || [])));
 });
+ipcMain.handle('examscan-create-exam', async (_event, draft) => {
+  examScan.validateDraft(draft);
+  const groupId = Number(draft.grupo_id);
+  const criterionId = Number(draft.criterio_id);
+  const evaluationDate = String(draft.fecha_evaluacion || [new Date().getFullYear(), String(new Date().getMonth() + 1).padStart(2, '0'), String(new Date().getDate()).padStart(2, '0')].join('-'));
+  const parsedEvaluationDate = new Date(`${evaluationDate}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(evaluationDate) || !Number.isFinite(parsedEvaluationDate.getTime()) || parsedEvaluationDate.toISOString().slice(0, 10) !== evaluationDate) throw new Error('La fecha de evaluación no es válida.');
+  const criterion = await new Promise((resolve, reject) => db.get('SELECT id,campo FROM criterios WHERE id=? AND grupo_id=?', [criterionId, groupId], (err, row) => err ? reject(err) : resolve(row)));
+  if (!criterion || normalizarExamField(criterion.campo) !== normalizarExamField(draft.campo_formativo)) throw new Error('El criterio del evaluador no pertenece al grupo y campo formativo seleccionados. Recarga la lista y vuelve a elegirlo.');
+  const alumnos = await new Promise((resolve, reject) => db.all('SELECT id, nombre FROM alumnos WHERE grupo_id=? ORDER BY nombre COLLATE NOCASE', [groupId], (err, rows) => err ? reject(err) : resolve(rows || [])));
+  if (!alumnos.length) throw new Error('El grupo seleccionado no tiene alumnos inscritos.');
+  const group = await new Promise((resolve, reject) => db.get('SELECT grado,seccion FROM grupos_maestro WHERE id=?', [groupId], (err, row) => err ? reject(err) : resolve(row)));
+  if (!group) throw new Error('El grupo seleccionado ya no existe.');
+  const { randomUUID } = require('crypto');
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  const attempts = examScan.createAttempts(alumnos, id);
+  const meta = { id, grupo_id: groupId, grado: Number(group.grado), seccion: String(group.seccion), ciclo_escolar: String(draft.ciclo_escolar).trim(), trimestre: Number(draft.trimestre), tipo_examen: draft.tipo_examen, periodo_nombre: draft.tipo_examen === 'PARCIAL' ? String(draft.periodo_nombre).trim() : `Trimestre ${draft.trimestre}`, campo_formativo: String(draft.campo_formativo).trim(), contenido: String(draft.contenido).trim(), pda: String(draft.pda).trim(), titulo: String(draft.titulo).trim(), preguntas: draft.preguntas, creado_en: createdAt };
+  await new Promise((resolve, reject) => db.serialize(() => {
+    db.run('BEGIN IMMEDIATE', err => {
+      if (err) return reject(err);
+      db.run('INSERT INTO examscan_exams (id,grupo_id,grado,seccion,ciclo_escolar,trimestre,campo_formativo,contenido,pda,titulo,preguntas_json,tipo_examen,periodo_nombre,creado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [id, groupId, meta.grado, meta.seccion, meta.ciclo_escolar, meta.trimestre, meta.campo_formativo, meta.contenido, meta.pda, meta.titulo, JSON.stringify(meta.preguntas), meta.tipo_examen, meta.periodo_nombre, createdAt], err2 => {
+        if (err2) return db.run('ROLLBACK', () => reject(err2));
+        db.run('INSERT INTO examscan_evaluation_links (exam_id,grupo_id,criterio_id,fecha,creado_en) VALUES (?,?,?,?,?)', [id, groupId, criterionId, evaluationDate, createdAt], errLink => {
+        if (errLink) return db.run('ROLLBACK', () => reject(errLink));
+        const stmt = db.prepare('INSERT INTO examscan_attempts (id,examen_id,alumno_id,qr_token,creado_en) VALUES (?,?,?,?,?)');
+        attempts.forEach(a => stmt.run([a.id, id, a.alumno_id, a.qr_token, createdAt]));
+        stmt.finalize(err3 => {
+          if (err3) return db.run('ROLLBACK', () => reject(err3));
+          db.run('COMMIT', err4 => err4 ? reject(err4) : resolve());
+        });
+        });
+      });
+    });
+  }));
+  return { examen: meta, vinculacion: { grupo_id: groupId, criterio_id: criterionId, fecha: evaluationDate }, alumnos: attempts.map(({ id: intento_id, alumno_id, nombre, qr }) => ({ intento_id, alumno_id, nombre, qr })) };
+});
+ipcMain.handle('examscan-list-exams', async (_event, groupId) => new Promise((resolve, reject) => db.all('SELECT e.id,e.titulo,e.grado,e.seccion,e.ciclo_escolar,e.trimestre,e.tipo_examen,e.periodo_nombre,e.campo_formativo,e.contenido,e.pda,e.creado_en,l.criterio_id,l.fecha AS fecha_evaluacion,c.nombre AS criterio_nombre,(SELECT COUNT(*) FROM examscan_attempt_results r JOIN examscan_attempts a ON a.id=r.intento_id WHERE a.examen_id=e.id) AS calificados FROM examscan_exams e LEFT JOIN examscan_evaluation_links l ON l.exam_id=e.id LEFT JOIN criterios c ON c.id=l.criterio_id AND c.grupo_id=e.grupo_id WHERE e.grupo_id=? ORDER BY e.creado_en DESC', [Number(groupId)], (err, rows) => err ? reject(err) : resolve(rows || []))));
+ipcMain.handle('examscan-load-questions', async (_event, examId) => new Promise((resolve, reject) => db.get('SELECT titulo,preguntas_json FROM examscan_exams WHERE id=?', [String(examId)], (err, row) => {
+  if (err) return reject(err);
+  if (!row) return reject(new Error('El examen ya no está disponible en el banco.'));
+  try { resolve({ titulo: row.titulo, preguntas: JSON.parse(row.preguntas_json) }); } catch (parseError) { reject(parseError); }
+})));
+const renderExamScanPdf = async event => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window || window.isDestroyed()) throw new Error('La ventana de ExamScan ya no está disponible.');
+  return window.webContents.printToPDF({ pageSize: 'Letter', printBackground: true, preferCSSPageSize: true, margins: { top: 0.35, bottom: 0.35, left: 0.35, right: 0.35 } });
+};
+ipcMain.handle('examscan-render-pdf', async event => (await renderExamScanPdf(event)).toString('base64'));
+ipcMain.handle('examscan-export-pdf', async event => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  const { canceled, filePath } = await dialog.showSaveDialog(window, { title: 'Guardar exámenes ExamScan', defaultPath: 'ELARA-ExamScan.pdf', filters: [{ name: 'Documento PDF', extensions: ['pdf'] }] });
+  if (canceled || !filePath) return { canceled: true };
+  await fs.promises.writeFile(filePath, await renderExamScanPdf(event));
+  return { success: true, filePath };
+});
+ipcMain.handle('examscan-resolve-qr', async (_event, payload) => {
+  return examScan.resolveQrPayload(db, payload);
+});
+ipcMain.handle('examscan-save-result', async (_event, payload) => examScan.saveAttemptResult(db, payload));
+
 ipcMain.handle('add-alumno', async (e, nombre, grupo_id) => new Promise((r, j) => db.run("INSERT INTO alumnos (nombre, grupo_id) VALUES (?, ?)", [nombre, grupo_id || null], function(err){ err ? j(err) : r(this.lastID) })));
 ipcMain.handle('delete-alumno', async (e, id) => new Promise(r => db.run("DELETE FROM alumnos WHERE id = ?", [id], () => r(true))));
 
@@ -507,23 +571,23 @@ ipcMain.handle('get-perfil', async (e, id) => new Promise(r => db.get("SELECT * 
 ipcMain.handle('save-perfil', (_event, data) => alumnoService.savePerfil(data));
 
 // -- PROYECTOS --
-ipcMain.handle('get-proyectos', async (e, grupo_id, grado) => new Promise(r => {
+ipcMain.handle('get-proyectos', async (e, grupo_id, grado) => new Promise((resolve,reject) => {
   const g = grado ? Number(grado) : null;
   const gid = grupo_id ? Number(grupo_id) : null;
   let sql = "SELECT * FROM proyectos WHERE 1=1";
   const params = [];
   if (g && gid) {
-    sql += " AND ((grado = ? AND (grupo_id = ? OR grupo_id IS NULL)) OR grupo_id = ?)";
+    sql += " AND ((grado = ? AND grupo_id = ?) OR grupo_id = ?)";
     params.push(g, gid, gid);
   } else if (g) {
     sql += " AND (grado = ? OR grado IS NULL)";
     params.push(g);
   } else if (gid) {
-    sql += " AND (grupo_id = ? OR grupo_id IS NULL)";
+    sql += " AND grupo_id = ?";
     params.push(gid);
   }
   sql += " ORDER BY id DESC";
-  db.all(sql, params, (err, rows) => r(rows || []));
+  db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows || []));
 }));
 
 ipcMain.handle('save-proyecto', async (e, p) => new Promise((resolve, reject) => {
@@ -536,10 +600,10 @@ ipcMain.handle('save-proyecto', async (e, p) => new Promise((resolve, reject) =>
 
   if (id) {
     db.run("UPDATE proyectos SET nombre=?, metodologia=?, escenario=?, temporalidad=?, problemática=?, pdas_seleccionados=?, fases_contenido=?, grado=?, grupo_id=?, apartados=? WHERE id=?",
-      [nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr, g, gid, apartadosStr, id], () => resolve(true));
+      [nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr, g, gid, apartadosStr, id], (err) => err ? reject(err) : resolve(true));
   } else {
     db.run("INSERT INTO proyectos (grado, grupo_id, nombre, metodologia, escenario, temporalidad, problemática, pdas_seleccionados, fases_contenido, apartados) VALUES (?,?,?,?,?,?,?,?,?,?)",
-      [g, gid, nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr, apartadosStr], () => resolve(true));
+      [g, gid, nombre, metodologia, escenario, temporalidad, problemática, pdaStr, fasesStr, apartadosStr], (err) => err ? reject(err) : resolve(true));
   }
 }));
 
@@ -560,11 +624,7 @@ ipcMain.handle('get-planeacion', async (e, grupo_id, s, grado) => new Promise(r 
   const gid = grupo_id ? Number(grupo_id) : null;
 
   if (g && gid) {
-    db.get("SELECT * FROM planeacion WHERE semana = ? AND grado = ? AND (grupo_id = ? OR grupo_id IS NULL)", [sem, g, gid], (err, row) => {
-      if (row && row.id) return r(row);
-      // Búsqueda por grado y semana
-      db.get("SELECT * FROM planeacion WHERE semana = ? AND grado = ?", [sem, g], (err2, row2) => r(row2 || {}));
-    });
+    db.get("SELECT * FROM planeacion WHERE semana = ? AND grado = ? AND grupo_id = ?", [sem, g, gid], (err, row) => r(row || {}));
   } else if (g) {
     db.get("SELECT * FROM planeacion WHERE semana = ? AND grado = ?", [sem, g], (err, row) => r(row || {}));
   } else if (gid) {
@@ -583,7 +643,7 @@ ipcMain.handle('save-planeacion', async (e, d) => new Promise((resolve, reject) 
   let deleteSql = "DELETE FROM planeacion WHERE semana = ?";
   let deleteParams = [sem];
   if (g && gid) {
-    deleteSql += " AND grado = ? AND (grupo_id = ? OR grupo_id IS NULL)";
+    deleteSql += " AND grado = ? AND grupo_id = ?";
     deleteParams.push(g, gid);
   } else if (g) {
     deleteSql += " AND grado = ?";
@@ -686,7 +746,7 @@ ipcMain.handle('get-local-ip', async () => getLocalIp());
 ipcMain.handle('get-local-ips', async () => getLocalIps());
 ipcMain.handle('get-ws-info', async () => ({ ip: getLocalIp(), port: activeWsPort, ips: getLocalIps() }));
 ipcMain.handle('get-asistencia-fecha', async (e, fecha, grupo_id) => new Promise(r => {
-  db.all("SELECT * FROM asistencia WHERE fecha = ? AND (grupo_id = ? OR grupo_id IS NULL)", [fecha, grupo_id || null], (err, rows) => r(rows || []));
+  db.all("SELECT * FROM asistencia WHERE fecha = ? AND grupo_id = ?", [fecha, grupo_id || null], (err, rows) => r(rows || []));
 }));
 
 registerQrMutation('save-asistencia-qr', async (e, alumno_id, fecha, estado, grupo_id) => new Promise((resolve, reject) => {
@@ -821,7 +881,7 @@ registerQrMutation('save-trabajo-qr', async (e, alumno_id, campo, nombre_trabajo
 
 ipcMain.handle('get-tareas-lista-grupo', async (e, grupo_id) => new Promise(r => {
   db.all(
-    "SELECT DISTINCT nombre_trabajo FROM trabajos_qr WHERE (grupo_id = ? OR grupo_id IS NULL) ORDER BY id DESC",
+    "SELECT DISTINCT nombre_trabajo FROM trabajos_qr WHERE grupo_id = ? ORDER BY id DESC",
     [grupo_id || null],
     (err, rows) => {
       r((rows || []).map(row => row.nombre_trabajo).filter(Boolean));
@@ -838,7 +898,7 @@ ipcMain.handle('get-trabajos-qr', async (e, fecha, grupo_id) => {
 
 registerQrMutation('delete-actividad-fecha', async (e, fecha, nombreTrabajo, grupo_id) => new Promise(r => {
   db.run(
-    "DELETE FROM trabajos_qr WHERE fecha = ? AND nombre_trabajo = ? AND (grupo_id = ? OR grupo_id IS NULL) AND alumno_id IN (SELECT id FROM alumnos WHERE grupo_id = ?)",
+    "DELETE FROM trabajos_qr WHERE fecha = ? AND nombre_trabajo = ? AND grupo_id = ? AND alumno_id IN (SELECT id FROM alumnos WHERE grupo_id = ?)",
     [fecha, nombreTrabajo, grupo_id || null, grupo_id || null],
     function(err) {
       r({ success: !err, changes: this ? this.changes : 0 });
@@ -848,7 +908,7 @@ registerQrMutation('delete-actividad-fecha', async (e, fecha, nombreTrabajo, gru
 
 registerQrMutation('update-actividad-fecha', async (e, fecha, nombreViejo, nombreNuevo, campoNuevo, grupo_id) => new Promise(r => {
   db.run(
-    "UPDATE trabajos_qr SET nombre_trabajo = ?, campo = ? WHERE fecha = ? AND nombre_trabajo = ? AND (grupo_id = ? OR grupo_id IS NULL) AND alumno_id IN (SELECT id FROM alumnos WHERE grupo_id = ?)",
+    "UPDATE trabajos_qr SET nombre_trabajo = ?, campo = ? WHERE fecha = ? AND nombre_trabajo = ? AND grupo_id = ? AND alumno_id IN (SELECT id FROM alumnos WHERE grupo_id = ?)",
     [nombreNuevo, campoNuevo, fecha, nombreViejo, grupo_id || null, grupo_id || null],
     function(err) {
       r({ success: !err, changes: this ? this.changes : 0 });

@@ -1,3 +1,8 @@
+# Elara Primaria 1.0.44
+
+- Incorpora Exámenes: borradores con IA, clave revisable, imágenes por reactivo, hojas QR y captura de respuestas vinculada con el evaluador.
+- Conserva los apartados de proyectos y planeación semanal, limita su lectura al grupo activo y muestra errores reales de guardado.
+
 # Elara 1.0.39
 
 - Conserva actividades del evaluador QR y recupera las creadas en versiones anteriores.

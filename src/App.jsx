@@ -26,6 +26,7 @@ const ConfiguracionCiclo = lazy(() => import('./components/ConfiguracionCiclo'))
 const DashboardGrupos = lazy(() => import('./components/DashboardGrupos'));
 const Alumno = lazy(() => import('./components/Alumno'));
 const ControlQR = lazy(() => import('./components/ControlQR'));
+const ExamScan = lazy(() => import('./components/ExamScan'));
 import { EstadoEvaluacionQR, VincularEvaluacionQR } from './components/EvaluacionAutomatica';
 import { mezclarNotasAutomaticas, promedioPeriodo } from './evaluacionAutomatica';
 
@@ -307,6 +308,8 @@ function App() {
   useEffect(() => { if(ipcRenderer) ipcRenderer.invoke('get-alumnos', grupoActual?.id).then(r => setAlumnos(r || [])).catch(console.error); }, [vista, grupoActual]);
   useEffect(() => { if(ipcRenderer && vista==='CALENDARIO'){ ipcRenderer.invoke('get-eventos-oficiales').then(setEventosSEP); } }, [vista, mesCal, anioCal]);
   useEffect(() => { if(ipcRenderer) { ipcRenderer.invoke('get-comisiones').then(res => { setComisiones(res || []); }); ipcRenderer.invoke('get-vistos').then(res => setVistos(res || {})); } }, [vista]);
+  // Cargar proyectos del grupo activo de forma independiente del catálogo curricular.
+  useEffect(() => { if (ipcRenderer && vista === 'PROYECTOS' && grupoActual?.id) { ipcRenderer.invoke('get-proyectos', grupoActual.id, grado).then(rows => { const saved=(rows||[]).map(p=>({...p,pdas_seleccionados:safeParse(p.pdas_seleccionados,[]),fases_contenido:safeParse(p.fases_contenido,{}),apartados:safeParse(p.apartados,{})})); setListaProyectos(prev=>[...saved,...prev.filter(p=>p.es_sugerido&&!saved.some(x=>x.nombre===p.nombre))]); }).catch(err=>showToast('No se pudieron cargar los proyectos: '+(err.message||'error de almacenamiento'))); } }, [vista, grupoActual?.id, grado]);
 
   useEffect(() => {
     if (ipcRenderer) {
@@ -559,7 +562,7 @@ function App() {
       });
       setModoEdicionProy(true);
   };
-  const guardarProyecto = () => { if(!proyectoActual.nombre) return showToast("Falta nombre"); const proy = { ...proyectoActual, id: (typeof proyectoActual.id === 'string' && proyectoActual.id.startsWith('sug-')) ? null : proyectoActual.id, grado, grupo_id: grupoActual?.id }; ipcRenderer.invoke('save-proyecto', proy).then(()=>{ showToast("✅ Proyecto guardado"); setModoEdicionProy(false); setVista('MENU'); setTimeout(() => setVista('PROYECTOS'), 50); }); };
+  const guardarProyecto = () => { if(!proyectoActual.nombre) return showToast("Falta nombre"); const proy = { ...proyectoActual, id: (typeof proyectoActual.id === 'string' && proyectoActual.id.startsWith('sug-')) ? null : proyectoActual.id, grado, grupo_id: grupoActual?.id }; ipcRenderer.invoke('save-proyecto', proy).then(()=>{ showToast("✅ Proyecto guardado"); setModoEdicionProy(false); setVista('MENU'); setTimeout(() => setVista('PROYECTOS'), 50); }).catch(err => showToast("No se guardó el proyecto: " + (err.message || "error de almacenamiento"))); };
   const guardarProyectoSilencioso = (proyectoData) => {
     const target = proyectoData || proyectoActual;
     if (!target || !target.nombre) return Promise.resolve(false);
@@ -608,7 +611,7 @@ function App() {
       }
   };
   const borrarAlumno = (id) => { if(confirm("¿Borrar?")) ipcRenderer.invoke('delete-alumno', id).then(()=>ipcRenderer.invoke('get-alumnos', grupoActual?.id).then(setAlumnos)); };
-  const savePlan = () => ipcRenderer.invoke('save-planeacion', {...planData, grado, grupo_id: grupoActual?.id, semana:semanaPlan}).then(()=>showToast("✅ Planeación guardada"));
+  const savePlan = () => ipcRenderer.invoke('save-planeacion', {...planData, grado, grupo_id: grupoActual?.id, semana:semanaPlan}).then(()=>showToast("✅ Planeación guardada")).catch(err=>showToast("No se guardó la planeación: "+(err.message||"error de almacenamiento"))); 
 
   const pdasFiltrados = useMemo(() => {
     return pdasDisponibles.filter(p => !busquedaPda || p.descripcion.toLowerCase().includes(busquedaPda.toLowerCase()) || (p.proyecto_sugerido && p.proyecto_sugerido.toLowerCase().includes(busquedaPda.toLowerCase())));
@@ -654,6 +657,7 @@ function App() {
     if (vista === 'LAN') return <LanTransfer ipc={ipcRenderer} onBack={()=>setVista('MENU')} />;
     if (vista === 'ANALITICO') return <ProgramaAnalitico key={contextoTrabajo} ipc={ipcRenderer} contexto={contextoTrabajo} variante='primaria' grupo={grupoActual} grado={grado} ciclo={configCiclo} onVolver={()=>setVista('MENU')} />;
     if (vista === 'ALUMNO') return <Alumno ipcRenderer={ipcRenderer} variante='primaria' configCiclo={configCiclo} grupoActual={grupoActual} onVolver={()=>setVista('MENU')} />;
+    if (vista === 'EXAMSCAN') return <ExamScan edition='primaria' group={grupoActual} grade={grado} cycle={configCiclo} evaluationDate={fechaEval} ipc={ipcRenderer} onBack={() => setVista('MENU')} onResultSaved={({ fecha, campo }) => { setFechaEval(fecha); setCampoActual(campo); cargarEval(campo, fecha); }} />;
     if(vista === 'MENU') {
       const menuItems = [
         {id:'CTE',icon:'📒',label:'Consejo Técnico Escolar',desc:'Sesiones, acuerdos y evidencias',color:'#3655a2',action:()=>setVista('CTE')},
@@ -670,7 +674,8 @@ function App() {
         { id: 'COMISIONES', icon: '🔔', label: 'Comisiones', desc: `${comisiones.length} pendientes`, color: '#FD79A8', action: ()=>setVista('COMISIONES') },
         { id: 'PROYECTOS', icon: '🚀', label: 'Proyectos', desc: 'Didácticos NEM', color: '#00CEC9', action: ()=>setVista('PROYECTOS') },
         { id: 'BITACORA', icon: '📂', label: 'Bitácora', desc: 'Fichas e incidencias', color: '#636E72', action: ()=>{setVista('BITACORA'); setAlumnoBitacora(null);} },
-        { id: 'MATERIALES', icon: '🧩', label: 'Materiales', desc: 'Exámenes y juegos', color: '#FF9F43', action: ()=>setVista('MATERIALES') },
+        { id: 'EXAMSCAN', icon: '📝', label: 'Exámenes', desc: 'Crear, imprimir y evaluar exámenes QR', color: '#147768', action: ()=>setVista('EXAMSCAN') },
+      { id: 'MATERIALES', icon: '🧩', label: 'Materiales', desc: 'Exámenes y juegos', color: '#FF9F43', action: ()=>setVista('MATERIALES') },
         { id: 'CONFIG', icon: '⚙️', label: 'Ajustes Ciclo', desc: 'Fechas y SEP', color: '#2C3E50', action: ()=>setVista('CONFIG') }
       ];
 
