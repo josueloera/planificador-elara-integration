@@ -1,0 +1,19 @@
+.quarterly-report{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#183149;background:#f4f7fa;padding:18px;border-radius:16px}
+.quarterly-cover{padding:30px;background:linear-gradient(125deg,#12384f,#176c68);color:#fff;border-radius:16px;margin:12px 0 24px;box-shadow:0 12px 32px #17364a24}
+.quarterly-kicker,.quarterly-student-heading span{font-size:.73rem;font-weight:800;letter-spacing:.13em;opacity:.84}
+.quarterly-cover h2{font-size:1.8rem;margin:8px 0}.quarterly-cover p{margin:0;opacity:.9}
+.quarterly-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-top:24px}
+.quarterly-metrics div{padding:14px;border-radius:11px;background:#ffffff18;border:1px solid #ffffff36;display:flex;flex-direction:column;gap:5px}
+.quarterly-metrics strong{font-size:1.08rem}.quarterly-metrics span{font-size:.8rem;opacity:.84}
+.quarterly-summary,.quarterly-student{background:#fff;border:1px solid #dce5eb;border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 5px 18px #1b33420b}
+.quarterly-report h3{color:#174c5a;margin:4px 0 16px}.quarterly-report h4{color:#176c68;margin:20px 0 8px}
+.quarterly-report table{border-collapse:collapse;width:100%;table-layout:auto;margin:8px 0 14px;font-size:.88rem}
+.quarterly-report th{background:#e8f1f2;color:#164c55;font-weight:750;text-align:left}
+.quarterly-report th,.quarterly-report td{border:1px solid #d7e1e7;padding:9px;vertical-align:top;white-space:pre-wrap;overflow-wrap:anywhere}
+.quarterly-student-heading{display:flex;align-items:center;gap:18px;padding-bottom:15px;border-bottom:2px solid #dce9eb;margin-bottom:14px}
+.quarterly-student-heading img{width:86px;height:100px;object-fit:cover;border-radius:10px;border:2px solid #dce5eb}
+.quarterly-photo-cell{width:76px;height:90px;object-fit:cover;border-radius:7px;vertical-align:top}
+.quarterly-student-heading h3{font-size:1.4rem;margin:4px 0}.quarterly-student-heading p{margin:0;color:#526779}
+.quarterly-load-note{padding:10px 14px;border-radius:8px;background:#fff5dc;color:#805c10}
+@media(max-width:700px){.quarterly-report{padding:8px}.quarterly-cover{padding:18px}.quarterly-summary,.quarterly-student{padding:12px;overflow-x:auto}.quarterly-report table{min-width:560px}.quarterly-student-heading img{width:64px;height:78px}}
+@media print{.quarterly-report{background:#fff;padding:0}.quarterly-cover,.quarterly-summary,.quarterly-student{box-shadow:none;border-radius:0;break-inside:avoid}.quarterly-student{break-before:page;page-break-before:always}.quarterly-report th{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
