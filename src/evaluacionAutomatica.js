@@ -30,16 +30,38 @@ export function mezclarNotasAutomaticas(notas, automatica, fecha) {
   return mapa;
 }
 
-export function promedioPeriodo(criterios, todasNotas, automatica, alumnoId) {
+const normalizarEstadoAsistencia = estado => String(estado ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+const ESTADOS_PRESENTE = new Set(['PRESENTE', 'ASISTENCIA', 'ASISTIO', 'RETARDO']);
+
+export function asistenciaConfirmaPresente(asistencias, alumnoId, fecha) {
+  const registros = Array.isArray(asistencias) ? asistencias : [];
+  return registros.some(registro =>
+    Number(registro.alumno_id) === Number(alumnoId) &&
+    (!fecha || registro.fecha === fecha) &&
+    ESTADOS_PRESENTE.has(normalizarEstadoAsistencia(registro.estado))
+  );
+}
+
+export function promedioPeriodo(criterios, todasNotas, automatica, alumnoId, asistencias = []) {
   const ids = new Set(criterios.map(c => c.id));
   const porFecha = new Map();
-  for (const nota of notasConAutomaticas(todasNotas, automatica)) {
-    if (nota.alumno_id !== alumnoId || !ids.has(nota.criterio_id) || !nota.fecha) continue;
+  const notasEvaluadas = notasConAutomaticas(todasNotas, automatica);
+  const fechasConActividad = new Set(notasEvaluadas.filter(nota =>
+    ids.has(nota.criterio_id) && nota.fecha && nota.valor != null && String(nota.valor).trim() !== '' && Number.isFinite(Number(nota.valor))
+  ).map(nota => nota.fecha));
+  for (const nota of notasEvaluadas) {
+    if (Number(nota.alumno_id) !== Number(alumnoId) || !ids.has(nota.criterio_id) || !nota.fecha) continue;
     if (!porFecha.has(nota.fecha)) porFecha.set(nota.fecha, new Map());
     porFecha.get(nota.fecha).set(nota.criterio_id, nota.valor);
   }
   const diarios = [];
-  for (const notasDia of porFecha.values()) {
+  const fechasDelAlumno = new Set([
+    ...porFecha.keys(),
+    ...[...fechasConActividad].filter(fecha => asistenciaConfirmaPresente(asistencias, alumnoId, fecha))
+  ]);
+  for (const fecha of fechasDelAlumno) {
+    const notasDia = porFecha.get(fecha) || new Map();
+    const presente = asistenciaConfirmaPresente(asistencias, alumnoId, fecha);
     let suma = 0;
     let pesos = 0;
     for (const criterio of criterios) {
@@ -47,6 +69,9 @@ export function promedioPeriodo(criterios, todasNotas, automatica, alumnoId) {
       const peso = Number(criterio.porcentaje) || 0;
       if (valor != null && String(valor).trim() !== '' && Number.isFinite(Number(valor)) && peso > 0) {
         suma += Number(valor) * peso;
+        pesos += peso;
+      } else if (presente && fechasConActividad.has(fecha) && peso > 0) {
+        // Si hay una actividad evaluada ese día, la asistencia confirma que la falta de nota es no entrega: cuenta como 0.
         pesos += peso;
       }
     }

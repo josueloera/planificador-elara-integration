@@ -1,15 +1,15 @@
 import { promedioPeriodo } from '../evaluacionAutomatica.js';
-export function construirReporteTrimestral({ alumnos, criterios, notas, automatica, variante }) {
+export function construirReporteTrimestral({ alumnos, criterios, notas, automatica, asistencias = [], variante }) {
   return alumnos.map(alumno => {
     const fila = { id: alumno.id, nombre: alumno.nombre };
     if (variante === 'secundaria') {
-      const promedio = promedioPeriodo(criterios, notas, automatica, alumno.id);
+      const promedio = promedioPeriodo(criterios, notas, automatica, alumno.id, asistencias);
       fila.promedioFinal = promedio === null ? '-' : promedio.toFixed(1);
     } else {
       const promedios = [];
       for (const campo of ['LENGUAJES', 'SABERES', 'ETICA', 'HUMANO']) {
         const seleccion = criterios.filter(c => c.campo === campo || (!c.campo && campo === 'LENGUAJES'));
-        const promedio = promedioPeriodo(seleccion, notas, automatica, alumno.id);
+        const promedio = promedioPeriodo(seleccion, notas, automatica, alumno.id, asistencias);
         fila[campo] = promedio === null ? '-' : promedio.toFixed(1);
         if (promedio !== null) promedios.push(promedio);
       }
@@ -20,11 +20,12 @@ export function construirReporteTrimestral({ alumnos, criterios, notas, automati
 }
 export async function cargarReporteTrimestral(ipcRenderer, { grupoId, periodo, variante }) {
   if (!grupoId) throw new Error('Selecciona primero un grupo.');
-  const [alumnos, criterios, notas, automatica] = await Promise.all([
+  const [alumnos, criterios, notas, automatica, asistencias] = await Promise.all([
     ipcRenderer.invoke('get-alumnos', grupoId),
     ipcRenderer.invoke('get-criterios', grupoId),
     ipcRenderer.invoke('get-notas-rango', periodo.inicio, periodo.fin),
-    ipcRenderer.invoke('get-evaluacion-automatica', grupoId, { inicio: periodo.inicio, fin: periodo.fin })
+    ipcRenderer.invoke('get-evaluacion-automatica', grupoId, { inicio: periodo.inicio, fin: periodo.fin }),
+    ipcRenderer.invoke('get-asistencia-rango', grupoId, periodo.inicio, periodo.fin)
   ]);
-  return construirReporteTrimestral({ alumnos: alumnos || [], criterios: criterios || [], notas: notas || [], automatica, variante });
+  return construirReporteTrimestral({ alumnos: alumnos || [], criterios: criterios || [], notas: notas || [], automatica, asistencias: asistencias || [], variante });
 }

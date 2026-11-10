@@ -28,9 +28,11 @@ const Alumno = lazy(() => import('./components/Alumno'));
 const ControlQR = lazy(() => import('./components/ControlQR'));
 const ExamScan = lazy(() => import('./components/ExamScan'));
 import { EstadoEvaluacionQR, VincularEvaluacionQR } from './components/EvaluacionAutomatica';
-import { mezclarNotasAutomaticas, promedioPeriodo } from './evaluacionAutomatica';
+import { asistenciaConfirmaPresente, mezclarNotasAutomaticas, promedioPeriodo } from './evaluacionAutomatica';
+import { exportDocument } from './utils/documentExport';
 
 const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
+const exportarReporteTrimestralPdf = () => exportDocument(document.querySelector('.quarterly-report'), 'Reporte de evaluaciones trimestrales', 'pdf').catch(error => window.alert(error?.message || 'No se pudo generar el PDF.'));
 
 const fechaLocalISO = () => {
   const fecha = new Date();
@@ -85,11 +87,11 @@ const detectarMetodologia = (campo) => {
 // Render counter global para depuración
 window.renderCount = (window.renderCount || 0) + 1;
 
-const CeldaNota = memo(({ idAlumno, idCriterio, valorInicial, onGuardar, soloLectura = false }) => {
+const CeldaNota = memo(({ idAlumno, idCriterio, valorInicial, onGuardar, soloLectura = false, notaSinEntrega = false }) => {
     const [valor, setValor] = useState(valorInicial ?? '');
     useEffect(() => { setValor(valorInicial ?? ''); }, [valorInicial]);
     const handleBlur = () => { if (!soloLectura && valor !== valorInicial) onGuardar(idAlumno, idCriterio, valor === '' ? null : valor); };
-    return ( <input className="input-nota" readOnly={soloLectura} title={soloLectura ? "Calificación automática de esta fecha. Corrige los registros en Control QR." : undefined} type="text" inputMode="decimal" style={{background: 'rgba(255,255,255,0.8)', fontWeight: 'bold', fontSize: '1.2rem', textAlign: 'center', width: '100%', height: '40px', border: '1px solid #eee', borderRadius: '4px', outline: 'none', color: '#333'}} value={valor} onChange={(e) => setValor(e.target.value)} onBlur={handleBlur} placeholder="-" /> );
+    return ( <input className="input-nota" readOnly={soloLectura} title={notaSinEntrega ? '0.0 aplicado: el alumno tuvo asistencia y la actividad quedó sin calificación.' : soloLectura ? "Calificación automática de esta fecha. Corrige los registros en Control QR." : undefined} type="text" inputMode="decimal" style={{background: 'rgba(255,255,255,0.8)', fontWeight: 'bold', fontSize: '1.2rem', textAlign: 'center', width: '100%', height: '40px', border: '1px solid #eee', borderRadius: '4px', outline: 'none', color: '#333'}} value={valor} onChange={(e) => setValor(e.target.value)} onBlur={handleBlur} placeholder="-" /> );
 });
 
 const safeParse = (data, fallback) => { if (typeof data === 'object' && data !== null) return data; try { return JSON.parse(data) ?? fallback; } catch (e) { return fallback; } };
@@ -136,10 +138,19 @@ function App() {
   }, [criterios]);
 
   const [notas, setNotas] = useState({});
+  const [asistenciaEvaluacion, setAsistenciaEvaluacion] = useState({ clave: '', registros: [] });
   const [fechaEval, setFechaEval] = useState(fechaLocalISO);
   const [modoConfig, setModoConfig] = useState(false);
   const [showModalImportarQR, setShowModalImportarQR] = useState(false);
   const [evaluacionAutomatica, setEvaluacionAutomatica] = useState(null);
+  const claveAsistenciaActual = `${grupoActual?.id}:${fechaEval}`;
+  const asistenciasDelDia = asistenciaEvaluacion.clave === claveAsistenciaActual ? asistenciaEvaluacion.registros : [];
+  const hayActividadEvaluada = Object.values(notas).some(valor => valor != null && String(valor).trim() !== '' && Number.isFinite(Number(valor)));
+  const obtenerCalificacionEvaluacion = (alumnoId, criterio) => {
+    const valor = notas[`${alumnoId}-${criterio.id}`];
+    const faltaConAsistencia = criterio.id != null && hayActividadEvaluada && asistenciaConfirmaPresente(asistenciasDelDia, alumnoId, fechaEval) && (valor == null || String(valor).trim() === '');
+    return { valor: faltaConAsistencia ? '0' : valor, faltaConAsistencia };
+  };
 
   // OTROS
   const [textoPegado, setTextoPegado] = useState("");
@@ -428,8 +439,9 @@ function App() {
       ipcRenderer.invoke('get-alumnos', grupoId),
       ipcRenderer.invoke('get-criterios', grupoId, targetCampo),
       ipcRenderer.invoke('get-notas-fecha', fecha),
-      ipcRenderer.invoke('get-evaluacion-automatica', grupoId, { inicio: fecha, fin: fecha })
-    ]).then(([listaAlumnos, listaCriterios, listaNotas, automatica]) => {
+      ipcRenderer.invoke('get-evaluacion-automatica', grupoId, { inicio: fecha, fin: fecha }),
+      ipcRenderer.invoke('get-asistencia-fecha', fecha, grupoId)
+    ]).then(([listaAlumnos, listaCriterios, listaNotas, automatica, asistencia]) => {
       if (request !== cargaEvalRef.current || grupoId !== grupoEvaluacionRef.current) return;
       setAlumnos(listaAlumnos || []);
       const lista = (listaCriterios || []).map((c, idx) => ({
@@ -438,6 +450,7 @@ function App() {
       setCriterios(lista);
       setModoConfig(lista.length === 0);
       setEvaluacionAutomatica(automatica);
+      setAsistenciaEvaluacion({ clave: `${grupoId}:${fecha}`, registros: Array.isArray(asistencia) ? asistencia : [] });
       setNotas(mezclarNotasAutomaticas(listaNotas, automatica, fecha));
     }).catch(err => {
       console.error(err);
@@ -492,12 +505,15 @@ function App() {
 
   const calcularPromedioDiario = (alumnoId) => {
       if (!criterios || criterios.length === 0) return null;
+      const alumnoPresente = asistenciaConfirmaPresente(asistenciasDelDia, alumnoId, fechaEval);
       let sumaWeighted = 0;
       let totalPorcentaje = 0;
       criterios.forEach(c => {
-          const val = parseFloat(notas[`${alumnoId}-${c.id}`]);
+          const nota = notas[`${alumnoId}-${c.id}`];
+          const faltaConAsistencia = c.id != null && hayActividadEvaluada && alumnoPresente && (nota == null || String(nota).trim() === '');
+          const val = parseFloat(faltaConAsistencia ? '0' : nota);
           const peso = parseFloat(c.porcentaje) || 0;
-          if (!isNaN(val) && peso > 0) {
+          if ((!isNaN(val) || faltaConAsistencia) && peso > 0) {
               sumaWeighted += val * peso;
               totalPorcentaje += peso;
           }
@@ -983,7 +999,7 @@ function App() {
                             </td>
                             {(criterios || []).map(c=>(
                               <td key={c.frontId} style={{ textAlign: 'center' }}>
-                                <CeldaNota idAlumno={al.id} idCriterio={c.id} valorInicial={notas[`${al.id}-${c.id}`]} onGuardar={handleSaveNota} soloLectura={evaluacionAutomatica?.enlaces?.some(e => e.criterio_id === c.id)} />
+                                <CeldaNota idAlumno={al.id} idCriterio={c.id} valorInicial={obtenerCalificacionEvaluacion(al.id, c).valor} notaSinEntrega={obtenerCalificacionEvaluacion(al.id, c).faltaConAsistencia} onGuardar={handleSaveNota} soloLectura={evaluacionAutomatica?.enlaces?.some(e => e.criterio_id === c.id)} />
                               </td>
                             ))}
                             <td style={{textAlign:'center', fontWeight:'800', fontSize:'1.2rem', color: '#0f172a'}}>{prom ?? '-'}</td>
@@ -1055,7 +1071,7 @@ function App() {
             <h2>📊 Reporte de Evaluaciones Trimestrales ({grado}º Primaria)</h2>
             <div style={{display:'flex', gap:10}}>
               <button className="btn-guardar" onClick={generarReporteTrimestral}>{cargandoReporte ? '⏳ Calculando...' : '🔄 Recalcular'}</button>
-              <button className="btn-volver" onClick={()=>window.print()}>🖨️ Imprimir Reporte</button>
+              <button className="btn-volver" onClick={exportarReporteTrimestralPdf}>🖨️ Exportar PDF</button>
               <button className="btn-volver" onClick={()=>setVista('MENU')}>Salir</button>
             </div>
           </div>
