@@ -1,3 +1,7 @@
+# Elara Primaria 1.0.48
+
+- Aplica 0.0 únicamente a la actividad y fecha ya evaluadas cuando el alumno asistió.
+
 # Elara Primaria 1.0.47
 
 - Genera reportes trimestrales paginados y con formato profesional para entregar a las familias.
