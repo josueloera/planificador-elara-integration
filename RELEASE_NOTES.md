@@ -1,3 +1,8 @@
+# Elara Primaria 1.0.45
+
+- Agrega un menú rápido de Exámenes desde Captura QR para crear, capturar o vincular sin salir del flujo.
+- Aclara la acción para crear actividades y evitar confundirla con el creador de exámenes.
+
 # Elara Primaria 1.0.44
 
 - Incorpora Exámenes: borradores con IA, clave revisable, imágenes por reactivo, hojas QR y captura de respuestas vinculada con el evaluador.

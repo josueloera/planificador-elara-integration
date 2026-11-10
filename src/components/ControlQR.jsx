@@ -4,6 +4,7 @@ import AdecuacionesQR from './AdecuacionesQR';
 import { actividadAsignada } from '../qrAssignments';
 import { rangoDelCiclo } from '../evaluacionAutomatica';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+const ExamScan = React.lazy(() => import('./ExamScan'));
 import { QRCodeSVG } from 'qrcode.react';
 import { exportarAsistenciaExcel, exportarTrabajosExcel, calcularSemanaEscolar } from '../utils/excelExporter';
 import jsQR from 'jsqr';
@@ -239,6 +240,8 @@ export default function ControlQR({
   // Modales de exportación a criterios
   const [showModalExportAsis, setShowModalExportAsis] = useState(false);
   const [showModalExportTrab, setShowModalExportTrab] = useState(false);
+  const [showExamQuickMenu, setShowExamQuickMenu] = useState(false);
+  const [showExamManager, setShowExamManager] = useState(false);
   const [criterioDestinoAsis, setCriterioDestinoAsis] = useState('');
   const [criterioDestinoTrab, setCriterioDestinoTrab] = useState('');
   const [tipoVinculoTrab, setTipoVinculoTrab] = useState('trabajos');
@@ -1289,7 +1292,7 @@ export default function ControlQR({
               >
                 📝 Revisión de Trabajos
               </button>
-              <button type="button" onClick={() => setModoEscaneo('TAREA')} style={{ flex: 1, padding: 12, borderRadius: 8, border: 0, fontWeight: 700, background: modoEscaneo === 'TAREA' ? '#6b46c1' : '#edf2f7', color: modoEscaneo === 'TAREA' ? 'white' : '#4a5568' }}>📚 Tareas</button><button type="button" onClick={() => setModoEscaneo('EXAMEN')} style={{flex:1,padding:12,borderRadius:8,border:0,background:modoEscaneo==='EXAMEN'?'#2b6cb0':'#edf2f7',color:modoEscaneo==='EXAMEN'?'white':'#4a5568'}}>📝 Exámenes</button>
+              <button type="button" onClick={() => setModoEscaneo('TAREA')} style={{ flex: 1, padding: 12, borderRadius: 8, border: 0, fontWeight: 700, background: modoEscaneo === 'TAREA' ? '#6b46c1' : '#edf2f7', color: modoEscaneo === 'TAREA' ? 'white' : '#4a5568' }}>📚 Tareas</button><button type="button" onClick={() => { setModoEscaneo('EXAMEN'); setActiveTab('ESCANER'); setShowExamQuickMenu(true); }} style={{flex:1,padding:12,borderRadius:8,border:0,background:modoEscaneo==='EXAMEN'?'#2b6cb0':'#edf2f7',color:modoEscaneo==='EXAMEN'?'white':'#4a5568'}}>📝 Exámenes</button>
             </div>
 
             {/* OPCIONES DE ASISTENCIA */}
@@ -1429,7 +1432,7 @@ export default function ControlQR({
                         title="Crear una nueva actividad con su materia"
                       >
                         <span style={{ fontSize: '14px' }}>➕</span>
-                        <span>Nueva Tarea</span>
+                        <span>{modoEscaneo === 'EXAMEN' ? 'Nueva actividad' : modoEscaneo === 'TAREA' ? 'Nueva Tarea' : 'Nuevo trabajo'}</span>
                       </button>
                     </div>
                   </div>
@@ -1825,7 +1828,7 @@ export default function ControlQR({
                         }}
                       >
                         <span>➕</span>
-                        <span>Nueva Tarea</span>
+                        <span>{modoEscaneo === 'EXAMEN' ? 'Nueva actividad' : modoEscaneo === 'TAREA' ? 'Nueva Tarea' : 'Nuevo trabajo'}</span>
                       </button>
                     </div>
                   </div>
@@ -3406,6 +3409,32 @@ export default function ControlQR({
       )}
 
       {/* MODAL 2: EXPORTAR PROMEDIO DE TRABAJOS A CRITERIO DE EVALUACIÓN */}
+            {showExamQuickMenu && (
+        <div className="no-print" style={{ position: 'fixed', inset: 0, zIndex: 10000, padding: 14, background: 'rgba(20,34,52,.58)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="exam-quick-menu-title" style={{ width: 'min(520px, 100%)', background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 18px 55px rgba(0,0,0,.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14 }}>
+              <div><div style={{ color: '#2b6cb0', fontWeight: 800, letterSpacing: .5 }}>CAPTURA QR</div><h2 id="exam-quick-menu-title" style={{ margin: '5px 0 8px' }}>¿Qué necesitas hacer?</h2></div>
+              <button type="button" aria-label="Cerrar menú de exámenes" onClick={() => setShowExamQuickMenu(false)} style={{ border: 0, background: '#edf2f7', borderRadius: 8, padding: '7px 11px', cursor: 'pointer' }}>✕</button>
+            </div>
+            <p style={{ color: '#526579', margin: '0 0 18px' }}>Elige una acción. Al cerrar el creador volverás a esta captura.</p>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <button type="button" onClick={() => { setShowExamQuickMenu(false); setShowExamManager(true); }} style={{ textAlign: 'left', border: '1px solid #b9d3ee', background: '#f3f8fd', color: '#1f4f83', borderRadius: 10, padding: '13px 15px', cursor: 'pointer' }}><strong style={{ display: 'block', fontSize: 16 }}>Crear o administrar exámenes</strong><span>Diseñar con IA, revisar la clave, agregar imágenes e imprimir hojas.</span></button>
+              <button type="button" onClick={() => setShowExamQuickMenu(false)} style={{ textAlign: 'left', border: '1px solid #b9e2d8', background: '#f0faf7', color: '#176b5d', borderRadius: 10, padding: '13px 15px', cursor: 'pointer' }}><strong style={{ display: 'block', fontSize: 16 }}>Capturar respuestas QR</strong><span>Continuar aquí para leer y calificar las hojas de respuesta.</span></button>
+              <button type="button" onClick={() => { setShowExamQuickMenu(false); setTipoVinculoTrab('examenes'); setCriterioDestinoTrab(''); setShowModalExportTrab(true); }} style={{ textAlign: 'left', border: '1px solid #f4d3a4', background: '#fff9ef', color: '#92500a', borderRadius: 10, padding: '13px 15px', cursor: 'pointer' }}><strong style={{ display: 'block', fontSize: 16 }}>Vincular con Evaluación</strong><span>Elegir el criterio donde se reflejarán los resultados del ciclo.</span></button>
+            </div>
+            <button type="button" onClick={() => setShowExamQuickMenu(false)} style={{ display: 'block', margin: '16px 0 0 auto', border: 0, background: 'transparent', color: '#536273', fontWeight: 700, padding: 8, cursor: 'pointer' }}>Seguir en esta captura</button>
+          </section>
+        </div>
+      )}
+      {showExamManager && (
+        <div className="no-print" style={{ position: 'fixed', inset: 0, zIndex: 10001, padding: 12, background: 'rgba(20,34,52,.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <section role="dialog" aria-modal="true" aria-label="Crear o administrar exámenes" style={{ width: 'min(1180px, 100%)', maxHeight: '96vh', overflowY: 'auto', background: '#fff', borderRadius: 14, boxShadow: '0 18px 55px rgba(0,0,0,.3)' }}>
+            <React.Suspense fallback={<p role="status" style={{ padding: 24 }}>Abriendo el menú de exámenes…</p>}>
+              <ExamScan edition={esSecundaria ? 'secundaria' : 'primaria'} group={grupoActual} grade={Number(grupoActual?.grado)} cycle={configCiclo} evaluationDate={fechaActualQR} ipc={ipcRenderer} onBack={() => setShowExamManager(false)} onResultSaved={({ fecha, campo }) => { if (fecha) { setFechaActualQR(fecha); onDateChanged?.(fecha); } onGradesImported?.({ fecha, campo }); }} />
+            </React.Suspense>
+          </section>
+        </div>
+      )}
       {showModalExportTrab && (
         <div className="android-dialog-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="android-dialog" role="dialog" aria-modal="true" style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', width: '480px', maxWidth: '90%', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
