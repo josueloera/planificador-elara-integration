@@ -1,3 +1,9 @@
+# Elara Primaria 1.0.47
+
+- Genera reportes trimestrales paginados y con formato profesional para entregar a las familias.
+- Asigna 0.0 a las actividades sin calificación cuando existe asistencia y la actividad ya tiene evaluación; la falta no recibe cero automático.
+- Corrige el exportador PDF de ExamScan.
+
 # Elara Primaria 1.0.46
 
 - Amplía el reporte trimestral en PDF y Excel con resumen general y ficha por alumno, materias, CURP, asistencia, faltas, observaciones y fotografía.

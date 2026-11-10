@@ -1,5 +1,6 @@
 import { spreadsheetXmlToXlsx } from './xlsxExport.js';
 import { badgeImages, badgePdfHtml, badgeDocx } from './badgeExport.js';
+import { quarterlyReportPdfCss, quarterlyReportPdfFallbackCss } from './quarterlyReportPdf.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const filename = name => String(name || 'Documento').replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').slice(0, 120);
 
@@ -58,6 +59,29 @@ async function svgImage(node) {
 // Snapshot the selected document, including current form values and embedded QR codes.
 export async function documentHtml(root, title) {
   if (!root) throw new Error('No hay un documento visible para exportar.');
+  if (root.matches('.quarterly-report')) {
+    const copy = root.cloneNode(true);
+    const sourceImages = [...root.querySelectorAll('img')];
+    const copiedImages = [...copy.querySelectorAll('img')];
+    for (let index = 0; index < sourceImages.length; index++) {
+      const source = sourceImages[index];
+      const target = copiedImages[index];
+      if (!target) continue;
+      const url = source.currentSrc || source.src;
+      if (/^data:image\//i.test(url)) { target.src = url; continue; }
+      try {
+        await source.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = source.naturalWidth;
+        canvas.height = source.naturalHeight;
+        canvas.getContext('2d').drawImage(source, 0, 0);
+        target.src = canvas.toDataURL('image/png');
+      } catch {
+        target.src = url;
+      }
+    }
+    return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(title)}</title><style>${quarterlyReportPdfCss}</style><style>${quarterlyReportPdfFallbackCss}</style></head><body>${copy.outerHTML}</body></html>`;
+  }
   const copy = root.cloneNode(true);
   const originals = [root, ...root.querySelectorAll('*')];
   const clones = [copy, ...copy.querySelectorAll('*')];
@@ -103,6 +127,8 @@ export async function exportDocument(root, title, format) {
     if (format === 'pdf') return exportHtmlPdf(badgePdfHtml(images, title), title);
     return saveDocument(badgeDocx(images), filename(title) + '.docx');
   }
+  const report = root?.matches?.('.quarterly-report') ? root : root?.querySelector?.('.quarterly-report');
+  if (report) root = report;
   if (format === 'excel') {
     if (!root) throw new Error('No hay un documento para exportar.');
     const tables = [...root.querySelectorAll('table')].filter(t => t.getClientRects().length);
