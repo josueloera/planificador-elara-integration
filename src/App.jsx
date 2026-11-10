@@ -145,10 +145,10 @@ function App() {
   const [evaluacionAutomatica, setEvaluacionAutomatica] = useState(null);
   const claveAsistenciaActual = `${grupoActual?.id}:${fechaEval}`;
   const asistenciasDelDia = asistenciaEvaluacion.clave === claveAsistenciaActual ? asistenciaEvaluacion.registros : [];
-  const hayActividadEvaluada = Object.values(notas).some(valor => valor != null && String(valor).trim() !== '' && Number.isFinite(Number(valor)));
+  const actividadEvaluada = criterioId => Object.entries(notas).some(([clave, valor]) => clave.endsWith(`-${criterioId}`) && valor != null && String(valor).trim() !== '' && Number.isFinite(Number(valor)));
   const obtenerCalificacionEvaluacion = (alumnoId, criterio) => {
     const valor = notas[`${alumnoId}-${criterio.id}`];
-    const faltaConAsistencia = criterio.id != null && hayActividadEvaluada && asistenciaConfirmaPresente(asistenciasDelDia, alumnoId, fechaEval) && (valor == null || String(valor).trim() === '');
+    const faltaConAsistencia = criterio.id != null && actividadEvaluada(criterio.id) && asistenciaConfirmaPresente(asistenciasDelDia, alumnoId, fechaEval) && (valor == null || String(valor).trim() === '');
     return { valor: faltaConAsistencia ? '0' : valor, faltaConAsistencia };
   };
 
@@ -510,7 +510,7 @@ function App() {
       let totalPorcentaje = 0;
       criterios.forEach(c => {
           const nota = notas[`${alumnoId}-${c.id}`];
-          const faltaConAsistencia = c.id != null && hayActividadEvaluada && alumnoPresente && (nota == null || String(nota).trim() === '');
+          const faltaConAsistencia = c.id != null && actividadEvaluada(c.id) && alumnoPresente && (nota == null || String(nota).trim() === '');
           const val = parseFloat(faltaConAsistencia ? '0' : nota);
           const peso = parseFloat(c.porcentaje) || 0;
           if ((!isNaN(val) || faltaConAsistencia) && peso > 0) {
