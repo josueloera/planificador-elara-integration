@@ -1141,7 +1141,7 @@ export default function ControlQR({
     : '-';
 
   return (
-    <div className="android-qr" style={{ padding: '20px', fontFamily: 'system-ui, sans-serif', color: '#2d3748' }}>
+    <div className={`android-qr${showExamManager ? ' examscan-active' : ''}`} style={{ padding: '20px', fontFamily: 'system-ui, sans-serif', color: '#2d3748' }}>
       {/* ESTILOS DE IMPRESIÓN PARA GAFETES */}
       <style>{`
         @media print {
@@ -1158,6 +1158,10 @@ export default function ControlQR({
             box-shadow: none !important;
             page-break-inside: avoid !important;
           }
+          .android-qr.examscan-active { padding: 0 !important; }
+          .android-qr.examscan-active > :not(style):not(.examscan-manager-overlay) { display: none !important; }
+          .examscan-manager-overlay { position: static !important; display: block !important; inset: auto !important; z-index: auto !important; padding: 0 !important; background: transparent !important; }
+          .examscan-manager-overlay > section { width: 100% !important; max-height: none !important; overflow: visible !important; border-radius: 0 !important; box-shadow: none !important; }
         }
       `}</style>
 
@@ -3427,7 +3431,7 @@ export default function ControlQR({
         </div>
       )}
       {showExamManager && (
-        <div className="no-print" style={{ position: 'fixed', inset: 0, zIndex: 10001, padding: 12, background: 'rgba(20,34,52,.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="examscan-manager-overlay" style={{ position: 'fixed', inset: 0, zIndex: 10001, padding: 12, background: 'rgba(20,34,52,.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <section role="dialog" aria-modal="true" aria-label="Crear o administrar exámenes" style={{ width: 'min(1180px, 100%)', maxHeight: '96vh', overflowY: 'auto', background: '#fff', borderRadius: 14, boxShadow: '0 18px 55px rgba(0,0,0,.3)' }}>
             <React.Suspense fallback={<p role="status" style={{ padding: 24 }}>Abriendo el menú de exámenes…</p>}>
               <ExamScan edition={esSecundaria ? 'secundaria' : 'primaria'} group={grupoActual} grade={Number(grupoActual?.grado)} cycle={configCiclo} evaluationDate={fechaActualQR} ipc={ipcRenderer} onBack={() => setShowExamManager(false)} onResultSaved={({ fecha, campo }) => { if (fecha) { setFechaActualQR(fecha); onDateChanged?.(fecha); } onGradesImported?.({ fecha, campo }); }} />

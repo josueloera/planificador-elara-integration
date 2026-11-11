@@ -1,3 +1,7 @@
+# Elara Primaria 1.0.50
+
+- Corrige la impresión y exportación PDF de ExamScan abierta desde Captura QR; muestra las hojas generadas y oculta la interfaz de captura.
+
 # Elara Primaria 1.0.49
 
 - Corrige la vinculacion de criterios de evaluacion con los campos formativos de la Nueva Escuela Mexicana.
