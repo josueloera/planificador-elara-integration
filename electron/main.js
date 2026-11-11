@@ -101,7 +101,14 @@ console.log(`\n📂 BASE DE DATOS DE INTEGRACION ELARA: ${dbPath}`);
 const db = new sqlite3.Database(dbPath);
 const examScan = require('./examScan.cjs');
 examScan.installSchema(db);
-const normalizarExamField = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+const normalizarExamField = value => {
+  const text = String(value || 'LENGUAJES').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, ' ');
+  if (text === 'SABERES' || text.startsWith('SABERES Y')) return 'SABERES';
+  if (text === 'ETICA' || text.startsWith('ETICA,') || text.startsWith('ETICA ')) return 'ETICA';
+  if (text === 'HUMANO' || text.startsWith('DE LO HUMANO')) return 'HUMANO';
+  if (text === 'LENGUAJES') return 'LENGUAJES';
+  return text;
+};
 require('./databaseBackup.cjs').registerBackupHandlers({ db, dbPath, sqlite3, ipcMain, dialog: require('electron').dialog, BrowserWindow, app, edition: 'primaria', version: app.getVersion() });
 require('./elaraDesktop.cjs').registerElara({db,dbPath,sqlite3,ipcMain,app,edition:'primaria',version:app.getVersion()});
 

@@ -1,3 +1,9 @@
+# Elara Primaria 1.0.49
+
+- Corrige la vinculacion de criterios de evaluacion con los campos formativos de la Nueva Escuela Mexicana.
+- Conserva el grado y grupo activos al abrir Examenes desde el menu y desde Captura QR.
+- Permite pegar preguntas y su clave en bloque, o generar una hoja OMR para un examen externo con solo la cantidad de reactivos y la clave.
+
 # Elara Primaria 1.0.48
 
 - Aplica 0.0 únicamente a la actividad y fecha ya evaluadas cuando el alumno asistió.

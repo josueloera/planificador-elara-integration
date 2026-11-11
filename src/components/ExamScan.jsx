@@ -7,6 +7,36 @@ const choices = ['A', 'B', 'C', 'D'];
 const emptyQuestion = () => ({ texto: '', opciones: { A: '', B: '', C: '', D: '' }, correcta: '', puntos: 1, imagen: '' });
 const inputStyle = { width: '100%', boxSizing: 'border-box', padding: 10, border: '1px solid #cad5df', borderRadius: 7, font: 'inherit', background: 'white' };
 
+function parseAnswerKey(source, count) {
+  const values = String(source || '').toUpperCase().replace(/CLAVE(?:\s+DE\s+RESPUESTAS)?\s*:?/g, '').match(/\b[ABCD]\b/g) || [];
+  return values.length === count ? values : null;
+}
+
+function parsePastedExam(source, answerKey) {
+  const blocks = String(source || '').trim().split(/(?=^\s*\d+\s*[.)-]\s+)/m).filter(Boolean);
+  if (!blocks.length || blocks.length > 20) throw new Error('Pega entre 1 y 20 preguntas numeradas.');
+  const key = parseAnswerKey(answerKey, blocks.length);
+  if (!key) throw new Error(`Escribe exactamente ${blocks.length} respuestas en la clave (A, B, C o D).`);
+  return blocks.map((block, index) => {
+    const lines = block.replace(/^\s*\d+\s*[.)-]\s*/, '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const optionStart = lines.findIndex(line => /^[A-D]\s*[).:-]\s*/i.test(line));
+    const promptLines = optionStart < 0 ? lines : lines.slice(0, optionStart);
+    const opciones = Object.fromEntries(choices.map(letter => [letter, '']));
+    if (optionStart >= 0) {
+      lines.slice(optionStart).forEach(line => {
+        const match = line.match(/^([A-D])\s*[).:-]\s*(.+)$/i);
+        if (match) opciones[match[1].toUpperCase()] = match[2].trim();
+      });
+      if (choices.some(letter => !opciones[letter])) throw new Error(`La pregunta ${index + 1} debe incluir opciones A, B, C y D.`);
+    } else {
+      choices.forEach(letter => { opciones[letter] = letter; });
+    }
+    const texto = promptLines.join(' ').trim();
+    if (!texto) throw new Error(`No se encontró el enunciado de la pregunta ${index + 1}.`);
+    return { ...emptyQuestion(), texto, opciones, correcta: key[index] };
+  });
+}
+
 function normalizeAiAnswer(answer, options) {
   if (typeof answer === 'number' && Number.isInteger(answer) && answer >= 0 && answer < choices.length) return choices[answer];
   const value = String(answer ?? '').trim();
@@ -41,6 +71,11 @@ export default function ExamScan({ edition = 'primaria', group, grade, cycle, ev
   const [pdfStatus, setPdfStatus] = useState('');
   const [criterios, setCriterios] = useState([]);
   const [criterioId, setCriterioId] = useState('');
+  const [criteriosLoading, setCriteriosLoading] = useState(false);
+  const [pastedQuestions, setPastedQuestions] = useState('');
+  const [pastedKey, setPastedKey] = useState('');
+  const [externalCount, setExternalCount] = useState(10);
+  const [externalKey, setExternalKey] = useState('');
   const [cantidadIa, setCantidadIa] = useState(10);
   const [generandoIa, setGenerandoIa] = useState(false);
   const [examToScan, setExamToScan] = useState(null);
@@ -48,7 +83,7 @@ export default function ExamScan({ edition = 'primaria', group, grade, cycle, ev
   useEffect(() => { ipc.invoke('get-grupos').then(rows => {
     // Esta app es Primaria; el selector debe respetar el grado activo y no
     // mostrar registros antiguos de otros grados.
-    const activeGrade = Number(group?.grado || grade || (edition === 'primaria' ? 3 : 1));
+    const activeGrade = Number(grade || group?.grado || (edition === 'primaria' ? 3 : 1));
     const availableGroups = (rows || []).filter(row => Number(row.grado) === activeGrade);
     setGroups(availableGroups);
     setSelectedGroup(current => {
@@ -70,7 +105,9 @@ export default function ExamScan({ edition = 'primaria', group, grade, cycle, ev
     let active = true;
     setCriterios([]);
     setCriterioId('');
+    setCriteriosLoading(false);
     if (!selectedGroup?.id || !fieldName) return () => { active = false; };
+    setCriteriosLoading(true);
     ipc.invoke('get-criterios', selectedGroup.id, fieldName).then(rows => {
       if (!active) return;
       const scoped = rows || [];
@@ -78,7 +115,7 @@ export default function ExamScan({ edition = 'primaria', group, grade, cycle, ev
       setCriterioId(current => scoped.some(item => String(item.id) === current)
         ? current
         : String(scoped.find(item => /examen/i.test(item.nombre))?.id || scoped[0]?.id || ''));
-    }).catch(err => { if (active) setError(err.message); });
+    }).catch(err => { if (active) setError(err.message); }).finally(() => { if (active) setCriteriosLoading(false); });
     return () => { active = false; };
   }, [ipc, selectedGroup?.id, fieldName]);
 
@@ -176,9 +213,30 @@ export default function ExamScan({ edition = 'primaria', group, grade, cycle, ev
       setError(''); window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) { setError(err.message || 'No se pudieron recuperar las preguntas.'); }
   };
+  const importPastedExam = () => {
+    setError('');
+    try {
+      const imported = parsePastedExam(pastedQuestions, pastedKey);
+      setQuestions(imported); setValidated(false); setResult(null);
+      setNotice(`Se importaron ${imported.length} reactivos y su clave. Revisa el contenido antes de guardar.`);
+    } catch (err) { setError(err.message); }
+  };
+  const prepareExternalSheet = () => {
+    setError('');
+    const key = parseAnswerKey(externalKey, Number(externalCount));
+    if (!key) { setError(`Escribe exactamente ${externalCount} respuestas en la clave (A, B, C o D).`); return; }
+    setQuestions(key.map((correcta, index) => ({
+      ...emptyQuestion(), texto: `Reactivo ${index + 1}`,
+      opciones: Object.fromEntries(choices.map(letter => [letter, letter])), correcta,
+      externo: true
+    })));
+    setValidated(false); setResult(null);
+    setNotice(`Hoja externa preparada para ${key.length} reactivos. El QR y la clave permitirán calificar las respuestas escaneadas.`);
+  };
   const createExam = async () => {
     setError(''); setBusy(true);
     try {
+      if (criteriosLoading || !criterios.some(item => String(item.id) === String(criterioId))) throw new Error('Recarga los criterios y selecciona uno válido para el grupo y campo formativo actuales.');
       const exam = await ipc.invoke('examscan-create-exam', {
         grupo_id: selectedGroup.id, grado: selectedGroup.grado, seccion: selectedGroup.seccion,
         ciclo_escolar: selectedCycle || selectedGroup.ciclo_escolar || cycle?.ciclo_escolar || '2026-2027', trimestre,
@@ -212,19 +270,20 @@ export default function ExamScan({ edition = 'primaria', group, grade, cycle, ev
     <section className="no-print" style={card}>
       <h2 style={{ marginTop: 0 }}>1. Datos del examen</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 12 }}>
-        <label>Ciclo escolar<select style={inputStyle} value={selectedCycle} onChange={e => { setValidated(false); const nextCycle=e.target.value; setSelectedCycle(nextCycle); setSelectedGroup(groups.find(g => !g.ciclo_escolar || String(g.ciclo_escolar) === nextCycle) || null); }}>{[...new Set([...groups.map(g => g.ciclo_escolar).filter(Boolean), selectedCycle])].map(value => <option key={value} value={value}>{value}</option>)}</select></label>
-        <label>Grado y grupo<select style={inputStyle} value={selectedGroup?.id || ''} onChange={e => { setValidated(false); const next=groups.find(g => String(g.id) === e.target.value) || null; setSelectedGroup(next); if (next?.ciclo_escolar) setSelectedCycle(next.ciclo_escolar); }}>{groups.filter(g => !g.ciclo_escolar || String(g.ciclo_escolar) === selectedCycle).map(g => <option key={g.id} value={g.id}>{g.grado}º {g.seccion} · {edition === 'primaria' ? 'Primaria' : 'Secundaria'}</option>)}</select></label>
+        <label>Ciclo escolar<select style={inputStyle} value={selectedCycle} onChange={e => { setValidated(false); setCriterios([]); setCriterioId(''); const nextCycle=e.target.value; setSelectedCycle(nextCycle); setSelectedGroup(groups.find(g => !g.ciclo_escolar || String(g.ciclo_escolar) === nextCycle) || null); }}>{[...new Set([...groups.map(g => g.ciclo_escolar).filter(Boolean), selectedCycle])].map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+        <label>Grado y grupo<select style={inputStyle} value={selectedGroup?.id || ''} onChange={e => { setValidated(false); setCriterios([]); setCriterioId(''); const next=groups.find(g => String(g.id) === e.target.value) || null; setSelectedGroup(next); if (next?.ciclo_escolar) setSelectedCycle(next.ciclo_escolar); }}>{groups.filter(g => !g.ciclo_escolar || String(g.ciclo_escolar) === selectedCycle).map(g => <option key={g.id} value={g.id}>{g.grado}º {g.seccion} · {edition === 'primaria' ? 'Primaria' : 'Secundaria'}</option>)}</select></label>
         <label>Trimestre<select style={inputStyle} value={trimestre} onChange={e => { setValidated(false); setTrimestre(e.target.value); }}>{[1,2,3].map(n => <option key={n} value={n}>{n}º trimestre</option>)}</select></label>
         <label>Tipo de examen<select style={inputStyle} value={tipoExamen} onChange={e => { setValidated(false); setTipoExamen(e.target.value); if (e.target.value === 'TRIMESTRAL') setPeriodoNombre(''); }}><option value="TRIMESTRAL">Trimestral</option><option value="PARCIAL">Parcial</option></select></label>
-        <label>Campo formativo<select style={inputStyle} value={fieldName} onChange={e => { setValidated(false); setFieldName(e.target.value); }}>{fields.map(f => <option key={f.id} value={f.nombre}>{f.nombre}</option>)}</select></label>
+        <label>Campo formativo<select style={inputStyle} value={fieldName} onChange={e => { setValidated(false); setCriterios([]); setCriterioId(''); setFieldName(e.target.value); }}>{fields.map(f => <option key={f.id} value={f.nombre}>{f.nombre}</option>)}</select></label>
       </div>
       {tipoExamen === 'PARCIAL' && <label style={{ display: 'block', marginTop: 12 }}>Periodo, unidad o bloque del parcial<input style={inputStyle} value={periodoNombre} onChange={e => { setValidated(false); setPeriodoNombre(e.target.value); }} placeholder="Ej. Unidad 2 · Fracciones" /></label>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12, marginTop: 12 }}>
         <label>Contenido curricular<select style={inputStyle} value={content} onChange={e => { setValidated(false); setContent(e.target.value); }}>{contents.map((item, i) => <option key={i} value={item}>{item}</option>)}</select></label>
         <label>PDA<select style={inputStyle} value={selectedPda?.id || ''} onChange={e => { setValidated(false); setSelectedPda(contentPdas.find(item => String(item.id) === e.target.value) || null); }}>{contentPdas.map(item => <option key={item.id} value={item.id}>{item.pda}</option>)}</select></label>
       </div>
-      <label style={{ display: 'block', marginTop: 12 }}>Criterio del evaluador<select style={inputStyle} value={criterioId} onChange={e => { setValidated(false); setCriterioId(e.target.value); }}><option value="">Selecciona un criterio</option>{criterios.map(item => <option key={item.id} value={item.id}>{item.nombre} · {item.porcentaje}% · {item.campo || 'Campo general'}</option>)}</select></label>
-      {!criterios.length && <p role="status" style={{ color: '#92500a' }}>Configura primero un criterio para este grupo en Evaluación; después podrás vincular el examen.</p>}
+      <label style={{ display: 'block', marginTop: 12 }}>Criterio del evaluador<select style={inputStyle} disabled={criteriosLoading} value={criterioId} onChange={e => { setValidated(false); setCriterioId(e.target.value); }}><option value="">{criteriosLoading ? 'Cargando criterios…' : 'Selecciona un criterio'}</option>{criterios.map(item => <option key={item.id} value={item.id}>{item.nombre} · {item.porcentaje}% · {item.campo || 'Campo general'}</option>)}</select></label>
+      {criteriosLoading && <p role="status">Cargando criterios del grupo y campo seleccionados…</p>}
+      {!criteriosLoading && !criterios.length && <p role="status" style={{ color: '#92500a' }}>Configura primero un criterio para este grupo y campo en Evaluación; después podrás vincular el examen.</p>}
       <label style={{ display: 'block', marginTop: 12 }}>Título del examen<input style={inputStyle} value={titulo} onChange={e => { setValidated(false); setTitulo(e.target.value); }} placeholder="Ej. Comprensión de textos informativos" /></label>
       <p style={{ marginBottom: 0, color: '#526476' }}>Alumnos inscritos en el grupo: <strong>{students.length}</strong></p>
     </section>
@@ -236,6 +295,22 @@ export default function ExamScan({ edition = 'primaria', group, grade, cycle, ev
         {!selectedGroup && <span>Selecciona un grupo con alumnos para habilitar la generación.</span>}
         {!selectedPda && <span>Selecciona campo, contenido y PDA para generar con contexto curricular.</span>}
       </div>
+      <details style={{ ...card, margin: '12px 0', background: '#fbfcfe' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Pegar un examen externo con sus preguntas y respuestas</summary>
+        <p>Pega el examen completo numerado. Si incluye opciones, usa A), B), C) y D); pega la clave en orden, por ejemplo: A, C, B, D.</p>
+        <label style={{ display: 'block' }}>Preguntas<textarea style={{ ...inputStyle, minHeight: 150 }} value={pastedQuestions} onChange={e => setPastedQuestions(e.target.value)} placeholder={'1. ¿Pregunta?\nA) Opción uno\nB) Opción dos\nC) Opción tres\nD) Opción cuatro'} /></label>
+        <label style={{ display: 'block', marginTop: 8 }}>Clave de respuestas<input style={inputStyle} value={pastedKey} onChange={e => setPastedKey(e.target.value)} placeholder="A, C, B, D" /></label>
+        <button type="button" style={{ ...button, marginTop: 10 }} onClick={importPastedExam}>Importar preguntas y clave</button>
+      </details>
+      <details style={{ ...card, margin: '12px 0', background: '#fbfcfe' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Examen externo: generar solo hoja de respuestas</summary>
+        <p>Indica cuántos reactivos tiene el examen impreso y pega su clave. Se crearán copias con QR y la hoja OMR; no se imprimirá el contenido del examen.</p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'end' }}>
+          <label>Cantidad de reactivos<select style={{ ...inputStyle, width: 150 }} value={externalCount} onChange={e => setExternalCount(Number(e.target.value))}>{Array.from({ length: 20 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select></label>
+          <label style={{ flex: '1 1 260px' }}>Clave de respuestas<input style={inputStyle} value={externalKey} onChange={e => setExternalKey(e.target.value)} placeholder="A, C, B, D…" /></label>
+          <button type="button" style={{ ...button, background: '#315fb5' }} onClick={prepareExternalSheet}>Preparar examen y clave</button>
+        </div>
+      </details>
       {questions.map((q, index) => <article key={index} style={{ borderTop: '1px solid #e5ebf0', padding: '14px 0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><strong>Pregunta {index + 1}</strong>{questions.length > 1 && <button style={{ ...button, background: '#8b4750', padding: '5px 9px' }} onClick={() => { setValidated(false); setQuestions(items => items.filter((_, i) => i !== index)); }}>Quitar</button>}</div>
         <textarea aria-label={`Texto de pregunta ${index + 1}`} style={{ ...inputStyle, marginTop: 8, minHeight: 58 }} value={q.texto} onChange={e => updateQuestion(index, { texto: e.target.value })} placeholder="Escribe una pregunta basada en el PDA seleccionado" />
@@ -245,27 +320,27 @@ export default function ExamScan({ edition = 'primaria', group, grade, cycle, ev
       </article>)}
       <button disabled={questions.length >= 20} style={{ ...button, background: '#526273', opacity: questions.length >= 20 ? .55 : 1 }} onClick={() => { setValidated(false); setQuestions(items => [...items, emptyQuestion()]); }}>+ Agregar pregunta {questions.length >= 20 ? '(máximo 20)' : ''}</button>
       <div style={{ marginTop: 18, padding: 14, background: '#f2f8f6', borderRadius: 8 }}><p style={{ marginTop: 0 }}>Al guardar, el evaluador vinculará los registros de Exámenes QR de este grupo con el criterio seleccionado.</p><label style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}><input type="checkbox" checked={validated} onChange={e => setValidated(e.target.checked)} />Confirmo que revisé el contenido, las cuatro opciones, la clave y el puntaje de cada pregunta.</label>
-        <button disabled={!validated || busy || Boolean(result) || !selectedGroup || !titulo.trim() || !questions.length || !criterioId || (tipoExamen === 'PARCIAL' && !periodoNombre.trim())} style={{ ...button, opacity: !validated || busy || result || !criterioId || (tipoExamen === 'PARCIAL' && !periodoNombre.trim()) ? 0.5 : 1, marginTop: 12 }} onClick={createExam}>{busy ? 'Guardando…' : 'Guardar y vincular con el evaluador'}</button>
+        <button disabled={!validated || busy || Boolean(result) || !selectedGroup || !titulo.trim() || !questions.length || criteriosLoading || !criterios.some(item => String(item.id) === String(criterioId)) || (tipoExamen === 'PARCIAL' && !periodoNombre.trim())} style={{ ...button, opacity: !validated || busy || result || criteriosLoading || !criterios.some(item => String(item.id) === String(criterioId)) || (tipoExamen === 'PARCIAL' && !periodoNombre.trim()) ? 0.5 : 1, marginTop: 12 }} onClick={createExam}>{busy ? 'Guardando…' : 'Guardar y vincular con el evaluador'}</button>
       </div>
     </section>
     {result && <section className="no-print" style={{ ...card, borderColor: result.evaluatorLinked ? '#80b8a8' : '#e3a348' }}><h2 style={{ marginTop: 0 }}>{result.examen.tipo_examen === 'PARCIAL' ? `Examen parcial · ${result.examen.periodo_nombre}` : 'Examen trimestral'} guardado {result.evaluatorLinked ? 'y vinculado' : ''}</h2><p>{result.alumnos.length} copias individuales creadas. El QR guarda identificadores opacos; no incluye el nombre. Criterio: <strong>{criterios.find(item => Number(item.id) === Number(result.vinculacion?.criterio_id))?.nombre || 'Evaluador'}</strong> · fecha {result.vinculacion?.fecha || evaluationDate}. {result.evaluatorLinked ? 'El evaluador recibirá los registros de Exámenes QR de este grupo.' : 'Falta activar el vínculo automático desde Captura QR.'}</p><button style={button} onClick={async () => { setError(''); setPdfStatus(''); try { const saved = window.planificadorAndroid ? (window.print(), { success: true, filePath: 'diálogo de impresión' }) : await ipc.invoke('examscan-export-pdf'); setPdfStatus(saved.canceled ? 'Exportación cancelada.' : `PDF guardado: ${saved.filePath}`); } catch (err) { setError(err.message || 'No se pudo generar el PDF.'); } }}>Imprimir / guardar PDF</button>{pdfStatus && <p role="status">{pdfStatus}</p>}<button style={{ ...button, background: '#536273', marginLeft: 10 }} onClick={() => { setResult(null); setValidated(false); setTitulo(''); setQuestions([emptyQuestion()]); }}>Crear otro</button></section>}
     {examToScan && <div className="no-print"><ExamScanReader ipc={ipc} examId={examToScan.id} examTitle={examToScan.titulo} onClose={() => setExamToScan(null)} onSaved={resultSaved => { onResultSaved?.(resultSaved); ipc.invoke('examscan-list-exams', selectedGroup.id).then(setHistory); }} /></div>}
     {history.length > 0 && <section className="no-print" style={card}><h2 style={{ marginTop: 0 }}>Banco de exámenes</h2>{history.map(item => <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: '1px solid #e5ebf0' }}><span>{item.titulo} · {item.tipo_examen === 'PARCIAL' ? `Parcial · ${item.periodo_nombre}` : `Trimestral · ${item.trimestre}º trimestre`} · {item.grado}º {item.seccion} · {item.creado_en.slice(0,10)} · {item.calificados || 0} calificaciones · {item.criterio_nombre ? `Vinculado: ${item.criterio_nombre}` : 'Sin criterio evaluador'}</span><div style={{ display: 'flex', gap: 8 }}><button style={{ ...button, background: '#315fb5', whiteSpace: 'nowrap' }} onClick={() => setExamToScan(item)}>Leer hoja OMR</button><button style={{ ...button, background: '#536273', whiteSpace: 'nowrap' }} onClick={() => reuseQuestions(item)}>Usar preguntas</button></div></div>)}</section>}
     {result && <div className="examscan-print">{result.alumnos.map((student, copyIndex) => <>
-      <article className="examscan-sheet exam-question-page" key={`${student.intento_id}-exam`}>
+      {!result.examen.preguntas.every(question => question.externo) && <article className="examscan-sheet exam-question-page" key={`${student.intento_id}-exam`}>
         <header className="exam-heading"><div><strong>ELARA EXAMSCAN · {result.examen.tipo_examen === 'PARCIAL' ? `EXAMEN PARCIAL · ${result.examen.periodo_nombre}` : 'EXAMEN TRIMESTRAL'}</strong><h1>{result.examen.titulo}</h1><div>{result.examen.grado}º {result.examen.seccion} · Ciclo {result.examen.ciclo_escolar} · {result.examen.trimestre}º trimestre</div><div>{result.examen.campo_formativo}</div></div><QRCodeSVG className="exam-qr" value={JSON.stringify(student.qr)} size={150} level="M" includeMargin /></header>
         <div className="exam-student">Nombre: <strong>{student.nombre}</strong><span>Folio: {student.intento_id.slice(0,8).toUpperCase()}</span></div>
         <p className="exam-meta"><strong>Contenido:</strong> {result.examen.contenido}<br/><strong>PDA:</strong> {result.examen.pda}</p>
         <p className="exam-instructions">Contesta cada pregunta. Registra una sola respuesta por pregunta en la hoja OMR. Rellena completamente el círculo con lápiz.</p>
         <div className="exam-questions">{result.examen.preguntas.map((q, i) => <div className="exam-question" key={i}><strong>{i + 1}. {q.texto}</strong>{q.imagen && <img className="exam-question-image" src={q.imagen} alt={`Apoyo visual de la pregunta ${i + 1}`} />}<div className="exam-options">{choices.map(letter => <span key={letter}><b>{letter})</b> {q.opciones[letter]}</span>)}</div></div>)}</div>
         <footer>Examen {result.examen.id.slice(0,8).toUpperCase()} · {copyIndex + 1} de {result.alumnos.length} · Hoja 1 de 2</footer>
-      </article>
+      </article>}
       <article className="examscan-sheet exam-omr-page" key={`${student.intento_id}-omr`}>
         <header className="exam-heading"><div><strong>HOJA DE RESPUESTAS · {result.examen.tipo_examen === 'PARCIAL' ? `PARCIAL · ${result.examen.periodo_nombre}` : 'TRIMESTRAL'}</strong><h1>{result.examen.titulo}</h1><div>{result.examen.grado}º {result.examen.seccion} · {result.examen.trimestre}º trimestre · Folio {student.intento_id.slice(0,8).toUpperCase()}</div></div><QRCodeSVG className="exam-qr" value={JSON.stringify(student.qr)} size={180} level="M" includeMargin /></header>
         <div className="exam-student">Nombre: <strong>{student.nombre}</strong><span>Ciclo {result.examen.ciclo_escolar}</span></div>
         <p className="exam-instructions">Rellena una sola casilla por pregunta. Usa lápiz y cubre el círculo por completo. Si cambias la respuesta, borra por completo la marca anterior. Deja en blanco cualquier pregunta que no puedas contestar.</p>
         <section className="omr"><div className="alignment alignment-tl"/><div className="alignment alignment-tr"/><div className="alignment alignment-bl"/><div className="alignment alignment-br"/><div className="omr-title">Marca una respuesta por fila</div><div className="omr-grid"><div className="omr-row omr-label"><b>Pregunta</b>{choices.map(c => <b key={c}>{c}</b>)}</div>{result.examen.preguntas.map((_, i) => <div className="omr-row" key={i}><b>{String(i + 1).padStart(2,'0')}</b>{choices.map(c => <span className="bubble" key={c} />)}</div>)}</div></section>
-        <footer>Examen {result.examen.id.slice(0,8).toUpperCase()} · Clave asociada a esta versión · Hoja 2 de 2</footer>
+        <footer>Examen {result.examen.id.slice(0,8).toUpperCase()} · Clave asociada a esta versión · {result.examen.preguntas.every(question => question.externo) ? 'Hoja de respuestas' : 'Hoja 2 de 2'}</footer>
       </article>
     </>)}</div>}
     <style>{`
