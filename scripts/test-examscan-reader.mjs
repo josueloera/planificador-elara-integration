@@ -8,7 +8,7 @@ const height = 90 + count * 33;
 const gridWidth = (width - 24) * 0.78;
 const gridX = 12 + (width - 24 - gridWidth) / 2;
 const firstColumnWidth = gridWidth - 4 * 38;
-const xCenters = [0, 1, 2, 3].map(i => gridX + firstColumnWidth + 19 + i * 38);
+const xCenters = [0, 1, 2, 3].map(i => gridX + firstColumnWidth + 19 + i * 38 - 8);
 
 function drawDisk(data, x0, y0, radiusSquaredMin, radiusSquaredMax, shade) {
   for (let dy = -10; dy <= 10; dy++) for (let dx = -10; dx <= 10; dx++) {
@@ -28,7 +28,7 @@ function makeSheet() {
   }
   const key = Array.from({ length: count }, (_, i) => 'ABCD'[i % 4]);
   for (let row = 0; row < count; row++) {
-    const y = 84 + row * 33;
+    const y = 88 + row * 33;
     for (let column = 0; column < 4; column++) drawDisk(data, Math.round(xCenters[column]), y, 8 * 8, 10 * 10, 50);
     // One deliberately light pencil mark confirms that detection tolerates
     // low contrast; all rows contain one answer and no hand-aligned QR is needed.
@@ -44,7 +44,7 @@ test('OMR detects faint single marks, leaves empty rows blank, and flags multipl
   assert.ok(rows[1].confianza >= 0.05, 'the faint pencil mark clears the local contrast threshold');
 
   const blank = makeSheet();
-  const firstY = 84;
+  const firstY = 88;
   for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
     if (dx * dx + dy * dy > 36) continue;
     const index = ((firstY + dy) * width + Math.round(xCenters[0]) + dx) * 4;
@@ -53,7 +53,7 @@ test('OMR detects faint single marks, leaves empty rows blank, and flags multipl
   assert.equal(readBubbles(blank, count)[0].respuesta, '', 'an empty bubble row remains blank');
 
   const multiple = makeSheet();
-  const multipleY = 84;
+  const multipleY = 88;
   drawDisk(multiple.data, Math.round(xCenters[1]), multipleY, 0, 6 * 6, 175);
   assert.equal(readBubbles(multiple, count)[0].estado, 'multiple', 'two equally dark marks are not guessed');
 });

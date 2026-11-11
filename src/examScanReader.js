@@ -1,5 +1,5 @@
 import jsQR from 'jsqr';
-import { readBubbles } from './omrBubbleReader.mjs';
+import { omrRowHeight, readBubbles } from './omrBubbleReader.mjs';
 
 const outputWidth = 720;
 const luminance = (data, index) => data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
@@ -102,7 +102,7 @@ function quadArea(points) {
 }
 
 function chooseMarkerQuad(candidates, questionCount, minTopY = 0) {
-  const expected = outputWidth / (90 + questionCount * 32);
+  const expected = outputWidth / (90 + questionCount * omrRowHeight);
   let best = null, bestScore = -Infinity;
   const n = candidates.length;
   for (let a = 0; a < n - 3; a++) for (let b = a + 1; b < n - 2; b++) for (let c = b + 1; c < n - 1; c++) for (let d = c + 1; d < n; d++) {
@@ -159,7 +159,7 @@ function perspectiveTransform(source, destination) {
 }
 
 function warpPerspective(image, width, height, corners, questionCount) {
-  const targetHeight = 90 + questionCount * 32;
+  const targetHeight = 90 + questionCount * omrRowHeight;
   const target = [
     { x: 10, y: 10 }, { x: outputWidth - 10, y: 10 },
     { x: outputWidth - 10, y: targetHeight - 10 }, { x: 10, y: targetHeight - 10 }

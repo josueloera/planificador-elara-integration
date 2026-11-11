@@ -1,3 +1,7 @@
+# Elara Primaria 1.0.52
+
+- Corrige el desfase horizontal y vertical del muestreo OMR; la rectificación y la lectura avanzan con el mismo paso de fila para detectar todas las respuestas.
+
 # Elara Primaria 1.0.51
 
 - Mejora la detección de marcas de lápiz en hojas OMR, comparando las cuatro burbujas de cada reactivo y señalando marcas múltiples ambiguas.
