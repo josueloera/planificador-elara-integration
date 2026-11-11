@@ -63,6 +63,9 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Verify ExamScan OMR and quarterly rounding
+        run: npm run test:examscan
+
       - name: Verify incident records
         run: node --test scripts/test-incidencias.cjs
 

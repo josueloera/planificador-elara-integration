@@ -1,3 +1,8 @@
+# Elara Primaria 1.0.51
+
+- Mejora la detección de marcas de lápiz en hojas OMR, comparando las cuatro burbujas de cada reactivo y señalando marcas múltiples ambiguas.
+- Añade al concentrado de Evaluación trimestral la opción para mostrar la calificación final con décimas o redondeada a entero.
+
 # Elara Primaria 1.0.50
 
 - Corrige la impresión y exportación PDF de ExamScan abierta desde Captura QR; muestra las hojas generadas y oculta la interfaz de captura.

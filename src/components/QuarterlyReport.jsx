@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { notasDelPeriodo } from '../seguimientoDocente';
+import { formatQuarterlyFinal } from '../quarterlyFinalGrade.mjs';
 import './QuarterlyReport.css';
 
 const FIELDS = [
@@ -18,7 +19,13 @@ export default function QuarterlyReport({ ipc, contexto, grupo, periodo, trimest
   const [attendance, setAttendance] = useState([]);
   const [observations, setObservations] = useState({});
   const [loadError, setLoadError] = useState('');
+  const [roundFinal, setRoundFinal] = useState(false);
+  const roundingKey = `elara:quarterly-rounding:${variante}:${grupo?.id || ''}:${periodo?.inicio || ''}:${periodo?.fin || ''}`;
   const periodName = periodo?.nombre || `${trimestre}º trimestre`;
+
+  useEffect(() => {
+    setRoundFinal(typeof localStorage !== 'undefined' && localStorage.getItem(roundingKey) === 'integer');
+  }, [roundingKey]);
 
   useEffect(() => {
     let active = true;
@@ -53,13 +60,29 @@ export default function QuarterlyReport({ ipc, contexto, grupo, periodo, trimest
   const gradesFor = alumno => variante === 'primaria'
     ? FIELDS.map(([key, label]) => [label, alumno[key] ?? '—'])
     : [[grupo?.nombre_disciplina || grupo?.disciplina || grupo?.materia || 'Materia', alumno.promedioFinal ?? '—']];
+  const visibleAlumnos = useMemo(() => (alumnos || []).map(alumno => ({
+    ...alumno,
+    promedioFinal: formatQuarterlyFinal(alumno.promedioFinal, roundFinal)
+  })), [alumnos, roundFinal]);
   const average = useMemo(() => {
-    const values = (alumnos || []).map(a => Number(a.promedioFinal)).filter(Number.isFinite);
+    const values = visibleAlumnos.map(a => Number(a.promedioFinal)).filter(Number.isFinite);
     return values.length ? (values.reduce((sum, n) => sum + n, 0) / values.length).toFixed(1) : '—';
-  }, [alumnos]);
+  }, [visibleAlumnos]);
   const countAbsences = rows => rows.filter(row => absent(row.estado)).length;
 
   return <section className="quarterly-report" aria-label="Reporte trimestral detallado">
+    <div className="quarterly-rounding-control no-print" style={{ display: 'flex', justifyContent: 'flex-end', margin: '0 0 10px', color: '#334155', fontWeight: 600 }}>
+      <label>Calificación final del concentrado{' '}
+        <select value={roundFinal ? 'integer' : 'decimal'} onChange={event => {
+          const whole = event.target.value === 'integer';
+          setRoundFinal(whole);
+          localStorage.setItem(roundingKey, whole ? 'integer' : 'decimal');
+        }}>
+          <option value="decimal">Con décimas</option>
+          <option value="integer">Número entero</option>
+        </select>
+      </label>
+    </div>
     <header className="quarterly-cover">
       <div className="quarterly-kicker">REPORTE ACADÉMICO · {periodName}</div>
       <h2>Evaluación trimestral</h2>
@@ -77,7 +100,7 @@ export default function QuarterlyReport({ ipc, contexto, grupo, periodo, trimest
       <h3>Resumen general del grupo</h3>
       <table data-sheet-name="Resumen general">
         <thead><tr><th>No.</th><th>Alumno</th>{(variante === 'primaria' ? FIELDS.map(([, label]) => label) : [grupo?.nombre_disciplina || 'Materia']).map(label => <th key={label}>{label}</th>)}<th>Promedio trimestral</th><th>Faltas</th></tr></thead>
-        <tbody>{(alumnos || []).map((alumno, index) => <tr key={alumno.id}>
+        <tbody>{visibleAlumnos.map((alumno, index) => <tr key={alumno.id}>
           <td>{index + 1}</td><td>{alumno.nombre}</td>
           {gradesFor(alumno).map(([label, grade]) => <td key={label}>{grade}</td>)}
           {variante === 'primaria' && <td>{alumno.promedioFinal ?? '—'}</td>}
@@ -88,7 +111,7 @@ export default function QuarterlyReport({ ipc, contexto, grupo, periodo, trimest
     </section>
 
     <div className="quarterly-student-reports">
-      {(alumnos || []).map((alumno, index) => {
+      {visibleAlumnos.map((alumno, index) => {
         const perfil = profiles[String(alumno.id)] || {};
         const photo = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(perfil.foto_url || '') ? perfil.foto_url : '';
         const records = attendanceByStudent[String(alumno.id)] || [];
