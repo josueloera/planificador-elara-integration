@@ -241,7 +241,8 @@ function App() {
   useEffect(() => {
     window.plannerContext = {
       vista,
-      grado, grupoActual, semanaPlan, campoActual, planData, pdasSemana,
+      grado, grupoActual, semanaPlan, campoActual, planData, pdasSemana, pdasDisponibles,
+      fechasSemana: obtenerFechasSemana(semanaPlan),
       modoEdicionProy: vista === 'PROYECTOS', configCiclo,
       metodologias: METODOLOGIAS,
       proyectoActual,
@@ -285,7 +286,7 @@ function App() {
     };
   }, [
     vista, proyectoActual, planData, pdasSemana, alumnos, criterios, notas,
-    grupoActual, semanaPlan, fechaEval, campoActual, modoConfig, textoPegado, procesando, licenciaInfo
+    grado, grupoActual, semanaPlan, fechaEval, campoActual, modoConfig, textoPegado, procesando, licenciaInfo, configCiclo, pdasDisponibles
   ]);
 
   // --- CARGAS INICIALES ---

@@ -1,3 +1,5 @@
+import { FORMULARIO_PROYECTO } from '../utils/planeacionDocument.js';
+
 const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes'];
 export const WEEK_FIELDS = [...DAYS.flatMap(day => ['inicio', 'desarrollo', 'cierre'].map(part => `${day}_${part}`)), 'recursos', 'evaluacion', 'adecuaciones'];
 const normalize = text => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -8,8 +10,9 @@ const object = value => {
 
 export function requestsFullForm(text) {
   const t = normalize(text);
-  if (/\b(no|nunca|sin)\s+(?:lo\s+|la\s+)?(?:llen|complet|gener|redact|modifi|cambi|reescri)/.test(t) || /\b(como|que significa|explica|aconseja|recomienda)\b/.test(t)) return false;
-  return /\b(llena\w*|rellena\w*|completa\w*|genera\w*|redacta\w*|estructura\w*|haz|elabora\w*|crea\w*)\b/.test(t)
+  if (/\b(no|nunca|sin)\s+(?:lo\s+|la\s+)?(?:llen|complet|gener|redact|modifi|cambi|reescri|desarroll|detall|ampli)/.test(t)
+    || /\b(que significa|explica|aconseja|recomienda|dime como|como puedo|como se hace)\b/.test(t)) return false;
+  return /\b(llena\w*|rellena\w*|completa\w*|genera\w*|redacta\w*|estructura\w*|haz|elabora\w*|crea\w*|desarrolla\w*|detalla\w*|amplia\w*|enriquece\w*|diseña\w*|disena\w*|organiza\w*|mejora\w*)\b/.test(t)
     && (/\b(tod[oa]\w*|completamente|entero|entera)\b/.test(t) || /(?:planeacion|planeaciones|plano didactico|proyecto|semana)/.test(t));
 }
 
@@ -29,7 +32,9 @@ export function buildAdvisorContext(ctx, level, kind) {
       ? { nombre: source?.nombre, metodologia: source?.metodologia, escenario: source?.escenario, temporalidad: source?.temporalidad, problemática: source?.problemática, fases_contenido: object(source?.fases_contenido), apartados: object(source?.apartados) }
       : { ...Object.fromEntries(WEEK_FIELDS.map(key => [key, source?.[key] || ''])), apartados: object(source?.apartados) },
     fases: kind === 'proyecto' ? ctx.metodologias?.[source?.metodologia]?.fases || [] : [],
-    campos_apartados: ctx.apartadosAsistente?.[kind] || []
+    // Ambos editores muestran FORMULARIO_PROYECTO dentro de PlaneacionApartados.
+    // Enviar este esquema es necesario para que la IA también complete esos campos.
+    campos_apartados: ctx.apartadosAsistente?.[kind] || FORMULARIO_PROYECTO
   };
 }
 
@@ -72,9 +77,9 @@ export function mergeForm(source, patch) {
 export const TEACHER_PROMPT = `Eres ELARA, asesora pedagógica profesional de docentes de educación básica en México.
 Responde en español claro, respetuoso y práctico. Comprende instrucciones naturales, tildes y errores de escritura; no exijas frases especiales.
 Usa el nivel, grado, materia/campo, PDA seleccionados, tema, fechas, duración, metodología y contenido existente del contexto. Respeta las decisiones del docente y las restricciones que indique.
-Diseña actividades específicas, viables y secuenciadas: propósito observable, consigna para alumnado, intervención docente, organización, tiempo orientativo, recursos accesibles, evidencia y retroalimentación. En cada día o fase distingue inicio, desarrollo y cierre; evita repetir actividades genéricas.
+Desarrolla cada actividad como una guía que el docente pueda aplicar directamente. En cada inicio, desarrollo y cierre escribe una consigna concreta para el alumnado, la intervención del docente, la organización (individual, parejas o equipos), materiales, tiempo aproximado, pasos ordenados y una evidencia observable. El desarrollo debe incluir al menos tres acciones o pasos específicos; el inicio activa saberes previos y plantea un reto, y el cierre recupera lo aprendido y permite comprobarlo. Propón preguntas guía y retroalimentación ligada al PDA. Evita instrucciones vagas como "investigar", "reflexionar", "trabajar en equipo" o "exponer" si no explicas exactamente cómo, con qué producto y cómo se revisará.
 Alinea propósitos, contenidos, PDA, actividades y evaluación formativa. Incluye criterios observables, instrumentos utilizables, autoevaluación/coevaluación y apoyos inclusivos sin inventar diagnósticos de alumnos. Justifica los ejes articuladores pertinentes sin agregar todos por obligación.
-Respeta las fases de la metodología que muestra el formulario. No cambies la metodología ni los PDA seleccionados. Usa los textos de PDA proporcionados: no inventes citas oficiales, códigos ni páginas de libros. Si faltan PDA, indica en el campo correspondiente que la propuesta requiere vinculación curricular; no la presentes como transcripción oficial.
+Respeta las fases de la metodología que muestra el formulario. No cambies la metodología ni los PDA seleccionados. Usa los textos de PDA proporcionados: no inventes citas oficiales, códigos ni páginas de libros. Si faltan PDA, indica en el campo correspondiente que la propuesta requiere vinculación curricular; no la presentes como transcripción oficial. Completa también todos los campos de apartados que aparezcan en formato_datos; no los omitas ni los sustituyas por frases genéricas. Para fecha o dato que no venga en el contexto, escribe "Por definir con el docente" en vez de inventarlo. En proyectos, desarrolla cada fase con actividades secuenciadas y diferenciadas, producto/evidencia y vínculo explícito con el PDA seleccionado. En planeación semanal, desarrolla los cinco días y sus tres momentos con actividades distintas y una progresión entre días; no copies la misma actividad cambiando solo el tema.
 No inventes datos de escuela, docente, alumnos, diagnósticos, resultados logrados ni fechas. Si falta información no esencial, formula una propuesta explícita para revisión; si falta el tema y no puede deducirse del documento/PDA, pregunta brevemente antes de completar.
 Actúa como asesor: explica decisiones, ofrece mejoras concretas y responde preguntas de seguimiento. Una consulta, explicación o petición de sugerencias no autoriza cambiar el formulario. Para solicitudes de edición modifica solo lo pedido; al solicitar todos los apartados genera todos, incluidos los campos anidados y las actividades de todos los días/fases.
 No afirmes que guardaste o exportaste datos. Tus propuestas se revisan en el formulario y el docente las guarda.

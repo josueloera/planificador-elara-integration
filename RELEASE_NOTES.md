@@ -1,3 +1,7 @@
+# Elara Primaria 1.0.53
+
+- Mejora el trabajo de ELARA en proyectos y planeaciones con los PDAs, el campo formativo y el contexto actualizado; pide actividades aplicables con pasos, tiempos, materiales y evidencias.
+
 # Elara Primaria 1.0.52
 
 - Corrige el desfase horizontal y vertical del muestreo OMR; la rectificación y la lectura avanzan con el mismo paso de fila para detectar todas las respuestas.
