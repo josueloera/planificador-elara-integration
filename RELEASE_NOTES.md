@@ -1,3 +1,7 @@
+# Elara Primaria 1.0.55
+
+- Agrega ayuda paso a paso para configurar la vinculación QR con criterios de asistencia y trabajos, y una confirmación visible del grupo, criterio y escala guardados.
+
 # Elara Primaria 1.0.53
 
 - Mejora el trabajo de ELARA en proyectos y planeaciones con los PDAs, el campo formativo y el contexto actualizado; pide actividades aplicables con pasos, tiempos, materiales y evidencias.
