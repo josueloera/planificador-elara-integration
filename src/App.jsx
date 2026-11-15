@@ -1,5 +1,6 @@
 import { useCteCalendar, CteAgenda } from './cteCalendar.jsx';
 import SortableMenu from './components/SortableMenu';
+import TutorialDocente from './components/TutorialDocente';
 import GoogleSync from './components/GoogleSync';
 const CTE = lazy(() => import('./components/CTE'));
 const LanTransfer = lazy(() => import('./components/LanTransfer'));
@@ -107,6 +108,7 @@ const TIPOS_EVENTO = {
 
 function App() {
   const [vista, setVista] = useState('MENU');
+  const [tutorialInicialAbierto, setTutorialInicialAbierto] = useState(false);
   const [grupoActual, setGrupoActual] = useState({ id: 1, grado: 3, seccion: 'A', disciplina_id: 1, nombre_disciplina: 'Primaria', tipo: 'Primaria' });
 
   // LICENCIA
@@ -778,7 +780,7 @@ function App() {
             </div>
           </div>
 
-          <SortableMenu items={menuItems} edition="primaria" />
+          <SortableMenu items={menuItems} edition="primaria" onTutorial={() => setTutorialInicialAbierto(true)} />
       </div>
       );
     }
@@ -1368,6 +1370,8 @@ function App() {
     <Suspense fallback={<div role="status">Cargando módulo…</div>}>
     <div className="elara-app-root">
       <GoogleSync ipc={ipcRenderer} />{renderVistaContent()}
+      {vista !== 'MENU' && vista !== 'LICENCIA' && <TutorialDocente vista={vista} />}
+      {tutorialInicialAbierto && <TutorialDocente vista="MENU" inicial open onClose={() => setTutorialInicialAbierto(false)} />}
       {vista === 'MENU' && <LegalInfo />}
       
 
