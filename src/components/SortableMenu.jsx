@@ -6,7 +6,7 @@ export function reconcileOrder(saved, ids) {
   return [...new Set([...(Array.isArray(saved) ? saved.filter(id => ids.includes(id)) : []), ...ids])];
 }
 
-export default function SortableMenu({ items, edition }) {
+export default function SortableMenu({ items, edition, onTutorial }) {
   const storageKey = `elara-menu-order-v1:${edition}`;
   const [order, setOrder] = useState(() => {
     try { return JSON.parse(localStorage.getItem(storageKey)); } catch { return []; }
@@ -72,6 +72,7 @@ export default function SortableMenu({ items, edition }) {
         {editing ? 'Terminar de organizar' : 'Organizar menú'}
       </button>
       {editing && <button type="button" onClick={() => save(items.map(item => item.id), 'Orden original restaurado.')}>Restablecer orden original</button>}
+      {!editing && onTutorial && <button type="button" onClick={onTutorial}>📘 Tutorial para empezar</button>}
       {editing && <p>Arrastra desde «Mover» o usa las flechas.</p>}
       <p className="menu-order-status" role="status">{message}</p>
       {error && <p role="alert">{error}</p>}
