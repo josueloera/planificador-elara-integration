@@ -1,3 +1,7 @@
+# Elara Primaria 1.0.57
+
+- Reune la lista, el perfil, las calificaciones y el expediente de cada alumno en el acceso del grupo.
+
 # Elara Primaria 1.0.55
 
 - Agrega ayuda paso a paso para configurar la vinculación QR con criterios de asistencia y trabajos, y una confirmación visible del grupo, criterio y escala guardados.
@@ -87,4 +91,3 @@
 - Primaria: mantiene grado, seccion y escuela del grupo al cambiar de menu.
 
 Windows y macOS: actualiza desde Elara o instala sobre la version anterior. Android: requiere un APK firmado con la llave original para actualizar sin perder los datos.
-

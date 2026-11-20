@@ -9,7 +9,7 @@ const TABS = [['perfil','Perfil'],['calificaciones','Calificaciones'],['expedien
 const fecha = value => value ? String(value).slice(0,10) : '—';
 const peso = bytes => bytes >= 1048576 ? `${(bytes/1048576).toFixed(1)} MB` : `${Math.max(1,Math.ceil(bytes/1024))} KB`;
 
-export default function Alumno({ ipcRenderer, variante = 'primaria', configCiclo, grupoActual, onVolver }) {
+export default function Alumno({ ipcRenderer, variante = 'primaria', configCiclo, grupoActual, onVolver, volverLabel = 'Menú principal' }) {
   const [lista,setLista] = useState([]), [busqueda,setBusqueda] = useState(''), [grado,setGrado] = useState('');
   const [seleccion,setSeleccion] = useState(null), [detalle,setDetalle] = useState(null), [perfil,setPerfil] = useState({});
   const [calificaciones,setCalificaciones] = useState([]), [tab,setTab] = useState('perfil');
@@ -106,7 +106,7 @@ export default function Alumno({ ipcRenderer, variante = 'primaria', configCiclo
   function imprimir(){if(editado){setError('Guarda los cambios del perfil antes de imprimir.');return;}window.print();}
   function volver(){if(ocupado)return;if(!editado || window.confirm('Hay cambios sin guardar. ¿Salir sin guardarlos?'))onVolver();}
   return <main className={`alumno-screen alumno-${variante}`}>
-    <header className="alumno-header no-print"><div><p className="alumno-eyebrow">ELARA</p><h1>ALUMNO</h1><p>Perfil, calificaciones y expediente escolar</p></div><button onClick={volver} disabled={ocupado}>← Menú principal</button></header>
+    <header className="alumno-header no-print"><div><p className="alumno-eyebrow">ELARA · MI GRUPO</p><h1>Alumnos y expedientes</h1><p>Perfil, calificaciones y documentos escolares</p></div><button onClick={volver} disabled={ocupado}>← {volverLabel}</button></header>
     <div className="alumno-layout no-print">
       <aside className="alumno-search" aria-label="Buscar alumno"><h2>Buscar alumno</h2><label htmlFor="alumno-search">Nombre del alumno</label><input id="alumno-search" type="search" placeholder="Escribe un nombre o apellido…" value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
         {variante==='secundaria' && <><label htmlFor="alumno-grade">Grado</label><select id="alumno-grade" value={grado} onChange={e=>setGrado(e.target.value)}><option value="">Todos los grados</option>{grados.map(g=><option key={g} value={g}>{g}º de secundaria</option>)}</select></>}

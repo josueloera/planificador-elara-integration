@@ -110,6 +110,7 @@ function App() {
   const [vista, setVista] = useState('MENU');
   const [tutorialInicialAbierto, setTutorialInicialAbierto] = useState(false);
   const [grupoActual, setGrupoActual] = useState({ id: 1, grado: 3, seccion: 'A', disciplina_id: 1, nombre_disciplina: 'Primaria', tipo: 'Primaria' });
+  const [seccionGestionGrupo, setSeccionGestionGrupo] = useState('lista');
 
   // LICENCIA
   const [licenciaInfo, setLicenciaInfo] = useState(null);
@@ -698,15 +699,13 @@ function App() {
     if (vista === 'CTE') return <CTE key={contextoTrabajo} ipc={ipcRenderer} edition='primaria' group={grupoActual} cycle={configCiclo} onBack={()=>setVista('MENU')} />;
     if (vista === 'LAN') return <LanTransfer ipc={ipcRenderer} onBack={()=>setVista('MENU')} />;
     if (vista === 'ANALITICO') return <ProgramaAnalitico key={contextoTrabajo} ipc={ipcRenderer} contexto={contextoTrabajo} variante='primaria' grupo={grupoActual} grado={grado} ciclo={configCiclo} onVolver={()=>setVista('MENU')} />;
-    if (vista === 'ALUMNO') return <Alumno ipcRenderer={ipcRenderer} variante='primaria' configCiclo={configCiclo} grupoActual={grupoActual} onVolver={()=>setVista('MENU')} />;
     if (vista === 'EXAMSCAN') return <ExamScan edition='primaria' group={grupoActual} grade={grado} cycle={configCiclo} evaluationDate={fechaEval} ipc={ipcRenderer} onBack={() => setVista('MENU')} onResultSaved={({ fecha, campo }) => { setFechaEval(fecha); setCampoActual(campo); cargarEval(campo, fecha); }} />;
     if(vista === 'MENU') {
       const menuItems = [
         {id:'CTE',icon:'📒',label:'Consejo Técnico Escolar',desc:'Sesiones, acuerdos y evidencias',color:'#3655a2',action:()=>setVista('CTE')},
         {id:'LAN',icon:'🔗',label:'Conectar dispositivos',desc:'Transferir base de datos por wifi',color:'#147768',action:()=>setVista('LAN')},
         { id: 'ANALITICO', icon: '📘', label: 'Programa analítico', desc: 'Diagnóstico, PDA y codiseño', color: '#4338ca', action: ()=>setVista('ANALITICO') },
-        { id: 'ALUMNO', icon: '👤', label: 'ALUMNO', desc: 'Perfil, calificaciones y expediente', color: '#147768', action: ()=>setVista('ALUMNO') },
-        { id: 'GRUPO', icon: '👥', label: grupoActual ? `${grupoActual.grado}º${grupoActual.seccion} Primaria` : 'Mi Grupo', desc: `${alumnos.length} alumnos`, color: '#6C5CE7', action: ()=>setVista('GRUPO') },
+        { id: 'GRUPO', icon: '👥', label: grupoActual ? `${grupoActual.grado}º${grupoActual.seccion} Primaria` : 'Mi Grupo', desc: `${alumnos.length} alumnos · lista y expedientes`, color: '#6C5CE7', action: ()=>{setSeccionGestionGrupo('lista');setVista('GRUPO');} },
         { id: 'EVAL', icon: '📝', label: 'Evaluación', desc: 'Calificaciones y seguimiento del ciclo', color: '#00B894', action: ()=>{setVista('EVAL'); cargarEval();} },
         { id: 'ASISTENCIA_QR', icon: '📱', label: 'Asistencia QR', desc: 'Escáner y Móvil', color: '#00CEC9', action: ()=>setVista('ASISTENCIA_QR') },
         { id: 'TRIMESTRAL', icon: '📊', label: 'Trimestral', desc: 'Reporte por período', color: '#E17055', action: ()=>{setVista('TRIMESTRAL'); setTrimestre(1);} },
@@ -1242,11 +1241,9 @@ function App() {
     if(vista === 'GRUPO') {
       return (
         <div className="pantalla-dosificador">
-          <div className="header-dosificador">{['EVAL','TRIMESTRAL','DOSIF','BITACORA','CALENDARIO','COMISIONES'].includes(vista) && <ExportDocument title={({'EVAL':'Evaluación','TRIMESTRAL':'Reporte trimestral','DOSIF':'Dosificación','BITACORA':'Bitácora','CALENDARIO':'Calendario','COMISIONES':'Comisiones'})[vista]} selector=".pantalla-dosificador" table={['EVAL','TRIMESTRAL'].includes(vista)} />}<h2>👥 Mi Grupo ({grado}º Primaria)</h2><button className="btn-volver" onClick={()=>setVista('MENU')}>Volver</button></div>
-          <div className="config-grid">
-            <div className="columna-gestion"><h3>📋 Pegar Lista</h3><textarea value={textoPegado} onChange={e=>setTextoPegado(e.target.value)} style={{width:'95%', height:200}}/><button className="btn-guardar" onClick={procesarListaAlumnos}>{procesando?'...':'Agregar'}</button></div>
-            <div className="columna-gestion"><h3>🎓 Alumnos</h3><ul>{alumnos.map(a=><li key={a.id}>{a.nombre} <button onClick={()=>borrarAlumno(a.id)}>🗑️</button></li>)}</ul></div>
-          </div>
+          <div className="header-dosificador"><h2>👥 Mi Grupo ({grado}º Primaria)</h2><button className="btn-volver" onClick={()=>setVista('MENU')}>Volver</button></div>
+          <nav aria-label="Gestión del grupo" style={{display:'flex',gap:10,flexWrap:'wrap',margin:'12px 0 20px'}}><button type="button" aria-pressed={seccionGestionGrupo==='lista'} className={seccionGestionGrupo==='lista'?'btn-guardar':'btn-volver'} onClick={()=>setSeccionGestionGrupo('lista')}>Lista del grupo</button><button type="button" aria-pressed={seccionGestionGrupo==='expedientes'} className={seccionGestionGrupo==='expedientes'?'btn-guardar':'btn-volver'} onClick={()=>setSeccionGestionGrupo('expedientes')}>Alumnos y expedientes</button></nav>
+          {seccionGestionGrupo==='expedientes' ? <Alumno ipcRenderer={ipcRenderer} variante='primaria' configCiclo={configCiclo} grupoActual={grupoActual} volverLabel="Lista del grupo" onVolver={()=>setSeccionGestionGrupo('lista')} /> : <div className="config-grid"><div className="columna-gestion"><h3>📋 Pegar Lista</h3><textarea value={textoPegado} onChange={e=>setTextoPegado(e.target.value)} style={{width:'95%',height:200}}/><button className="btn-guardar" onClick={procesarListaAlumnos}>{procesando?'...':'Agregar'}</button></div><div className="columna-gestion"><h3>🎓 Alumnos</h3><ul>{alumnos.map(a=><li key={a.id}>{a.nombre} <button onClick={()=>borrarAlumno(a.id)}>🗑️</button></li>)}</ul></div></div>}
         </div>
       );
     }
